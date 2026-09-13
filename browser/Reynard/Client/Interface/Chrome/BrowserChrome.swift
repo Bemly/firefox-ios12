@@ -296,6 +296,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         let wasShowingFindInPage = actionBar.isShowingFindInPage
         
         let finish = {
+            guard self.actionBar.alpha == 0 else { return }
             self.actionBar.setItem(nil)
             if wasShowingFindInPage {
                 self.onFindInPageVisibilityChanged?(false)

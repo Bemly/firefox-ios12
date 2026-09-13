@@ -1,5 +1,5 @@
 diff --git a/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs b/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs
-index 635806ea1724..92f7e73c9dd4 100644
+index 635806ea1724..5e035fd94e13 100644
 --- a/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs
 +++ b/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs
 @@ -3,6 +3,7 @@
@@ -32,7 +32,7 @@ index 635806ea1724..92f7e73c9dd4 100644
        case "GeckoView:GetWebCompatInfo":
          this._getWebCompatInfo(aCallback);
          break;
-@@ -491,6 +500,39 @@ export class GeckoViewContent extends GeckoViewModule {
+@@ -491,6 +500,41 @@ export class GeckoViewContent extends GeckoViewModule {
      aCallback.onSuccess(await this.actor.containsFormData());
    }
  
@@ -59,10 +59,12 @@ index 635806ea1724..92f7e73c9dd4 100644
 +          });
 +        });
 +      }
-+      const actor =
-+        Services.focus.focusedContentBrowsingContext?.currentWindowGlobal?.getActor(
-+          "GeckoViewContent"
-+        );
++      const focusedContext = Services.focus.focusedContentBrowsingContext;
++      if (focusedContext?.top !== this.browser.browsingContext) {
++        aCallback.onSuccess(null);
++        return;
++      }
++      const actor = focusedContext.currentWindowGlobal?.getActor("GeckoViewContent");
 +      aCallback.onSuccess(actor ? await actor.sendQuery("GetFocusedInputMetrics") : null);
 +    } catch (error) {
 +      aCallback.onError(`Cannot get focused input metrics, error: ${error}`);

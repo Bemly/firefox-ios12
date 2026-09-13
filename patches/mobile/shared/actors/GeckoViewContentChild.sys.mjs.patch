@@ -1,8 +1,8 @@
 diff --git a/mobile/shared/actors/GeckoViewContentChild.sys.mjs b/mobile/shared/actors/GeckoViewContentChild.sys.mjs
-index 9ca6e15bed3e..79725c337bba 100644
+index 9ca6e15bed3e..bae638b3b3c4 100644
 --- a/mobile/shared/actors/GeckoViewContentChild.sys.mjs
 +++ b/mobile/shared/actors/GeckoViewContentChild.sys.mjs
-@@ -67,6 +67,92 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
+@@ -67,6 +67,113 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
      return windowUtils.SCROLL_MODE_SMOOTH;
    }
  
@@ -56,9 +56,30 @@ index 9ca6e15bed3e..79725c337bba 100644
 +    }
 +
 +    const bounds = this.getFocusedInputBounds(focusedElement, viewportHeight);
-+    return {
++    const { windowUtils } = win;
++    const metrics = {
 +      bottomRatio: Math.max(0, Math.min(2, bounds.bottom / viewportHeight)),
++      caretTop: null,
 +    };
++    const selection = windowUtils.sendQueryContentEvent(
++      windowUtils.QUERY_SELECTED_TEXT, 0, 0, 0, 0
++    );
++
++    if (!selection.succeeded || selection.notFound) {
++      return metrics;
++    }
++
++    const caret = windowUtils.sendQueryContentEvent(
++      windowUtils.QUERY_CARET_RECT,
++      selection.offset + selection.text.length,
++      0, 0, 0
++    );
++
++    if (caret.succeeded) {
++      metrics.caretTop = caret.top;
++    }
++
++    return metrics;
 +  }
 +
 +  collectSessionState() {
@@ -95,7 +116,7 @@ index 9ca6e15bed3e..79725c337bba 100644
    orientation() {
      const currentOrientationType = this.contentWindow?.screen.orientation.type;
      if (!currentOrientationType) {
-@@ -184,6 +270,9 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
+@@ -184,6 +291,9 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
        case "ContainsFormData": {
          return this.containsFormData();
        }

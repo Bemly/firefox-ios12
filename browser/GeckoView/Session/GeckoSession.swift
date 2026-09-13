@@ -447,10 +447,15 @@ public class GeckoSession {
     }
     
     // Keyboard
-    public func focusedInputBottomRatio() async -> CGFloat? {
+    public func focusedInputMetrics() async -> (bottomRatio: CGFloat, caretTop: CGFloat?)? {
         let response = try? await dispatcher.query(type: "GeckoView:GetFocusedInputMetrics")
-        let values = response as? [AnyHashable: Any]
-        return PayloadValue.cgFloat(values?["bottomRatio"])
+        guard let values = response as? [AnyHashable: Any],
+              let bottomRatio = PayloadValue.cgFloat(values["bottomRatio"]),
+              let engineView else {
+            return nil
+        }
+        let caretTop = PayloadValue.cgFloat(values["caretTop"])
+        return (bottomRatio, caretTop.map { $0 / engineView.contentScaleFactor })
     }
     
     @discardableResult

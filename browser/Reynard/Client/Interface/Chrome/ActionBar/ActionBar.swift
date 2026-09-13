@@ -78,7 +78,7 @@ final class ActionBar: UIView {
     }
     
     var isShowingKeyboardDismissal: Bool {
-        return item == .keyboardDismissal && !isHidden
+        return item == .keyboardDismissal && !isHidden && alpha > 0
     }
     
     private let findInPageActionBar = FindInPageActionBar()

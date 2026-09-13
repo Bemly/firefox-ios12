@@ -893,17 +893,6 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         selectedSession.focusForHardwareKeyboard()
     }
     
-    private func isEditingTextInWebView() -> Bool {
-        guard let selectedSession = tabManager.selectedTab?.session,
-              contentView.isDisplaying(session: selectedSession),
-              let engineView = selectedSession.engineView,
-              engineView.isFirstResponder,
-              let textInput = engineView as? UITextInput else {
-            return false
-        }
-        return textInput.selectedTextRange != nil
-    }
-    
     private var presentedControllerInHierarchy: UIViewController? {
         var controller: UIViewController? = self
         while let currentController = controller {
@@ -921,64 +910,42 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         }
         
         let keyboardFrame = view.convert(frameValue.cgRectValue, from: nil)
-        let keyboardInset = max(
-            0,
-            view.bounds.maxY - keyboardFrame.minY - view.safeAreaInsets.bottom
-        )
         let keyboardOverlap = max(0, view.bounds.maxY - keyboardFrame.minY)
-        let animation = keyboardAnimation(from: notification)
-        let isInHardwareKeyboardMode = tabManager.selectedTab?.session.isInHardwareKeyboardMode() == true
-        let shouldShowKeyboardDismissal = !tabOverview.isPresented
-        && browserLayout.interfaceIdiom == .phone
-        && keyboardInset > 0
-        && !isInHardwareKeyboardMode
-        && isEditingTextInWebView()
-        if shouldShowKeyboardDismissal {
-            if !browserChrome.isShowingKeyboardDismissal {
-                browserChrome.showActionBar(.keyboardDismissal, animated: true)
-            }
-        } else if browserChrome.isShowingKeyboardDismissal {
-            browserChrome.dismissActionBar(animated: true)
-        }
-        let keyboardDismissalActionBarInset = browserChrome.isShowingKeyboardDismissal
-        ? ActionBarStyle.compact.height
-        : 0
-        if !searchOverlayCoordinator.isFocused
-            && !tabOverview.isPresented
-            && keyboardInset > 0
-            && !isInHardwareKeyboardMode {
-            contentView.relocateFocusedInput(
-                above: keyboardFrame,
-                bottomInset: keyboardDismissalActionBarInset,
-                animationDuration: animation.duration,
-                animationOptions: animation.curve
-            )
-        } else {
-            contentView.resetFocusedInputRelocation(
-                animationDuration: animation.duration,
-                animationOptions: animation.curve
-            )
-        }
+        let keyboardInset = max(0, keyboardOverlap - view.safeAreaInsets.bottom)
+        let shouldAdjustForKeyboard = keyboardInset > 0
+        && !tabOverview.isPresented
+        && tabManager.selectedTab?.session.isInHardwareKeyboardMode() != true
+        let shouldRelocateInput = shouldAdjustForKeyboard
+        && !searchOverlayCoordinator.isFocused
+        && !browserChrome.isShowingFindInPage
+        && presentedControllerInHierarchy == nil
         
-        let shouldDockActionBar = !tabOverview.isPresented
-        && keyboardInset > 0
-        && !isInHardwareKeyboardMode
+        let animation = keyboardAnimation(from: notification)
+        if shouldRelocateInput && browserLayout.interfaceIdiom == .phone {
+            browserChrome.showActionBar(.keyboardDismissal, animated: false)
+        } else if browserChrome.isShowingKeyboardDismissal {
+            browserChrome.dismissActionBar(animated: false)
+        }
+        let shouldDockActionBar = shouldAdjustForKeyboard
         && (browserChrome.isShowingFindInPage || browserChrome.isShowingKeyboardDismissal)
-        let shouldDockAddressBar = !tabOverview.isPresented
-        && keyboardInset > 0
-        && !isInHardwareKeyboardMode
-        && (
-            browserLayout.chromeMode == .phone && searchOverlayCoordinator.isFocused
-        )
+        let shouldDockAddressBar = shouldAdjustForKeyboard
+        && browserLayout.chromeMode == .phone && searchOverlayCoordinator.isFocused
         browserChrome.dockActionBar(offset: shouldDockActionBar ? -keyboardOverlap : 0)
         browserChrome.dockAddressBar(offset: shouldDockAddressBar ? -keyboardInset : 0)
         animateLayout(animation)
+        
+        contentView.updateFocusedInputRelocation(
+            above: shouldRelocateInput ? keyboardFrame : nil,
+            bottomInset: browserChrome.isShowingKeyboardDismissal ? ActionBarStyle.compact.height : 0,
+            animationDuration: animation.duration,
+            animationOptions: animation.curve
+        )
     }
     
     @objc private func keyboardWillHide(_ notification: Notification) {
         let animation = keyboardAnimation(from: notification)
         if browserChrome.isShowingKeyboardDismissal {
-            browserChrome.dismissActionBar(animated: true)
+            browserChrome.dismissActionBar(animated: false)
         }
         contentView.resetFocusedInputRelocation(
             animationDuration: animation.duration,
