@@ -2182,10 +2182,58 @@
     "1. Install libimobiledevice by following the instructions at %@.\n2. Connect this device to your computer using USB, then tap Trust when prompted.\n3. In Terminal, run iproxy %d:%d and leave it running.\n4. In Firefox on your computer, open about:debugging and select Setup.\n5. Under Network Location, add localhost:%d, then select Connect." : {
       "comment" : "Remote debugging setup instructions; port placeholders",
       "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. Nainstalujte libimobiledevice podle pokynů na %1$@.\n2. Připojte toto zařízení k vašemu počítači přes USB a po vyzvání klepněte na Důvěřovat.\n3. V Terminálu spusťte příkaz iproxy %2$d:%3$d a nechte jej běžet.\n4. Ve Firefoxu na vašem počítači otevřete about:debugging a klikněte na Nastavení.\n5. V sekci Síťové umístění přidejte localhost:%4$d a klikněte na tlačítko Přidat."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "1. Install libimobiledevice by following the instructions at %1$@.\n2. Connect this device to your computer using USB, then tap Trust when prompted.\n3. In Terminal, run iproxy %2$d:%3$d and leave it running.\n4. In Firefox on your computer, open about:debugging and select Setup.\n5. Under Network Location, add localhost:%4$d, then select Connect."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. %1$@ の手順に従って libimobiledevice をインストールします。\n2. USB を使用してこのデバイスをコンピューターに接続し、プロンプトが表示されたら「信頼」をタップします。\n3. ターミナルで `iproxy %2$d:%3$d` を実行し、起動したままにします。\n4. コンピューターの Firefox で `about:debugging` を開き、[設定 (Setup)] を選択します。\n5. [ネットワークロケーション (Network Location)] で `localhost:%4$d` を追加し、[接続 (Connect)] を選択します。"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
           }
         }
       }
@@ -4904,8 +4952,8 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : ""
+            "state" : "translated",
+            "value" : "常に選択したセキュアDNSプロバイダーを使用します。利用できない場合、ウェブサイトが読み込めないことがあります。"
           }
         },
         "pl" : {
@@ -6302,8 +6350,8 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : ""
+            "state" : "translated",
+            "value" : " キャンセル済み"
           }
         },
         "pl" : {
@@ -9048,8 +9096,8 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : ""
+            "state" : "translated",
+            "value" : "デフォルト保護"
           }
         },
         "pl" : {
@@ -9662,10 +9710,58 @@
     },
     "Developer" : {
       "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pro vývojáře"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Developer"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開発者"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
           }
         }
       }
@@ -10139,10 +10235,58 @@
     "Done" : {
       "comment" : "Dismiss keyboard button",
       "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Done"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
           }
         }
       }
@@ -11221,8 +11365,8 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : ""
+            "state" : "translated",
+            "value" : "失敗"
           }
         },
         "pl" : {
@@ -12008,10 +12152,58 @@
     },
     "Hide Toolbar" : {
       "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hide Toolbar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
           }
         }
       }
@@ -12509,8 +12701,8 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : ""
+            "state" : "translated",
+            "value" : "強化版保護"
           }
         },
         "pl" : {
@@ -12915,8 +13107,8 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : ""
+            "state" : "translated",
+            "value" : "無効なURL"
           }
         },
         "pl" : {
@@ -13964,8 +14156,8 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : ""
+            "state" : "translated",
+            "value" : "最高レベルの保護"
           }
         },
         "pl" : {
@@ -16329,10 +16521,58 @@
     "Open in Background" : {
       "comment" : "Open links in new tab behavior",
       "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otvírat na pozadí"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Open in Background"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バックグラウンドで開く"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
           }
         }
       }
@@ -16687,10 +16927,58 @@
     },
     "Open Links in New Tabs" : {
       "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otvírat odkazy na nových panelech"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Open Links in New Tabs"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リンクを新しいタブで開く"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
           }
         }
       }
@@ -17362,8 +17650,8 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : ""
+            "state" : "translated",
+            "value" : "停止"
           }
         },
         "pl" : {
@@ -17421,8 +17709,8 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : ""
+            "state" : "translated",
+            "value" : "停止済み"
           }
         },
         "pl" : {
@@ -18557,30 +18845,174 @@
     },
     "Remote Debugging" : {
       "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dálkové ladění"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Remote Debugging"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リモートデバッグ"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
           }
         }
       }
     },
     "Remote Debugging Port" : {
       "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Port pro dálkové ladění"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Remote Debugging Port"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "リモートデバッグポート"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
           }
         }
       }
     },
     "Remote Debugging via USB" : {
       "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dálkové ladění přes USB"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Remote Debugging via USB"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "USB経由のリモートデバッグ"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
           }
         }
       }
@@ -19719,8 +20151,8 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : ""
+            "state" : "translated",
+            "value" : "再開"
           }
         },
         "pl" : {
@@ -20705,8 +21137,8 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : ""
+            "state" : "translated",
+            "value" : "セキュアDNSプロバイダー"
           }
         },
         "pl" : {
@@ -20763,8 +21195,8 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : ""
+            "state" : "translated",
+            "value" : "セキュアDNSは、これらのウェブサイトやそのサブドメインでは使用されません。"
           }
         },
         "pl" : {
@@ -22769,10 +23201,58 @@
     },
     "Switch Tab Immediately" : {
       "localizations" : {
+        "cs" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihned přepnout panel"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Switch Tab Immediately"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すぐにタブを切り替える"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : ""
           }
         }
       }
@@ -25197,8 +25677,8 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : ""
+            "state" : "translated",
+            "value" : "URLは「https://」で始まる必要があります。"
           }
         },
         "pl" : {
@@ -25547,8 +26027,8 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : ""
+            "state" : "translated",
+            "value" : "プライバシーを保護するため、適切な場合に安全な DNS を使用します。"
           }
         },
         "pl" : {
@@ -25605,8 +26085,8 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : ""
+            "state" : "translated",
+            "value" : "可能な限り、選択した安全なDNSプロバイダーを使用します。利用できない場合は、システムDNSが使用されます。"
           }
         },
         "pl" : {
@@ -25645,8 +26125,8 @@
         },
         "de" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : ""
+            "state" : "translated",
+            "value" : "Verwendet das System-DNS."
           }
         },
         "en" : {
@@ -25663,8 +26143,8 @@
         },
         "ja" : {
           "stringUnit" : {
-            "state" : "needs_review",
-            "value" : ""
+            "state" : "translated",
+            "value" : "システムのDNSを使用します。"
           }
         },
         "pl" : {
