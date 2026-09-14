@@ -55,6 +55,22 @@ public final class GeckoSessionState {
         return historyEntries.isEmpty
     }
     
+    public func currentPageState() -> GeckoSessionState? {
+        guard var history = payload["history"] as? [String: Any],
+              let currentHistoryIndex,
+              let entries = history["entries"] as? [[String: Any]],
+              entries.indices.contains(currentHistoryIndex) else {
+            return nil
+        }
+        history["entries"] = [entries[currentHistoryIndex]]
+        history["index"] = 1
+        history["requestedIndex"] = 0
+        history["fromIdx"] = -1
+        var currentPagePayload = payload
+        currentPagePayload["history"] = history
+        return GeckoSessionState(payload: currentPagePayload)
+    }
+    
     public func navigationHistoryState(appending url: String) -> GeckoSessionState? {
         guard var history = payload["history"] as? [String: Any],
               let currentHistoryIndex,
