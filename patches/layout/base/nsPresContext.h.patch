@@ -1,0 +1,20 @@
+diff --git a/layout/base/nsPresContext.h b/layout/base/nsPresContext.h
+index 5f27c288fd02..50d5f0f68734 100644
+--- a/layout/base/nsPresContext.h
++++ b/layout/base/nsPresContext.h
+@@ -441,12 +441,10 @@ class nsPresContext : public nsISupports,
+   nscoord GetBimodalDynamicToolbarHeightInAppUnits() const;
+ 
+   /**
+-   * Returns the maximum height of the dynamic toolbar if the toolbar state is
+-   * `DynamicToolbarState::Collapsed`, otherwise returns zero.
+-   * The maximum height is based on the fixed viewport scale for elements with
+-   * position:fixed.
++   * Returns the hidden part of the dynamic toolbar's height, using the fixed
++   * viewport scale for elements with position:fixed.
+    */
+-  nscoord GetBimodalDynamicToolbarHeightForFixedPosInAppUnits() const;
++  nscoord GetHiddenDynamicToolbarHeightForFixedPosInAppUnits() const;
+ 
+   /**
+    * Returns the state of the dynamic toolbar.

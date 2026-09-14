@@ -1,0 +1,20 @@
+diff --git a/gfx/layers/ipc/LayersMessageUtils.h b/gfx/layers/ipc/LayersMessageUtils.h
+index 178b9e9e64e3..cac916820919 100644
+--- a/gfx/layers/ipc/LayersMessageUtils.h
++++ b/gfx/layers/ipc/LayersMessageUtils.h
+@@ -292,6 +292,7 @@ struct ParamTraits<mozilla::layers::RepaintRequest>
+     WriteParam(aWriter, aParam.mCumulativeResolution);
+     WriteParam(aWriter, aParam.mDevPixelsPerCSSPixel);
+     WriteParam(aWriter, aParam.mScrollOffset);
++    WriteParam(aWriter, aParam.mFixedPositionTopMargin);
+     WriteParam(aWriter, aParam.mZoom);
+     WriteParam(aWriter, aParam.mScrollGeneration);
+     WriteParam(aWriter, aParam.mScrollGenerationOnApz);
+@@ -316,6 +317,7 @@ struct ParamTraits<mozilla::layers::RepaintRequest>
+         ReadParam(aReader, &aResult->mCumulativeResolution) &&
+         ReadParam(aReader, &aResult->mDevPixelsPerCSSPixel) &&
+         ReadParam(aReader, &aResult->mScrollOffset) &&
++        ReadParam(aReader, &aResult->mFixedPositionTopMargin) &&
+         ReadParam(aReader, &aResult->mZoom) &&
+         ReadParam(aReader, &aResult->mScrollGeneration) &&
+         ReadParam(aReader, &aResult->mScrollGenerationOnApz) &&

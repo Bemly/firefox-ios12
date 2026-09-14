@@ -1,0 +1,20 @@
+diff --git a/gfx/layers/apz/src/Axis.h b/gfx/layers/apz/src/Axis.h
+index 0384dda0561b..23d7dc7bdd63 100644
+--- a/gfx/layers/apz/src/Axis.h
++++ b/gfx/layers/apz/src/Axis.h
+@@ -281,15 +281,6 @@ class Axis {
+    */
+   CSSCoord ScaleWillOverscrollAmount(float aScale, CSSCoord aFocus) const;
+ 
+-  /**
+-   * Checks if an axis will overscroll in both directions by computing the
+-   * content rect and checking that its height/width (depending on the axis)
+-   * does not overextend past the viewport.
+-   *
+-   * This gets called by ScaleWillOverscroll().
+-   */
+-  bool ScaleWillOverscrollBothSides(float aScale) const;
+-
+   /**
+    * Returns true if movement on this axis is locked.
+    */

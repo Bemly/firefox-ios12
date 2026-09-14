@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/apz/util/APZCCallbackHelper.cpp b/gfx/layers/apz/util/APZCCallbackHelper.cpp
-index 2f77c6ca1893..26a36a1b0845 100644
+index 2f77c6ca1893..743c8b56b82f 100644
 --- a/gfx/layers/apz/util/APZCCallbackHelper.cpp
 +++ b/gfx/layers/apz/util/APZCCallbackHelper.cpp
 @@ -30,6 +30,8 @@
@@ -33,3 +33,11 @@ index 2f77c6ca1893..26a36a1b0845 100644
    if (scrollUpdated) {
      if (aRequest.IsScrollInfoLayer()) {
        // In cases where the APZ scroll offset is different from the content
+@@ -398,6 +415,7 @@ void APZCCallbackHelper::UpdateRootFrame(const RepaintRequest& aRequest) {
+   SetDisplayPortMargins(presShell, content, displayPortMargins,
+                         aRequest.CalculateCompositedSizeInCssPixels());
+   SetPaintRequestTime(content, aRequest.GetPaintRequestTime());
++  presShell->SetFixedPositionTopMargin(aRequest.GetFixedPositionTopMargin());
+ }
+ 
+ void APZCCallbackHelper::UpdateSubFrame(const RepaintRequest& aRequest) {

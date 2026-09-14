@@ -1,0 +1,44 @@
+diff --git a/gfx/layers/RepaintRequest.h b/gfx/layers/RepaintRequest.h
+index c5506d2c09a8..5c05a4e41ed7 100644
+--- a/gfx/layers/RepaintRequest.h
++++ b/gfx/layers/RepaintRequest.h
+@@ -13,6 +13,7 @@
+ #include "UnitTransforms.h"              // for ViewAs
+ #include "Units.h"                       // for CSSRect, CSSPixel, etc
+ #include "mozilla/DefineEnum.h"          // for MOZ_DEFINE_ENUM
++#include "mozilla/Maybe.h"               // for Maybe
+ #include "mozilla/ScrollSnapTargetId.h"  // for ScrollSnapTargetIds
+ #include "mozilla/TimeStamp.h"           // for TimeStamp
+ #include "mozilla/gfx/BasePoint.h"       // for BasePoint
+@@ -96,6 +97,7 @@ struct RepaintRequest {
+            mCumulativeResolution == aOther.mCumulativeResolution &&
+            mDevPixelsPerCSSPixel == aOther.mDevPixelsPerCSSPixel &&
+            mScrollOffset == aOther.mScrollOffset &&
++           mFixedPositionTopMargin == aOther.mFixedPositionTopMargin &&
+            // don't compare mZoom
+            mScrollGeneration == aOther.mScrollGeneration &&
+            mDisplayPortMargins == aOther.mDisplayPortMargins &&
+@@ -163,6 +165,13 @@ struct RepaintRequest {
+ 
+   const CSSPoint& GetVisualScrollOffset() const { return mScrollOffset; }
+ 
++  const Maybe<CSSCoord>& GetFixedPositionTopMargin() const {
++    return mFixedPositionTopMargin;
++  }
++  void SetFixedPositionTopMargin(const Maybe<CSSCoord>& aMargin) {
++    mFixedPositionTopMargin = aMargin;
++  }
++
+   const CSSToParentLayerScale& GetZoom() const { return mZoom; }
+ 
+   ScrollOffsetUpdateType GetScrollUpdateType() const {
+@@ -260,6 +269,9 @@ struct RepaintRequest {
+   // to the scrollable content's origin.
+   CSSPoint mScrollOffset;
+ 
++  // The top margin for viewport-fixed content at APZ's current zoom.
++  Maybe<CSSCoord> mFixedPositionTopMargin;
++
+   // The "user zoom". Content is painted by gecko at mCumulativeResolution *
+   // mDevPixelsPerCSSPixel, but will be drawn to the screen at mZoom. In the
+   // steady state, the two will be the same, but during an async zoom action the
