@@ -1,0 +1,13 @@
+diff --git a/toolkit/components/remotebrowserutils/RemoteWebNavigation.sys.mjs b/toolkit/components/remotebrowserutils/RemoteWebNavigation.sys.mjs
+index 9a77c96e9959..1016fde459b0 100644
+--- a/toolkit/components/remotebrowserutils/RemoteWebNavigation.sys.mjs
++++ b/toolkit/components/remotebrowserutils/RemoteWebNavigation.sys.mjs
+@@ -38,7 +38,7 @@ export class RemoteWebNavigation {
+ 
+   maybeCancelContentJSExecution(aNavigationType, aOptions = {}) {
+     const epoch = this._cancelContentJSEpoch++;
+-    this._browser.frameLoader.remoteTab.maybeCancelContentJSExecution(
++    this._browser.frameLoader.remoteTab?.maybeCancelContentJSExecution(
+       aNavigationType,
+       { ...aOptions, epoch }
+     );
