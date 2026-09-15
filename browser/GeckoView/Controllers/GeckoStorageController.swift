@@ -57,7 +57,7 @@ public enum GeckoStorageController {
     }
 
     public static func clearTranslationModelCache(completion: @escaping () -> Void = {}) {
-        GeckoEventDispatcherWrapper.runtimeInstance.query
+        GeckoEventDispatcherWrapper.runtimeInstance.query(
             type: "GeckoView:Translations:ManageModel",
             message: [
                 "operation": "delete",
