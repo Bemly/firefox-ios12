@@ -468,7 +468,7 @@ public class GeckoSession {
             guard case .success(let response) = result,
                   let values = response as? [AnyHashable: Any],
                   let bottomRatio = PayloadValue.cgFloat(values["bottomRatio"]),
-                  let engineView else {
+                  let engineView = self.engineView else {
                 completion(nil)
                 return
             }
