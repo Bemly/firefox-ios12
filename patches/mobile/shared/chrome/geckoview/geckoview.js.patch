@@ -1,5 +1,5 @@
 diff --git a/mobile/shared/chrome/geckoview/geckoview.js b/mobile/shared/chrome/geckoview/geckoview.js
-index 3345a3e164df..1c476d4e46b5 100644
+index 3345a3e164df..f64655d306ef 100644
 --- a/mobile/shared/chrome/geckoview/geckoview.js
 +++ b/mobile/shared/chrome/geckoview/geckoview.js
 @@ -10,6 +10,9 @@ var { DelayedInit } = ChromeUtils.importESModule(
@@ -12,13 +12,19 @@ index 3345a3e164df..1c476d4e46b5 100644
  
  ChromeUtils.defineESModuleGetters(this, {
    Blocklist: "resource://gre/modules/Blocklist.sys.mjs",
-@@ -425,7 +428,13 @@ function createBrowser() {
+@@ -424,8 +427,18 @@ function createBrowser() {
+   browser.setAttribute("type", "content");
    browser.setAttribute("primary", "true");
    browser.setAttribute("flex", "1");
-   browser.setAttribute("maychangeremoteness", "true");
+-  browser.setAttribute("maychangeremoteness", "true");
 -  browser.setAttribute("remote", "true");
-+  // REYNARD: iOS has no out-of-process content, keep the browser in-process.
++  // REYNARD: iOS has no out-of-process content: never attempt remoteness
++  // changes (ContextCanProcessSwitch aborts the switch when this is absent),
++  // and keep the browser in-process.
 +  // NB: remoteness keys off presence of the attribute, not its value.
++  if (AppConstants.platform != "ios") {
++    browser.setAttribute("maychangeremoteness", "true");
++  }
 +  if (AppConstants.platform == "ios") {
 +    browser.removeAttribute("remote");
 +  } else {
