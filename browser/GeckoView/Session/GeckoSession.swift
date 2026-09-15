@@ -196,6 +196,7 @@ public class GeckoSession {
     // MARK: - Navigation
     
     public func load(_ url: String, flags: Int = GeckoSessionLoadFlags.none) {
+        NSLog("[PROBE] GeckoSession.load url=%@", url)
         dispatcher.dispatch(
             type: "GeckoView:LoadUri",
             message: [

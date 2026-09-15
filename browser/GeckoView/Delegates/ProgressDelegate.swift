@@ -48,11 +48,14 @@ func newProgressHandler(_ session: GeckoSession) -> GeckoSessionHandler {
         switch event {
         case .pageStart:
             if let url = message?["uri"] as? String {
+                NSLog("[PROBE] PageStart url=%@", url)
                 delegate?.onPageStart(session: session, url: url)
             }
         case .pageStop:
+            NSLog("[PROBE] PageStop success=%@", String(describing: message?["success"]))
             delegate?.onPageStop(session: session, success: message?["success"] as? Bool ?? false)
         case .progressChanged:
+            NSLog("[PROBE] ProgressChanged progress=%@", String(describing: message?["progress"]))
             delegate?.onProgressChange(session: session, progress: message?["progress"] as? Int ?? 0)
         case .securityChanged:
             break

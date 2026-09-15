@@ -120,6 +120,7 @@ func newNavigationHandler(_ session: GeckoSession) -> GeckoSessionHandler {
             }
 
         case .onLoadError:
+            NSLog("[PROBE] OnLoadError message=%@", String(describing: message))
             completion(.success(nil))
 
         case .onLoadRequest:
