@@ -17,15 +17,17 @@
 - SSH root 口令：`alpine`（越狱默认）。用法：`SSHPASS='alpine' sshpass -e ssh -p 2222 ...`。
 - 本机 sudo 口令：`2328`，需提权时用（例如 `echo '2328' | sudo -S ...`）。
 
-## Mac 工具链 (不要动 xcode-select，当前指向 Xcode-beta)
+## Mac 工具链 (不要动 xcode-select，当前指向 Xcode.app 即 27)
 
-- `/Applications/Xcode.app` = 26.6：**编译用**。SDK iOS 26.5，`MinimumDeploymentTarget=12.0`，
+- `/Applications/Xcode26.app` = 26.6：**编译+调试用**。SDK iOS 26.5，`MinimumDeploymentTarget=12.0`，
   本工程 `IPHONEOS_DEPLOYMENT_TARGET=12.4` 可编；但 `DeviceSupport` 只有 15.0+，**不能**真机调试 iOS 12。
-- `/Applications/Xcode-beta.app` = 27.0：xcode-select 正指着它，**保持不动**。
+- `/Applications/Xcode.app` = 27.0：xcode-select 正指着它，**保持不动**（2026-09-15 用户主动切过来的）。
 - `/Applications/Xcode15.app` = 15.4：GUI 在新 macOS 上跑不起来，但 CLI (`xcodebuild`/`lldb-1500`)
-  和 `DeviceSupport/12.x` + `DeveloperDiskImage.dmg` 可用。
-- 编译一律显式指定，不依赖 select，例如：
-  `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project browser/Reynard.xcodeproj -scheme Reynard ...`
+  和 `DeviceSupport/12.x` + `DeveloperDiskImage.dmg` 可用。注意 15 的 lldb-1500
+  `target create` 本工程二进制会崩（无 target 裸连才可用），真断点用 26 的 lldb。
+- 编译/调试一律显式指定，不依赖 select，例如：
+  `DEVELOPER_DIR=/Applications/Xcode26.app/Contents/Developer /Applications/Xcode26.app/Contents/Developer/usr/bin/xcodebuild -project browser/Reynard.xcodeproj -scheme Reynard ...`
+- lldb 用 `/Applications/Xcode26.app/Contents/Developer/usr/bin/lldb`。
 
 ## 连接 / 安装
 
@@ -59,7 +61,7 @@
   不改仓库文件的做法：`CODE_SIGNING_ALLOWED=NO` + PATH 里放 `codesign` 垫片，
   把 `--sign "Apple Development"` 映射成 `--sign -`（ad-hoc，见 `/tmp/fakebin/codesign`，重启会丢）。
 - Debug 构建命令（Xcode 26.6，不动 select）：
-  `PATH=/tmp/fakebin:$PATH DEVELOPER_DIR=/Applications/Xcode.app/... xcodebuild build
+  `PATH=/tmp/fakebin:$PATH DEVELOPER_DIR=/Applications/Xcode26.app/... xcodebuild build
   -project browser/Reynard.xcodeproj -scheme Reynard -configuration Debug -sdk iphoneos -arch arm64
   CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="-" -derivedDataPath /tmp/ReynardDD`
 - 装机前 Mac 端 `ldid -S` 重签（AppSync 越狱机可装）：主二进制用
