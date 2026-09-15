@@ -76,7 +76,7 @@ enum AddressBarMenu {
             pageActions.append(UIAction(title: NSLocalizedString("Page Zoom", comment: ""), image: UIImage(named: "reynard.textformat.size")) { _ in
                 onPageZoom()
             })
-            pageActions.append(UIAction(title: NSLocalizedString("Find in Page", comment: ""), image: UIImage(named: "reynard.magnifyingglass")) { _ in
+            pageActions.append(UIAction(title: NSLocalizedString("Find in Page", comment: ""), image: UIImage(named: "reynard.text.page.badge.magnifyingglass")) { _ in
                 onFindInPage()
             })
         }
