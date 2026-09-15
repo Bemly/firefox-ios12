@@ -163,7 +163,7 @@ final class AddressBar: UIView {
         view.translatesAutoresizingMaskIntoConstraints = false
         view.backgroundColor = .clear
         view.isUserInteractionEnabled = false
-        view.layer.cornerCurve = .continuous
+        view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.addressBarBackgroundCornerRadius
         view.layer.borderWidth = UX.borderWidth
         view.layer.borderColor = UIColor.appSeparator.withAlphaComponent(0.2).cgColor

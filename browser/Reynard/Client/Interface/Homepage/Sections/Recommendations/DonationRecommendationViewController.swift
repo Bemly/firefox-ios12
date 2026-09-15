@@ -60,7 +60,7 @@ final class DonationRecommendationViewController: UIViewController, HomepageReco
         let view = UIVisualEffectView(effect: UIBlurEffect(style: .appChromeMaterial))
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isUserInteractionEnabled = false
-        view.layer.cornerCurve = .continuous
+        view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.cornerRadius
         view.clipsToBounds = true
         return view

@@ -84,7 +84,7 @@ final class TabOverviewCard: UICollectionViewCell {
         view.translatesAutoresizingMaskIntoConstraints = false
         view.backgroundColor = .appSystemBackground
         view.layer.cornerRadius = UX.webpagePreviewCornerRadius
-        view.layer.cornerCurve = .continuous
+        view.layer.applyContinuousCornerCurve()
         view.layer.borderWidth = UX.borderWidth
         view.layer.borderColor = UIColor.appSeparator.withAlphaComponent(0.2).cgColor
         view.layer.masksToBounds = true

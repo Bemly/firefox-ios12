@@ -91,7 +91,7 @@ final class ActionBar: UIView {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.backgroundColor = .clear
-        view.layer.cornerCurve = .continuous
+        view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.closeButtonCornerRadius
         view.layer.shadowColor = UIColor.black.cgColor
         view.layer.shadowOpacity = UX.shadowOpacity
@@ -109,7 +109,7 @@ final class ActionBar: UIView {
             : .appSystemBackground.withAlphaComponent(0.8)
             return backgroundColor.resolvedColor(with: traitCollection)
         }
-        view.layer.cornerCurve = .continuous
+        view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.closeButtonCornerRadius
         view.layer.borderWidth = UX.borderWidth
         view.layer.borderColor = UIColor.appSeparator.withAlphaComponent(0.2).cgColor

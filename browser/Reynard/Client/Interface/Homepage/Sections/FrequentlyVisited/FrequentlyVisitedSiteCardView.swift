@@ -32,7 +32,7 @@ final class FrequentlyVisitedSiteCardView: UIControl {
         let view = UIVisualEffectView(effect: UIBlurEffect(style: .appChromeMaterial))
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isUserInteractionEnabled = false
-        view.layer.cornerCurve = .continuous
+        view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.previewCornerRadius
         view.clipsToBounds = true
         return view
@@ -43,7 +43,7 @@ final class FrequentlyVisitedSiteCardView: UIControl {
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isUserInteractionEnabled = false
         view.backgroundColor = .clear
-        view.layer.cornerCurve = .continuous
+        view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.previewCornerRadius - UX.previewImageViewPadding
         view.clipsToBounds = true
         return view

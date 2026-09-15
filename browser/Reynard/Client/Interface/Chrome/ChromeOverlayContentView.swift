@@ -82,7 +82,7 @@ final class ChromeOverlayContentView: UIView {
         let view = UIVisualEffectView(effect: effect)
         view.translatesAutoresizingMaskIntoConstraints = false
         view.contentView.backgroundColor = UIColor.appSystemBackground.withAlphaComponent(UX.backgroundAlpha)
-        view.layer.cornerCurve = .continuous
+        view.layer.applyContinuousCornerCurve()
         view.layer.masksToBounds = true
         return view
     }()
@@ -92,7 +92,7 @@ final class ChromeOverlayContentView: UIView {
         view.translatesAutoresizingMaskIntoConstraints = false
         view.backgroundColor = .clear
         view.clipsToBounds = true
-        view.layer.cornerCurve = .continuous
+        view.layer.applyContinuousCornerCurve()
         return view
     }()
     
@@ -136,7 +136,7 @@ final class ChromeOverlayContentView: UIView {
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = .clear
         clipsToBounds = false
-        layer.cornerCurve = .continuous
+        layer.applyContinuousCornerCurve()
         layer.shadowOpacity = UX.shadowOpacity
         layer.shadowOffset = UX.shadowOffset
         layer.shadowColor = UIColor.black.cgColor

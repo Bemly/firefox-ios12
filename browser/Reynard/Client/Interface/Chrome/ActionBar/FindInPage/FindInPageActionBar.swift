@@ -77,7 +77,7 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.backgroundColor = .clear
-        view.layer.cornerCurve = .continuous
+        view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.controlsCornerRadius
         view.layer.shadowOpacity = UX.shadowOpacity
         view.layer.shadowRadius = UX.shadowRadius
@@ -95,7 +95,7 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
             : .appSystemBackground.withAlphaComponent(0.8)
             return backgroundColor.resolvedColor(with: traitCollection)
         }
-        view.layer.cornerCurve = .continuous
+        view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.controlsCornerRadius
         view.layer.borderWidth = UX.borderWidth
         view.layer.borderColor = UIColor.appSeparator.withAlphaComponent(0.2).cgColor
@@ -107,7 +107,7 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.backgroundColor = .clear
-        view.layer.cornerCurve = .continuous
+        view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.controlsCornerRadius
         view.layer.shadowOpacity = UX.shadowOpacity
         view.layer.shadowRadius = UX.shadowRadius
@@ -125,7 +125,7 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
             : .appSystemBackground.withAlphaComponent(0.8)
             return backgroundColor.resolvedColor(with: traitCollection)
         }
-        view.layer.cornerCurve = .continuous
+        view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.controlsCornerRadius
         view.layer.borderWidth = UX.borderWidth
         view.layer.borderColor = UIColor.appSeparator.withAlphaComponent(0.2).cgColor

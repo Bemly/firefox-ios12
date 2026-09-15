@@ -583,7 +583,7 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
             let background = UIView(frame: dragSnapshot.frame.inset(by: TabBarCell.contentInsets))
             background.backgroundColor = .appSystemGray6
             background.layer.cornerRadius = TabBarCell.contentCornerRadius
-            background.layer.cornerCurve = .continuous
+            background.layer.applyContinuousCornerCurve()
             background.clipsToBounds = true
             background.isUserInteractionEnabled = false
             background.alpha = 0

@@ -260,7 +260,7 @@ final class AddressBarGestures: NSObject {
         }
         container.backgroundColor = backgroundColor
         container.layer.cornerRadius = UX.addressBarPreviewCornerRadius
-        container.layer.cornerCurve = .continuous
+        container.layer.applyContinuousCornerCurve()
         container.layer.borderWidth = UX.addressBarPreviewBorderWidth
         container.layer.borderColor = UIColor.appSeparator.withAlphaComponent(0.2).cgColor
         container.layer.shadowColor = UIColor.black.cgColor

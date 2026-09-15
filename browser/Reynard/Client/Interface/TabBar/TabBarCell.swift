@@ -199,7 +199,7 @@ final class TabBarCell: UICollectionViewCell {
     private func configureAppearance() {
         contentView.backgroundColor = .clear
         tabContentView.layer.cornerRadius = UX.contentCornerRadius
-        tabContentView.layer.cornerCurve = .continuous
+        tabContentView.layer.applyContinuousCornerCurve()
         tabContentView.layer.masksToBounds = true
         tabContentView.layer.borderWidth = 0
     }

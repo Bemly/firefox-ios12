@@ -958,7 +958,7 @@ private final class TabOverviewPageSnapshotView: UIView {
     
     func setClipCornerRadius(_ cornerRadius: CGFloat) {
         clippingView.layer.cornerRadius = cornerRadius
-        clippingView.layer.cornerCurve = .continuous
+        clippingView.layer.applyContinuousCornerCurve()
     }
 }
 

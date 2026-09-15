@@ -28,7 +28,7 @@ final class RecentlyClosedTabCollectionViewCell: UICollectionViewCell {
         let view = UIVisualEffectView(effect: UIBlurEffect(style: .appChromeMaterial))
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isUserInteractionEnabled = false
-        view.layer.cornerCurve = .continuous
+        view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.pillCornerRadius
         view.clipsToBounds = true
         return view

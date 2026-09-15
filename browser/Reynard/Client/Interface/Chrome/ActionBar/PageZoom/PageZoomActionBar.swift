@@ -62,7 +62,7 @@ final class PageZoomActionBar: UIView {
             : .appSystemBackground.withAlphaComponent(0.8)
             return backgroundColor.resolvedColor(with: traitCollection)
         }
-        view.layer.cornerCurve = .continuous
+        view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.controlsCornerRadius
         view.layer.borderWidth = UX.borderWidth
         view.layer.borderColor = UIColor.appSeparator.withAlphaComponent(0.2).cgColor
