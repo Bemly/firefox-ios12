@@ -122,3 +122,19 @@ extension UIBlurEffect.Style {
         return .regular
     }
 }
+
+extension UIWindow {
+    /// Scene activation state on iOS 13+; always true on iOS 12 (no scenes).
+    var compatIsForegroundActive: Bool {
+        if #available(iOS 13.0, *) { return windowScene?.activationState == .foregroundActive }
+        return true
+    }
+}
+
+extension UIView {
+    /// Scene interface orientation on iOS 13+; nil on iOS 12 (no scenes).
+    var compatInterfaceOrientation: UIInterfaceOrientation? {
+        if #available(iOS 13.0, *) { return window?.windowScene?.interfaceOrientation }
+        return nil
+    }
+}

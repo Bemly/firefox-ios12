@@ -901,7 +901,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
               let engineView = selectedSession.engineView,
               let window = engineView.window,
               window.isKeyWindow,
-              window.windowScene?.activationState == .foregroundActive else {
+              window.compatIsForegroundActive else {
             return
         }
         selectedSession.focusForHardwareKeyboard()
@@ -1152,7 +1152,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
 
     private func completePendingOrientationRequestIfSatisfied() {
         guard let pendingOrientationRequest,
-              let interfaceOrientation = view.window?.windowScene?.interfaceOrientation,
+              let interfaceOrientation = view.compatInterfaceOrientation,
               let currentOrientationMask = orientationMask(for: interfaceOrientation),
               pendingOrientationRequest.orientations.contains(currentOrientationMask) else {
             return
@@ -1195,7 +1195,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         }
         
         GeckoRuntime.orientationController.delegate = self
-        guard let interfaceOrientation = view.window?.windowScene?.interfaceOrientation else {
+        guard let interfaceOrientation = view.compatInterfaceOrientation else {
             return
         }
         screenOrientationChanged(to: interfaceOrientation)
@@ -1223,7 +1223,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
     private func preferredInterfaceOrientation(
         allowedBy orientations: UIInterfaceOrientationMask
     ) -> UIInterfaceOrientation? {
-        if let currentOrientation = view.window?.windowScene?.interfaceOrientation,
+        if let currentOrientation = view.compatInterfaceOrientation,
            currentOrientation != .unknown,
            let currentOrientationMask = orientationMask(for: currentOrientation),
            orientations.contains(currentOrientationMask) {
