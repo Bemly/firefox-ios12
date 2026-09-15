@@ -1,0 +1,27 @@
+diff --git a/mobile/shared/chrome/geckoview/geckoview.js b/mobile/shared/chrome/geckoview/geckoview.js
+index 3345a3e164df..f628b86412ba 100644
+--- a/mobile/shared/chrome/geckoview/geckoview.js
++++ b/mobile/shared/chrome/geckoview/geckoview.js
+@@ -10,6 +10,9 @@ var { DelayedInit } = ChromeUtils.importESModule(
+ var { XPCOMUtils } = ChromeUtils.importESModule(
+   "resource://gre/modules/XPCOMUtils.sys.mjs"
+ );
++var { AppConstants } = ChromeUtils.importESModule(
++  "resource://gre/modules/AppConstants.sys.mjs"
++);
+ 
+ ChromeUtils.defineESModuleGetters(this, {
+   Blocklist: "resource://gre/modules/Blocklist.sys.mjs",
+@@ -425,7 +428,11 @@ function createBrowser() {
+   browser.setAttribute("primary", "true");
+   browser.setAttribute("flex", "1");
+   browser.setAttribute("maychangeremoteness", "true");
+-  browser.setAttribute("remote", "true");
++  // REYNARD: iOS has no out-of-process content, keep the browser in-process.
++  browser.setAttribute(
++    "remote",
++    AppConstants.platform == "ios" ? "false" : "true"
++  );
+   browser.setAttribute("remoteType", E10SUtils.DEFAULT_REMOTE_TYPE);
+   browser.setAttribute("messagemanagergroup", "browsers");
+   browser.setAttribute("manualactiveness", "true");
