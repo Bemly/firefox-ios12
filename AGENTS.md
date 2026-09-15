@@ -114,6 +114,16 @@
 当前前沿（收尾观察项）：页面已渲染，但 parent 进程内 Web JS 的 eval/脚本加载
 受 `nsContentSecurityUtils` parent 门禁（`extensions.webextensions.remote` 等
 逃生口），复杂站点的 JS 可能还需 user.js/补丁跟进；待用 google 等重型页验证。
+→ **2026-09-16 已修**：实锤是 `IsEvalAllowed`——本移植 `XRE_IsE10sParentProcess()`
+恒 true，web 内容的 eval/Function 在"parent 进程"被拦，Google 搜索结果页
+JS 中途死掉只剩 "If you're having trouble accessing Google Search" 兜底页
+（深色模式即用户看到的"黑色报错"；脚本加载门禁 `ValidateScriptFilename` 因
+`security.allow_parent_unrestricted_js_loads` 默认 true 无害）。修：XP_IOS 下
+web 内容（非 system principal）eval 直接放行，与子进程同等对待（patch：
+`patches/dom/security/nsContentSecurityUtils.cpp.patch`）。user.js 临时方案
+`user_pref("security.allow_eval_in_parent_process", true)` 亦有效，已从设备删除。
+搜索结果页若出 reCAPTCHA"unusual traffic"是 Google 对出口 IP/UA 的服务端
+风控（设备挂 VPN 时常见），不是浏览器问题。
 
 附带发现（真 bug，另案修）：`NavigationDelegate` 的 `.onLoadError` 是空实现，
 加载报错会被吞；`reynard://open?url=` 在 iOS 12 上根本没接（真 delegate 是引擎的

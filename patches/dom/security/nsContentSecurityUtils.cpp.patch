@@ -1,0 +1,22 @@
+diff --git a/dom/security/nsContentSecurityUtils.cpp b/dom/security/nsContentSecurityUtils.cpp
+index 186c777f2350..fb314ba2e769 100644
+--- a/dom/security/nsContentSecurityUtils.cpp
++++ b/dom/security/nsContentSecurityUtils.cpp
+@@ -653,6 +653,17 @@ bool nsContentSecurityUtils::IsEvalAllowed(JSContext* cx,
+     // Other uses (like web content and null principal) are allowed.
+     return true;
+   }
++#ifdef XP_IOS
++  // REYNARD: This port is single-process, but XRE_IsE10sParentProcess() is
++  // still true here, which would gate web-content eval()/Function in the
++  // parent process and break heavy sites (e.g. Google Search results fall
++  // back to their "trouble accessing" page). Web content in this port is
++  // the moral equivalent of a child process, so treat it as such; eval with
++  // the system principal stays gated.
++  if (MOZ_LIKELY(!aIsSystemPrincipal)) {
++    return true;
++  }
++#endif
+ 
+   if (JS::ContextOptionsRef(cx).disableEvalSecurityChecks()) {
+     MOZ_LOG(sCSMLog, LogLevel::Debug,
