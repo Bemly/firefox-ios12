@@ -1,0 +1,51 @@
+diff --git a/docshell/base/nsDocShell.h b/docshell/base/nsDocShell.h
+index 5b17b1b5a7b6..502906176f20 100644
+--- a/docshell/base/nsDocShell.h
++++ b/docshell/base/nsDocShell.h
+@@ -69,16 +69,18 @@ class nsIDocShellTreeOwner;
+ class nsIDocumentViewer;
+ class nsIHttpChannel;
+ class nsIMutableArray;
++class nsIOpenWindowInfo;
+ class nsIPolicyContainer;
++class nsIPrincipal;
+ class nsIPrompt;
++class nsIReferrerInfo;
+ class nsIStringBundle;
++class nsIURI;
+ class nsIURIFixup;
+ class nsIURIFixupInfo;
+ class nsIURILoader;
+ class nsIWebBrowserFind;
+ class nsIWidget;
+-class nsIReferrerInfo;
+-class nsIOpenWindowInfo;
+ 
+ class nsBrowserStatusFilter;
+ class nsCommandManager;
+@@ -524,10 +526,9 @@ class nsDocShell final : public nsDocLoader,
+ 
+   // Overridden from nsDocLoader, this provides more information than the
+   // normal OnStateChange with flags STATE_REDIRECTING
+-  virtual void OnRedirectStateChange(nsIChannel* aOldChannel,
+-                                     nsIChannel* aNewChannel,
+-                                     uint32_t aRedirectFlags,
+-                                     uint32_t aStateFlags) override;
++  MOZ_CAN_RUN_SCRIPT_BOUNDARY virtual nsresult OnRedirectStateChange(
++      nsIChannel* aOldChannel, nsIChannel* aNewChannel, uint32_t aRedirectFlags,
++      uint32_t aStateFlags) override;
+ 
+   // Override the parent setter from nsDocLoader
+   virtual nsresult SetDocLoaderParent(nsDocLoader* aLoader) override;
+@@ -634,6 +635,11 @@ class nsDocShell final : public nsDocLoader,
+   // URI Load
+   //
+ 
++  MOZ_CAN_RUN_SCRIPT_BOUNDARY nsresult MaybeHandlePreNavigation(
++      nsIURI* aURI, uint32_t aLoadFlags, uint32_t aLoadType,
++      nsIPrincipal* aTriggeringPrincipal, bool aHasValidUserGestureActivation,
++      bool aBrowserUIActivation);
++
+   // Actually open a channel and perform a URI load. Callers need to pass a
+   // non-null aLoadState->TriggeringPrincipal() which initiated the URI load.
+   // Please note that the TriggeringPrincipal will be used for performing

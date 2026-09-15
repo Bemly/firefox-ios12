@@ -1,0 +1,36 @@
+diff --git a/layout/base/PresShell.h b/layout/base/PresShell.h
+index d59424d0eb60..1f10041e221d 100644
+--- a/layout/base/PresShell.h
++++ b/layout/base/PresShell.h
+@@ -1640,6 +1640,11 @@ class PresShell final : public nsStubDocumentObserver,
+ 
+   nsPoint GetVisualViewportOffsetRelativeToLayoutViewport() const;
+ 
++  void SetFixedPositionTopMargin(const Maybe<CSSCoord>& aMargin);
++  const Maybe<CSSCoord>& GetFixedPositionTopMargin() const {
++    return mFixedPositionTopMargin;
++  }
++
+   // Returns state of the dynamic toolbar.
+   DynamicToolbarState GetDynamicToolbarState() const {
+     if (!mPresContext) {
+@@ -1652,8 +1657,7 @@ class PresShell final : public nsStubDocumentObserver,
+   // shown/hidden.
+   nsSize GetVisualViewportSizeUpdatedByDynamicToolbar() const;
+ 
+-  // Returns the fixed viewport size accounted for
+-  // a fully shown or fully hidden dynamic toolbar
++  // Returns the fixed viewport size accounting for the current toolbar height.
+   nsSize GetFixedViewportSize() const;
+ 
+   // Trigger refreshing the MobileViewportManager's size metrics.
+@@ -3409,6 +3413,9 @@ class PresShell final : public nsStubDocumentObserver,
+ 
+   Maybe<nsPoint> mVisualViewportOffset;
+ 
++  // The compositor's top margin for viewport-fixed content, in CSS pixels.
++  Maybe<CSSCoord> mFixedPositionTopMargin;
++
+   // A pending visual scroll offset that we will ask APZ to scroll to
+   // during the next transaction. Cleared when we send the transaction.
+   // Only applicable to the RCD pres shell.

@@ -11,7 +11,7 @@ final class GeckoSessionHandler: GeckoSessionHandlerCommon {
     typealias MessageCompletion = (Result<Any?, Error>) -> Void
     typealias MessageHandler =  (GeckoSession, Any?, String, [String: Any?]?, @escaping MessageCompletion) -> Void
     
-    let moduleName: String
+    let moduleName: String?
     let events: [String]
     let handle: MessageHandler
     
@@ -29,7 +29,7 @@ final class GeckoSessionHandler: GeckoSessionHandlerCommon {
     func setDelegate<Delegate>(_ delegate: Delegate?) {
         delegateReference = delegate
         
-        guard let session, session.isOpen() else {
+        guard let moduleName, let session, session.isOpen() else {
             return
         }
         

@@ -1,8 +1,8 @@
 diff --git a/netwerk/protocol/http/nsHttpHandler.h b/netwerk/protocol/http/nsHttpHandler.h
-index 93d4734c93b5..96b7504116b6 100644
+index 353cecfe673b..88ca69fef399 100644
 --- a/netwerk/protocol/http/nsHttpHandler.h
 +++ b/netwerk/protocol/http/nsHttpHandler.h
-@@ -51,6 +51,7 @@ class nsIRequestContextService;
+@@ -49,6 +49,7 @@ class nsIRequestContextService;
  class nsISiteIntegrityService;
  class nsISiteSecurityService;
  class nsIStreamConverterService;
@@ -10,7 +10,7 @@ index 93d4734c93b5..96b7504116b6 100644
  
  namespace mozilla::net {
  
-@@ -267,6 +268,10 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
+@@ -265,6 +266,10 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
    [[nodiscard]] nsresult InitiateTransaction(HttpTransactionShell* trans,
                                               int32_t priority);
  

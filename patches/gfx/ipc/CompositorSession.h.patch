@@ -1,0 +1,46 @@
+diff --git a/gfx/ipc/CompositorSession.h b/gfx/ipc/CompositorSession.h
+index 474b674ff7e2..882d1ace41c6 100644
+--- a/gfx/ipc/CompositorSession.h
++++ b/gfx/ipc/CompositorSession.h
+@@ -8,9 +8,9 @@
+ #include "mozilla/layers/CompositorTypes.h"
+ #include "mozilla/layers/LayersTypes.h"
+ #include "nsISupportsImpl.h"
+-#if defined(MOZ_WIDGET_ANDROID)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
+ #  include "mozilla/layers/UiCompositorControllerChild.h"
+-#endif  // defined(MOZ_WIDGET_ANDROID)
++#endif
+ 
+ class nsIWidget;
+ 
+@@ -67,7 +67,7 @@ class CompositorSession {
+   // Return the id of the root layer tree.
+   LayersId RootLayerTreeId() const { return mRootLayerTreeId; }
+ 
+-#if defined(MOZ_WIDGET_ANDROID)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
+   // Set the UiCompositorControllerChild after Session creation so the Session
+   // constructor doesn't get mucked up for other platforms.
+   void SetUiCompositorControllerChild(
+@@ -78,7 +78,7 @@ class CompositorSession {
+   RefPtr<UiCompositorControllerChild> GetUiCompositorControllerChild() {
+     return mUiCompositorControllerChild;
+   }
+-#endif  // defined(MOZ_WIDGET_ANDROID)
++#endif
+  protected:
+   CompositorSession(nsIWidget* aWidget, CompositorWidgetDelegate* aDelegate,
+                     CompositorBridgeChild* aChild,
+@@ -90,9 +90,9 @@ class CompositorSession {
+   CompositorWidgetDelegate* mCompositorWidgetDelegate;
+   RefPtr<CompositorBridgeChild> mCompositorBridgeChild;
+   LayersId mRootLayerTreeId;
+-#if defined(MOZ_WIDGET_ANDROID)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
+   RefPtr<UiCompositorControllerChild> mUiCompositorControllerChild;
+-#endif  // defined(MOZ_WIDGET_ANDROID)
++#endif
+  private:
+   DISALLOW_COPY_AND_ASSIGN(CompositorSession);
+ };

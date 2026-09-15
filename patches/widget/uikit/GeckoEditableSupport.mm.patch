@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoEditableSupport.mm b/widget/uikit/GeckoEditableSupport.mm
 new file mode 100644
-index 000000000000..00c769dd37f7
+index 000000000000..24eeaa8bd3a6
 --- /dev/null
 +++ b/widget/uikit/GeckoEditableSupport.mm
-@@ -0,0 +1,3393 @@
+@@ -0,0 +1,4250 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -12,6 +12,7 @@ index 000000000000..00c769dd37f7
 + * https://github.com/minh-ton/reynard-browser in Feb 2026. */
 +
 +#import <UIKit/UIKit.h>
++#import <objc/runtime.h>
 +
 +#include <algorithm>
 +
@@ -24,6 +25,7 @@ index 000000000000..00c769dd37f7
 +#include "mozilla/MacStringHelpers.h"
 +#include "mozilla/MiscEvents.h"
 +#include "mozilla/TextEvents.h"
++#include "nsIURI.h"
 +#include "nsIWidget.h"
 +#include "nsString.h"
 +
@@ -31,23 +33,11 @@ index 000000000000..00c769dd37f7
 +using namespace mozilla::widget;
 +using mozilla::widget::UIKitUtils;
 +
-+static void CompatHideMenu(UIMenuController* aController, UIView* aView) {
-+  if (@available(iOS 13.0, *)) {
-+    [aController hideMenuFromView:aView];
-+  } else {
-+    [aController setMenuVisible:NO animated:YES];
-+  }
-+}
++@class UITextInputArrowKeyHistory;
 +
-+static void CompatShowMenu(UIMenuController* aController, UIView* aView,
-+                           CGRect aRect) {
-+  if (@available(iOS 13.0, *)) {
-+    [aController showMenuFromView:aView rect:aRect];
-+  } else {
-+    [aController setTargetRect:aRect inView:aView];
-+    [aController setMenuVisible:YES animated:YES];
-+  }
-+}
++@protocol GeckoUITextInputTraitsPrivate <UITextInputTraits>
++- (void)takeTraitsFrom:(id<UITextInputTraits>)aTraits;
++@end
 +
 +namespace {
 +
@@ -64,6 +54,20 @@ index 000000000000..00c769dd37f7
 +}  // namespace
 +
 +// MARK: New things
++
++@protocol ChildViewCredentialDelegate <NSObject>
++- (nullable UITextContentType)autofillTextContentType;
++- (nullable NSString*)autofillOrigin;
++- (BOOL)acceptsLoginCredentials;
++- (void)didSelectAutofillUsername:(nullable NSString*)aUsername
++                         password:(nullable NSString*)aPassword;
++- (void)didSelectOneTimeCode:(NSString*)aOneTimeCode;
++@end
++
++@protocol CredentialSuggestion <NSObject>
++@property(nonatomic, readonly, nullable) NSString* username;
++@property(nonatomic, readonly, nullable) NSString* password;
++@end
 +
 +@implementation ChildViewTextPosition
 +
@@ -180,10 +184,18 @@ index 000000000000..00c769dd37f7
 +// Updates Gecko's selection range.
 +bool TextInputHandler::SetSelectedRange(const NSRange& aRange) {
 +  if (Destroyed() || aRange.location == NSNotFound) {
++    if (!Destroyed()) {
++      MarkCurrentKeyEventFailed();
++    }
++    return false;
++  }
++
++  if (!PrepareCurrentKeyForIME()) {
 +    return false;
 +  }
 +
 +  if (aRange.location > UINT32_MAX || aRange.length > UINT32_MAX) {
++    MarkCurrentKeyEventFailed();
 +    return false;
 +  }
 +
@@ -192,6 +204,9 @@ index 000000000000..00c769dd37f7
 +  event.mLength = static_cast<uint32_t>(aRange.length);
 +  event.mExpandToClusterBoundary = false;
 +  mWidget->DispatchWindowEvent(event);
++  if (!event.mSucceeded) {
++    MarkCurrentKeyEventFailed();
++  }
 +  return event.mSucceeded;
 +}
 +
@@ -242,6 +257,9 @@ index 000000000000..00c769dd37f7
 +// Replaces Gecko text inside a document range.
 +bool TextInputHandler::ReplaceRange(const NSRange& aRange, NSString* aText) {
 +  if (Destroyed() || aRange.location == NSNotFound) {
++    if (!Destroyed()) {
++      MarkCurrentKeyEventFailed();
++    }
 +    return false;
 +  }
 +
@@ -259,6 +277,9 @@ index 000000000000..00c769dd37f7
 +  WidgetContentCommandEvent event(true, eContentCommandInsertText, mWidget);
 +  event.mString = Some(replacement);
 +  mWidget->DispatchWindowEvent(event);
++  if (!event.mSucceeded) {
++    MarkCurrentKeyEventFailed();
++  }
 +  return event.mSucceeded;
 +}
 +
@@ -335,6 +356,9 @@ index 000000000000..00c769dd37f7
 +
 +  WidgetContentCommandEvent event(true, aMessage, mWidget, aOnlyEnabledCheck);
 +  mWidget->DispatchWindowEvent(event);
++  if (!event.mSucceeded) {
++    MarkCurrentKeyEventFailed();
++  }
 +  if (aIsEnabled) {
 +    *aIsEnabled = event.mIsEnabled;
 +  }
@@ -368,14 +392,8 @@ index 000000000000..00c769dd37f7
 +
 +@interface ChildView : UIView {
 + @public
-+  // Redeclarations
 +  nsWindow* mGeckoChild;
-+  BOOL mWaitingForPaint;
-+  NSMapTable<UITouch*, NSNumber*>* mTouches;
-+  int mNextTouchID;
 +  GeckoEditableState mEditable;
-+  CALayer* mRootCALayer;
-+  BOOL mIsUpdatingLayer;
 +}
 +@end
 +
@@ -386,6 +404,7 @@ index 000000000000..00c769dd37f7
 +
 +- (void)setupTextInput;
 +- (void)teardownTextInput;
++- (void)handleTap:(UITapGestureRecognizer*)aSender;
 +- (widget::TextInputHandler*)textHandler;
 +- (NSRange)selectedRange;
 +- (NSUInteger)clampOffset:(NSUInteger)aOffset;
@@ -395,6 +414,7 @@ index 000000000000..00c769dd37f7
 +- (ChildViewTextRange*)textRangeForExactRange:(NSRange)aRange;
 +- (ChildViewTextRange*)textRangeForRange:(NSRange)aRange;
 +- (NSRange)rangeForTextRange:(UITextRange*)aRange;
++- (NSRange)deleteBackwardRangeInText:(NSString*)aText selection:(NSRange)aRange;
 +- (void)resetHandleState;
 +- (CGRect)selectionBounds;
 +- (BOOL)clipToSelectionBounds:(CGRect*)aRect;
@@ -432,6 +452,8 @@ index 000000000000..00c769dd37f7
 +                       onLineStart:(NSUInteger)aLineStart
 +                           lineEnd:(NSUInteger)aLineEnd
 +                           handler:(widget::TextInputHandler*)aHandler;
++- (NSRange)deleteBackwardRangeWithHandler:(widget::TextInputHandler*)aHandler;
++- (void)configureTextInteractionForTouchInput:(UITextInteraction*)aInteraction;
 +- (void)updateTextInteractions;
 +- (void)scheduleResponderBlur;
 +- (void)cancelResponderBlur;
@@ -441,6 +463,48 @@ index 000000000000..00c769dd37f7
 +- (void)scheduleEditSelectionUpdate;
 +- (void)applyEditSelectionUpdate;
 +- (void)updateEditMenu;
++- (void)showEditMenuForSecondaryClick;
++- (void)setSelectionHandlesVisible:(BOOL)aVisible;
++- (void)updateSelectionHandleSuppression;
++- (void)performEditingCommand:(Command)aCommand;
++- (void)_deleteByWord;
++- (void)_deleteForwardByWord;
++- (void)_deleteToStartOfLine;
++- (void)_deleteToEndOfLine;
++- (void)_deleteForwardAndNotify:(BOOL)aNotify;
++- (void)_deleteToEndOfParagraph;
++- (UITextInputArrowKeyHistory*)_moveUp:(BOOL)aExtending
++                           withHistory:(UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)_moveDown:(BOOL)aExtending
++                             withHistory:(UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)_moveLeft:(BOOL)aExtending
++                             withHistory:(UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)_moveRight:(BOOL)aExtending
++                              withHistory:(UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)_moveToStartOfWord:(BOOL)aExtending
++                                      withHistory:
++                                          (UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)
++    _moveToStartOfParagraph:(BOOL)aExtending
++                withHistory:(UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)_moveToStartOfLine:(BOOL)aExtending
++                                      withHistory:
++                                          (UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)
++    _moveToStartOfDocument:(BOOL)aExtending
++               withHistory:(UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)_moveToEndOfWord:(BOOL)aExtending
++                                    withHistory:
++                                        (UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)
++    _moveToEndOfParagraph:(BOOL)aExtending
++              withHistory:(UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)_moveToEndOfLine:(BOOL)aExtending
++                                    withHistory:
++                                        (UITextInputArrowKeyHistory*)aHistory;
++- (UITextInputArrowKeyHistory*)
++    _moveToEndOfDocument:(BOOL)aExtending
++             withHistory:(UITextInputArrowKeyHistory*)aHistory;
 +
 +@end
 +
@@ -497,44 +561,79 @@ index 000000000000..00c769dd37f7
 +
 +@end
 +
++@interface ChildView (Korean)
++
++- (BOOL)isKoreanInputMode;
++- (void)clearKoreanCompositionState;
++- (BOOL)handleKoreanInsertText:(NSString*)aText
++                   withHandler:(widget::TextInputHandler*)aHandler;
++
++@end
++
++@interface ChildView (PasswordAutofill)
++
++- (void)setAutofillDelegate:(nullable id<ChildViewCredentialDelegate>)aDelegate;
++- (void)activatePasswordInputForAutofill;
++- (nullable NSURL*)activeAutofillURL;
++
++@end
++
 +// MARK: - ChildView (Shared)
 +
 +@implementation ChildView (Shared)
 +
 +- (void)setupTextInput {
++  Protocol* textInputPrivateProtocol =
++      NSProtocolFromString(@"UITextInputPrivate");
++  MOZ_RELEASE_ASSERT(textInputPrivateProtocol);
++  if (!class_conformsToProtocol([ChildView class], textInputPrivateProtocol)) {
++    MOZ_RELEASE_ASSERT(
++        class_addProtocol([ChildView class], textInputPrivateProtocol));
++  }
++
 +  mEditable.mTokenizer =
 +      [[UITextInputStringTokenizer alloc] initWithTextInput:self];
++  Class textInputTraitsClass = NSClassFromString(@"UITextInputTraits");
++  MOZ_RELEASE_ASSERT(textInputTraitsClass);
++  mEditable.mTextInputTraits = [[textInputTraitsClass alloc] init];
++  mEditable.mSeenHardwareKeyDownInNonEditableContent = NO;
 +  mEditable.mTextInputDelegate = nil;
++  mEditable.mCredentialDelegate = nil;
++  mEditable.mWaitingForPasswordAutofillFocus = NO;
 +  mEditable.mMarkedTextStyle = nil;
 +  mEditable.mEditableTextInteraction = nil;
 +  mEditable.mNonEditableTextInteraction = nil;
 +  mEditable.mSelectionDisplayInteraction = nil;
 +  mEditable.mSelectionHandlePanRecognizer = nil;
 +  mEditable.mTextInteractionInProgress = NO;
++  mEditable.mSelectionHandlesVisibleForTouchInput = NO;
++  mEditable.mSelectionHandleSuppressionAssertion = nil;
 +  mEditable.mPendingSelectionGeometryRefresh = NO;
 +  // The other Vietnamese fields are meaningful only while this buffer exists.
 +  mEditable.mVietnameseBufferText = nil;
++  mEditable.mKoreanComposedText = nil;
 +  [self resetHandleState];
 +
-+  if (@available(iOS 13.0, *)) {
-+    mEditable.mEditableTextInteraction = [[UITextInteraction
-+        textInteractionForMode:UITextInteractionModeEditable] retain];
-+    mEditable.mEditableTextInteraction.textInput = self;
-+    mEditable.mEditableTextInteraction.delegate = self;
++  mEditable.mEditableTextInteraction = [[UITextInteraction
++      textInteractionForMode:UITextInteractionModeEditable] retain];
++  mEditable.mEditableTextInteraction.textInput = self;
++  mEditable.mEditableTextInteraction.delegate = self;
 +
-+    mEditable.mNonEditableTextInteraction = [[UITextInteraction
-+        textInteractionForMode:UITextInteractionModeNonEditable] retain];
-+    mEditable.mNonEditableTextInteraction.textInput = self;
-+    mEditable.mNonEditableTextInteraction.delegate = self;
-+  }
++  mEditable.mNonEditableTextInteraction = [[UITextInteraction
++      textInteractionForMode:UITextInteractionModeNonEditable] retain];
++  mEditable.mNonEditableTextInteraction.textInput = self;
++  mEditable.mNonEditableTextInteraction.delegate = self;
 +
 +  [self setupModernTextInput];
 +  [self updateTextInteractions];
 +}
 +
 +- (void)teardownTextInput {
++  mEditable.mCredentialDelegate = nil;
 +  [mEditable.mTokenizer release];
 +  mEditable.mTokenizer = nil;
++  [mEditable.mTextInputTraits release];
++  mEditable.mTextInputTraits = nil;
 +  [mEditable.mMarkedTextStyle release];
 +  mEditable.mMarkedTextStyle = nil;
 +  [mEditable.mEditableTextInteraction release];
@@ -542,11 +641,71 @@ index 000000000000..00c769dd37f7
 +  [mEditable.mNonEditableTextInteraction release];
 +  mEditable.mNonEditableTextInteraction = nil;
 +  mEditable.mTextInteractionInProgress = NO;
++  [mEditable.mSelectionHandleSuppressionAssertion release];
++  mEditable.mSelectionHandleSuppressionAssertion = nil;
 +  // Drop any temporary Vietnamese mirror before releasing UIKit interactions.
 +  [self clearVietnameseBuffer];
++  [self clearKoreanCompositionState];
 +
 +  [self teardownModernTextInput];
 +  [self resetHandleState];
++}
++
++- (void)handleTap:(UITapGestureRecognizer*)aSender {
++  // UIKit text interactions already handle taps that are placing or
++  // adjusting the caret. Replaying the same tap as a Gecko click resets the
++  // selection after UIKit has positioned it.
++  if (aSender.state != UIGestureRecognizerStateEnded ||
++      mEditable.mTextInteractionInProgress) {
++    return;
++  }
++
++  BOOL wasFirstResponder = [self isFirstResponder];
++
++  // Save the caret offset before sending events to Gecko so we can detect
++  // whether the caret actually moved once Gecko responds.
++  NSRange preSel = [self selectedRange];
++  NSUInteger preOffset =
++      (wasFirstResponder && preSel.location != NSNotFound && preSel.length == 0)
++          ? preSel.location
++          : NSNotFound;
++
++  BOOL tapInsideEditor = NO;
++  // When re-tapping an already-focused editable field with a
++  // collapsed caret, arm the pending caret-menu flag. Gecko processes mouse
++  // events asynchronously, so we resolve the flag later:
++  //   - If NOTIFY_IME_OF_POSITION_CHANGE arrives (caret moved),
++  //     selectionGeometryChanged cancels the pending menu.
++  //   - If no notification arrives (caret stayed), the fallback timer
++  //     fires and shows the menu.
++  if (preOffset != NSNotFound && mGeckoChild && [self isFirstResponder]) {
++    LayoutDeviceIntRect editorDevRect;
++    widget::TextInputHandler* handler = mGeckoChild->GetTextInputHandler();
++    if (handler && handler->EditorRect(editorDevRect)) {
++      CGRect editorRect =
++          DevPixelsToUIKitPoints(editorDevRect, [self contentScaleFactor]);
++      if (ClipCGRectToBounds(editorRect, self.bounds)) {
++        tapInsideEditor = CGRectContainsPoint(CGRectStandardize(editorRect),
++                                              [aSender locationInView:self]);
++      }
++    }
++  }
++
++  if (preOffset == NSNotFound || !tapInsideEditor) {
++    return;
++  }
++
++  mEditable.mPreTapCaretOffset = preOffset;
++  mEditable.mPendingCaretMenu = YES;
++  [NSObject
++      cancelPreviousPerformRequestsWithTarget:self
++                                     selector:@selector(
++                                                  resolveCaretMenuIfPending)
++                                       object:nil];
++  [self performSelector:@selector(resolveCaretMenuIfPending)
++             withObject:nil
++             afterDelay:0.1
++                inModes:@[ NSRunLoopCommonModes ]];
 +}
 +
 +// Returns the live Gecko text-input bridge for this view.
@@ -659,6 +818,28 @@ index 000000000000..00c769dd37f7
 +  }
 +
 +  return NSMakeRange(start, end - start);
++}
++
++// Returns the exact composed-character range that deleteBackward should remove.
++- (NSRange)deleteBackwardRangeInText:(NSString*)aText
++                           selection:(NSRange)aRange {
++  if (!aText || aRange.location == NSNotFound) {
++    return NSMakeRange(NSNotFound, 0);
++  }
++
++  const NSUInteger textLength = [aText length];
++  const NSUInteger location = std::min(aRange.location, textLength);
++  const NSUInteger length = std::min(aRange.length, textLength - location);
++  if (length) {
++    return
++        [aText rangeOfComposedCharacterSequencesForRange:NSMakeRange(location,
++                                                                     length)];
++  }
++  if (location == 0) {
++    return NSMakeRange(NSNotFound, 0);
++  }
++
++  return [aText rangeOfComposedCharacterSequenceAtIndex:location - 1];
 +}
 +
 +- (void)resetHandleState {
@@ -1104,6 +1285,27 @@ index 000000000000..00c769dd37f7
 +  }
 +
 +  return bestOffset;
++}
++
++// Returns the Gecko document range that a normal deleteBackward should remove.
++- (NSRange)deleteBackwardRangeWithHandler:(widget::TextInputHandler*)aHandler {
++  NSRange selection = NSMakeRange(NSNotFound, 0);
++  if (!aHandler || !aHandler->SelectedRange(selection) ||
++      selection.location == NSNotFound) {
++    return NSMakeRange(NSNotFound, 0);
++  }
++
++  NSRange textRange = selection.length ? NSMakeRange(0, UINT32_MAX)
++                                       : NSMakeRange(0, selection.location);
++  nsString text;
++  if (!aHandler->TextInRange(textRange, text)) {
++    return NSMakeRange(NSNotFound, 0);
++  }
++
++  NSString* string = [NSString
++      stringWithCharacters:reinterpret_cast<const unichar*>(text.BeginReading())
++                    length:text.Length()];
++  return [self deleteBackwardRangeInText:string selection:selection];
 +}
 +
 +// Returns the current selected text range.
@@ -1750,6 +1952,15 @@ index 000000000000..00c769dd37f7
 +  [self updateLegacyTextInteractions];
 +}
 +
++- (void)configureTextInteractionForTouchInput:(UITextInteraction*)aInteraction {
++  NSArray<NSNumber*>* touchTypes =
++      @[ @(UITouchTypeDirect), @(UITouchTypePencil) ];
++  for (UIGestureRecognizer* gestureRecognizer in aInteraction
++           .gesturesForFailureRequirements) {
++    gestureRecognizer.allowedTouchTypes = touchTypes;
++  }
++}
++
 +// Delay resigning first responder for one runloop turn so transient
 +// focus handoffs inside the same editable or between editables do not dismiss
 +// the keyboard, while a real outside tap still collapses it.
@@ -1785,10 +1996,9 @@ index 000000000000..00c769dd37f7
 +// selection UI at most once per runloop turn.
 +- (void)selectionGeometryChanged {
 +  // If a caret-menu resolution is pending (from handleTap), check
-+  // whether this position-change notification reflects an actual caret
-+  // move. If the offset differs from the pre-tap offset, cancel the
-+  // pending menu. If it matches, the caret stayed in place and the
-+  // fallback timer will show the menu.
++  // whether the notification reflects an actual caret move. If the offset
++  // differs from the pre-tap offset, cancel the pending menu. If it matches,
++  // the caret stayed in place and the fallback timer will show the menu.
 +  if (mEditable.mPendingCaretMenu) {
 +    NSRange sel = [self selectedRange];
 +    if (sel.location == NSNotFound || sel.length > 0 ||
@@ -1912,14 +2122,14 @@ index 000000000000..00c769dd37f7
 +  widget::TextInputHandler* handler = [self textHandler];
 +  UIMenuController* menuController = [UIMenuController sharedMenuController];
 +  if (!handler || ![self isFirstResponder]) {
-+    CompatHideMenu(menuController, self);
++    [menuController hideMenuFromView:self];
 +    return;
 +  }
 +
 +  NSRange selectedRange = NSMakeRange(NSNotFound, 0);
 +  if (!handler->SelectedRange(selectedRange) ||
 +      selectedRange.location == NSNotFound) {
-+    CompatHideMenu(menuController, self);
++    [menuController hideMenuFromView:self];
 +    return;
 +  }
 +
@@ -1928,20 +2138,20 @@ index 000000000000..00c769dd37f7
 +  if (selectedRange.length > 0) {
 +    mEditable.mCaretMenuActive = NO;
 +    if (mEditable.mActiveSelectionHandle != GeckoSelectionHandleNone) {
-+      CompatHideMenu(menuController, self);
++      [menuController hideMenuFromView:self];
 +      return;
 +    }
 +    ChildViewTextRange* range = [self textRangeForRange:selectedRange];
 +    if (!range) {
-+      CompatHideMenu(menuController, self);
++      [menuController hideMenuFromView:self];
 +      return;
 +    }
 +    CGRect targetRect = [self firstRectForRange:range];
 +    if (CGRectIsEmpty(targetRect)) {
-+      CompatHideMenu(menuController, self);
++      [menuController hideMenuFromView:self];
 +      return;
 +    }
-+    CompatShowMenu(menuController, self, targetRect);
++    [menuController showMenuFromView:self rect:targetRect];
 +    return;
 +  }
 +
@@ -1952,13 +2162,60 @@ index 000000000000..00c769dd37f7
 +      CGRect caretRect =
 +          DevPixelsToUIKitPoints(caretDevRect, [self contentScaleFactor]);
 +      if (!CGRectIsEmpty(caretRect)) {
-+        CompatShowMenu(menuController, self, caretRect);
++        [menuController showMenuFromView:self rect:caretRect];
 +        return;
 +      }
 +    }
 +  }
 +
-+  CompatHideMenu(menuController, self);
++  [menuController hideMenuFromView:self];
++}
++
++- (void)showEditMenuForSecondaryClick {
++  NSRange selectedRange = [self selectedRange];
++  mEditable.mCaretMenuActive =
++      selectedRange.location != NSNotFound && selectedRange.length == 0;
++  [self updateEditMenu];
++}
++
++- (void)setSelectionHandlesVisible:(BOOL)aVisible {
++  mEditable.mSelectionHandlesVisibleForTouchInput = aVisible;
++  [self updateSelectionHandleSuppression];
++  if (aVisible && mEditable.mSelectionDisplayInteraction != nil) {
++    [self refreshSelectionUI];
++  }
++}
++
++- (void)updateSelectionHandleSuppression {
++  if (mEditable.mSelectionHandlesVisibleForTouchInput) {
++    [mEditable.mSelectionHandleSuppressionAssertion release];
++    mEditable.mSelectionHandleSuppressionAssertion = nil;
++    return;
++  }
++  if (mEditable.mSelectionHandleSuppressionAssertion != nil) {
++    return;
++  }
++
++  id selectionDisplay = mEditable.mSelectionDisplayInteraction;
++  SEL obtainAssertion =
++      NSSelectorFromString(@"_obtainGrabberSuppressionAssertion");
++  if (selectionDisplay &&
++      [selectionDisplay respondsToSelector:obtainAssertion]) {
++    mEditable.mSelectionHandleSuppressionAssertion =
++        [[selectionDisplay performSelector:obtainAssertion] retain];
++    return;
++  }
++
++  NSMutableArray<UIView*>* selectionViews = [NSMutableArray array];
++  CollectViewsOfClass(self.window, @"UITextSelectionView", selectionViews);
++  obtainAssertion = NSSelectorFromString(@"obtainGrabberSuppressionAssertion");
++  for (UIView* selectionView in selectionViews) {
++    if ([selectionView respondsToSelector:obtainAssertion]) {
++      mEditable.mSelectionHandleSuppressionAssertion =
++          [[selectionView performSelector:obtainAssertion] retain];
++      return;
++    }
++  }
 +}
 +
 +// Returns the plain text inside a UITextRange.
@@ -2045,6 +2302,27 @@ index 000000000000..00c769dd37f7
 +    return length > 0 &&
 +           !(selection.location == 0 && selection.length == length);
 +  }
++  if (mGeckoChild->GetInputContext().mIMEState.IsEditable() &&
++      (aAction == @selector(_deleteByWord) ||
++       aAction == @selector(_deleteForwardByWord) ||
++       aAction == @selector(_deleteToStartOfLine) ||
++       aAction == @selector(_deleteToEndOfLine) ||
++       aAction == @selector(_deleteForwardAndNotify:) ||
++       aAction == @selector(_deleteToEndOfParagraph) ||
++       aAction == @selector(_moveUp:withHistory:) ||
++       aAction == @selector(_moveDown:withHistory:) ||
++       aAction == @selector(_moveLeft:withHistory:) ||
++       aAction == @selector(_moveRight:withHistory:) ||
++       aAction == @selector(_moveToStartOfWord:withHistory:) ||
++       aAction == @selector(_moveToStartOfParagraph:withHistory:) ||
++       aAction == @selector(_moveToStartOfLine:withHistory:) ||
++       aAction == @selector(_moveToStartOfDocument:withHistory:) ||
++       aAction == @selector(_moveToEndOfWord:withHistory:) ||
++       aAction == @selector(_moveToEndOfParagraph:withHistory:) ||
++       aAction == @selector(_moveToEndOfLine:withHistory:) ||
++       aAction == @selector(_moveToEndOfDocument:withHistory:))) {
++    return selection.location != NSNotFound;
++  }
 +
 +  return [super canPerformAction:aAction withSender:aSender];
 +}
@@ -2116,12 +2394,21 @@ index 000000000000..00c769dd37f7
 +  return mEditable.mTokenizer;
 +}
 +
++- (id)insertDictationResultPlaceholder {
++  return @"";
++}
++
++- (void)removeDictationResultPlaceholder:(id)aPlaceholder
++                        willInsertResult:(BOOL)aWillInsertResult {
++}
++
 +- (UIView*)textInputView {
 +  return self;
 +}
 +
 +- (UIView*)inputView {
-+  if (mGeckoChild && mGeckoChild->IsVirtualKeyboardDisabled()) {
++  if (mGeckoChild && (mGeckoChild->IsVirtualKeyboardDisabled() ||
++                      mGeckoChild->IsSoftwareKeyboardSuppressed())) {
 +    static UIView* sHiddenInputView = nil;
 +    if (!sHiddenInputView) {
 +      sHiddenInputView = [[UIView alloc] initWithFrame:CGRectZero];
@@ -2366,7 +2653,68 @@ index 000000000000..00c769dd37f7
 +  return [self textRangeFromPosition:position toPosition:position];
 +}
 +
++- (NSDictionary*)_autofillContext {
++  NSURL* autofillURL = [self activeAutofillURL];
++  if (!autofillURL) {
++    return nil;
++  }
++
++  // https://github.com/WebKit/WebKit/blob/f82ca57ad9b7224c783cac937d15415af50d380f/Source/WebKit/UIProcess/ios/WKContentViewInteraction.mm#L11803
++  //
++  // Initially, I thought getting the credential chip to show is impossible
++  // since we can't set Associated Domains inside the app's settings, but
++  // looking at _TIKeyboardStateAutofillContextAssociatedDomainsKey and
++  // _AFAutoFillContextAssociatedDomainsKey by reversing AutoFillCore, seems
++  // like supplying the lowercased host to the _AssociatedDomains field is
++  // enough to make them show up!
++
++  BOOL acceptsLoginCredentials =
++      [mEditable.mCredentialDelegate acceptsLoginCredentials];
++  NSMutableDictionary* context =
++      [NSMutableDictionary dictionaryWithDictionary:@{
++        @"_WKAutofillContextVersion" : @2,
++        @"_WebViewURL" : autofillURL,
++        @"_AssociatedDomains" : @[ autofillURL.host.lowercaseString ],
++        // show the credential chip for the current domain instead of the
++        // generic "Passwords" chip
++      }];
++  if (acceptsLoginCredentials) {
++    context[@"_acceptsLoginCredentials"] = @YES;
++  }
++  return context;
++}
++
++- (void)insertTextSuggestion:(id)aSuggestion {
++  // https://github.com/WebKit/WebKit/blob/f82ca57ad9b7224c783cac937d15415af50d380f/Source/WebKit/UIProcess/ios/WKContentViewInteraction.mm#L6578
++  Class suggestionClass = NSClassFromString(@"UITextAutofillSuggestion");
++  if (!suggestionClass || ![aSuggestion isKindOfClass:suggestionClass] ||
++      ![aSuggestion respondsToSelector:@selector(username)] ||
++      ![aSuggestion respondsToSelector:@selector(password)] ||
++      ![mEditable.mCredentialDelegate acceptsLoginCredentials] ||
++      ![self activeAutofillURL]) {
++    return;
++  }
++
++  // Hand to Swift, Gecko remains the only DOM-filling mechanism
++  id<CredentialSuggestion> suggestion = aSuggestion;
++  [mEditable.mCredentialDelegate didSelectAutofillUsername:suggestion.username
++                                                  password:suggestion.password];
++}
++
 +// MARK: - UITextInputTraits (Shared)
++
++- (id<UITextInputTraits>)textInputTraits {
++  id<GeckoUITextInputTraitsPrivate> traits =
++      static_cast<id<GeckoUITextInputTraitsPrivate>>(
++          mEditable.mTextInputTraits);
++  [traits takeTraitsFrom:self];
++  return traits;
++}
++
++- (void)takeTraitsFrom:(id<UITextInputTraits>)aTraits {
++  [static_cast<id<GeckoUITextInputTraitsPrivate>>(mEditable.mTextInputTraits)
++      takeTraitsFrom:aTraits];
++}
 +
 +- (UIKeyboardType)keyboardType {
 +  if (!mGeckoChild || mGeckoChild->Destroyed()) {
@@ -2399,6 +2747,10 @@ index 000000000000..00c769dd37f7
 +      mGeckoChild->GetInputContext());
 +}
 +
++- (UITextContentType)textContentType {
++  return [mEditable.mCredentialDelegate autofillTextContentType];
++}
++
 +- (BOOL)isSecureTextEntry {
 +  if (!mGeckoChild || mGeckoChild->Destroyed()) {
 +    return NO;
@@ -2415,6 +2767,12 @@ index 000000000000..00c769dd37f7
 +  if (!mGeckoChild || mGeckoChild->Destroyed()) {
 +    return;
 +  }
++  if (aText.length > 1 &&
++      [[mEditable.mCredentialDelegate autofillTextContentType]
++          isEqualToString:UITextContentTypeOneTimeCode]) {
++    [mEditable.mCredentialDelegate didSelectOneTimeCode:aText];
++    return;
++  }
 +  widget::TextInputHandler* handler = mGeckoChild->GetTextInputHandler();
 +  if (!handler) {
 +    return;
@@ -2426,7 +2784,10 @@ index 000000000000..00c769dd37f7
 +  if (!hasBuffer) {
 +    [mEditable.mTextInputDelegate textWillChange:self];
 +    [mEditable.mTextInputDelegate selectionWillChange:self];
-+    handler->InsertText(aText);
++    if (![self isKoreanInputMode] || ![self handleKoreanInsertText:aText
++                                                       withHandler:handler]) {
++      handler->InsertText(aText);
++    }
 +    [mEditable.mTextInputDelegate textDidChange:self];
 +    [mEditable.mTextInputDelegate selectionDidChange:self];
 +    [self scheduleEditSelectionUpdate];
@@ -2444,18 +2805,155 @@ index 000000000000..00c769dd37f7
 +  NSRange geckoEditRange = [self
 +      geckoRangeForVietnameseBufferRange:hasPendingDelete ? pendingDeleteRange
 +                                                          : bufferEditRange];
-+  handler->SetSelectedRange(geckoEditRange);
++  if (!handler->SetSelectedRange(geckoEditRange)) {
++    return;
++  }
 +
++  bool didApplyEdit = false;
 +  if (hasPendingDelete) {
 +    // A previous selected delete was deferred; this insert is the replacement.
 +    NSRange geckoPendingDeleteRange =
 +        [self geckoRangeForVietnameseBufferRange:pendingDeleteRange];
-+    handler->ReplaceRange(geckoPendingDeleteRange, aText ?: @"");
++    didApplyEdit = handler->ReplaceRange(geckoPendingDeleteRange, aText ?: @"");
 +  } else {
-+    handler->InsertText(aText);
++    didApplyEdit = handler->InsertText(aText);
++  }
++  if (!didApplyEdit) {
++    return;
 +  }
 +  [self replaceVietnameseBufferRange:bufferEditRange withText:aText ?: @""];
 +  [self scheduleEditSelectionUpdate];
++}
++
++- (void)_deleteByWord {
++  [self performEditingCommand:Command::DeleteWordBackward];
++}
++
++- (void)_deleteForwardByWord {
++  [self performEditingCommand:Command::DeleteWordForward];
++}
++
++- (void)_deleteToStartOfLine {
++  [self performEditingCommand:Command::DeleteToBeginningOfLine];
++}
++
++- (void)_deleteToEndOfLine {
++  [self performEditingCommand:Command::DeleteToEndOfLine];
++}
++
++- (void)_deleteForwardAndNotify:(BOOL)aNotify {
++  [self performEditingCommand:Command::DeleteCharForward];
++}
++
++- (void)_deleteToEndOfParagraph {
++  [self performEditingCommand:Command::DeleteToEndOfLine];
++}
++
++- (UITextInputArrowKeyHistory*)_moveUp:(BOOL)aExtending
++                           withHistory:(UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectLinePrevious
++                                         : Command::LinePrevious];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)_moveDown:(BOOL)aExtending
++                             withHistory:(UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectLineNext
++                                         : Command::LineNext];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)_moveLeft:(BOOL)aExtending
++                             withHistory:(UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectCharPrevious
++                                         : Command::CharPrevious];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)_moveRight:(BOOL)aExtending
++                              withHistory:
++                                  (UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectCharNext
++                                         : Command::CharNext];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)_moveToStartOfWord:(BOOL)aExtending
++                                      withHistory:(UITextInputArrowKeyHistory*)
++                                                      aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectWordPrevious
++                                         : Command::WordPrevious];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)
++    _moveToStartOfParagraph:(BOOL)aExtending
++                withHistory:(UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectBeginParagraph
++                                         : Command::BeginParagraph];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)_moveToStartOfLine:(BOOL)aExtending
++                                      withHistory:(UITextInputArrowKeyHistory*)
++                                                      aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectBeginLine
++                                         : Command::BeginLine];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)
++    _moveToStartOfDocument:(BOOL)aExtending
++               withHistory:(UITextInputArrowKeyHistory*)aHistory {
++  [self
++      performEditingCommand:aExtending ? Command::SelectTop : Command::MoveTop];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)_moveToEndOfWord:(BOOL)aExtending
++                                    withHistory:
++                                        (UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectWordNext
++                                         : Command::WordNext];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)
++    _moveToEndOfParagraph:(BOOL)aExtending
++              withHistory:(UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectEndParagraph
++                                         : Command::EndParagraph];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)_moveToEndOfLine:(BOOL)aExtending
++                                    withHistory:
++                                        (UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectEndLine
++                                         : Command::EndLine];
++  return nil;
++}
++
++- (UITextInputArrowKeyHistory*)
++    _moveToEndOfDocument:(BOOL)aExtending
++             withHistory:(UITextInputArrowKeyHistory*)aHistory {
++  [self performEditingCommand:aExtending ? Command::SelectBottom
++                                         : Command::MoveBottom];
++  return nil;
++}
++
++- (void)performEditingCommand:(Command)aCommand {
++  mEditable.mCaretMenuActive = NO;
++  mEditable.mPendingCaretMenu = NO;
++  [NSObject
++      cancelPreviousPerformRequestsWithTarget:self
++                                     selector:@selector(
++                                                  resolveCaretMenuIfPending)
++                                       object:nil];
++  [[UIMenuController sharedMenuController] hideMenuFromView:self];
++  if (widget::TextInputHandler* handler = [self textHandler]) {
++    handler->HandleCommand(aCommand);
++  }
 +}
 +
 +- (void)deleteBackward {
@@ -2467,13 +2965,28 @@ index 000000000000..00c769dd37f7
 +    return;
 +  }
 +
-+  BOOL hasBuffer = [self ensureVietnameseBufferWithHandler:handler];
 +  mEditable.mCaretMenuActive = NO;
++  mEditable.mPendingCaretMenu = NO;
++  [NSObject
++      cancelPreviousPerformRequestsWithTarget:self
++                                     selector:@selector(
++                                                  resolveCaretMenuIfPending)
++                                       object:nil];
++  [[UIMenuController sharedMenuController] hideMenuFromView:self];
++  BOOL hasBuffer = [self ensureVietnameseBufferWithHandler:handler];
++  if (handler->HandlePhysicalDeleteBackward(
++          hasBuffer, mEditable.mKoreanComposedText != nil)) {
++    return;
++  }
 +  if (!hasBuffer) {
++    NSRange deleteRange = [self deleteBackwardRangeWithHandler:handler];
++    if (deleteRange.location == NSNotFound) {
++      return;
++    }
++
 +    [mEditable.mTextInputDelegate textWillChange:self];
-+    handler->HandleCommand(Command::DeleteCharBackward);
++    handler->ReplaceRange(deleteRange, @"");
 +    [mEditable.mTextInputDelegate textDidChange:self];
-+    [self scheduleEditSelectionUpdate];
 +    return;
 +  }
 +
@@ -2511,14 +3024,20 @@ index 000000000000..00c769dd37f7
 +}
 +
 +- (BOOL)hasText {
-+  if (!mGeckoChild || mGeckoChild->Destroyed()) {
-+    return NO;
-+  }
-+  widget::InputContext context = mGeckoChild->GetInputContext();
-+  if (context.mIMEState.mEnabled == IMEEnabled::Disabled) {
-+    return NO;
-+  }
-+  return YES;
++  return [self documentLength] > 0;
++}
++
++- (BOOL)hasContent {
++  return [self hasText];
++}
++
++- (BOOL)hasSelection {
++  NSRange range = [self selectedRange];
++  return range.location != NSNotFound && range.length > 0;
++}
++
++- (void)selectAll {
++  [self selectAll:nil];
 +}
 +
 +// MARK: UITextInteraction (Shared)
@@ -2534,6 +3053,7 @@ index 000000000000..00c769dd37f7
 +    return NO;
 +  }
 +
++  [self setSelectionHandlesVisible:YES];
 +  [self startHandleTrackingAtPoint:aPoint
 +                             range:[self selectedRange]
 +                           handler:[self textHandler]];
@@ -2542,7 +3062,7 @@ index 000000000000..00c769dd37f7
 +
 +- (void)interactionWillBegin:(UITextInteraction*)aInteraction {
 +  mEditable.mTextInteractionInProgress = YES;
-+  CompatHideMenu([UIMenuController sharedMenuController], self);
++  [[UIMenuController sharedMenuController] hideMenuFromView:self];
 +  [self becomeFirstResponder];
 +  if (mEditable.mSelectionDisplayInteraction != nil) {
 +    [self updateHandleVisibility];
@@ -2596,6 +3116,8 @@ index 000000000000..00c769dd37f7
 +    mEditable.mSelectionHandlePanRecognizer.delegate = self;
 +    mEditable.mSelectionHandlePanRecognizer.maximumNumberOfTouches = 1;
 +    mEditable.mSelectionHandlePanRecognizer.cancelsTouchesInView = YES;
++    mEditable.mSelectionHandlePanRecognizer.allowedTouchTypes =
++        @[ @(UITouchTypeDirect), @(UITouchTypePencil) ];
 +    [self addGestureRecognizer:mEditable.mSelectionHandlePanRecognizer];
 +  }
 +}
@@ -2637,6 +3159,9 @@ index 000000000000..00c769dd37f7
 +    }
 +  }
 +
++  [self configureTextInteractionForTouchInput:
++            keyboardDisabled ? mEditable.mNonEditableTextInteraction
++                             : mEditable.mEditableTextInteraction];
 +  [self updateSelectionActivation];
 +}
 +
@@ -2664,10 +3189,10 @@ index 000000000000..00c769dd37f7
 +  if (mEditable.mSelectionDisplayInteraction == nil) {
 +    return;
 +  }
++  if (!mEditable.mSelectionHandlesVisibleForTouchInput) {
++    return;
++  }
 +
-+  const BOOL hasAttachedTextInteraction =
-+      mEditable.mEditableTextInteraction.view == self ||
-+      mEditable.mNonEditableTextInteraction.view == self;
 +  CGRect visibleBounds = [self selectionBounds];
 +  widget::TextInputHandler* handler = [self textHandler];
 +  NSRange selectedRange = [self selectedRange];
@@ -2684,36 +3209,33 @@ index 000000000000..00c769dd37f7
 +      [(id)mEditable.mSelectionDisplayInteraction handleViews];
 +  NSUInteger handleIndex = 0;
 +  for (UIView* handleView in handleViews) {
-+    BOOL shouldHide =
-+        hasAttachedTextInteraction && mEditable.mTextInteractionInProgress;
-+    if (!shouldHide) {
-+      if (selectedRange.location != NSNotFound && selectedRange.length > 0 &&
-+          [handleViews count] >= 2) {
-+        // UIKit exposes the handle views as an ordered pair, so map index 0/1
-+        // to Gecko's start/end endpoint visibility before doing final clipping.
-+        if (handleIndex == 0) {
-+          shouldHide = !startEndpointVisible;
-+        } else if (handleIndex == 1) {
-+          shouldHide = !endEndpointVisible;
-+        }
++    BOOL shouldHide = NO;
++    if (selectedRange.location != NSNotFound && selectedRange.length > 0 &&
++        [handleViews count] >= 2) {
++      // UIKit exposes the handle views as an ordered pair, so map index 0/1
++      // to Gecko's start/end endpoint visibility before doing final clipping.
++      if (handleIndex == 0) {
++        shouldHide = !startEndpointVisible;
++      } else if (handleIndex == 1) {
++        shouldHide = !endEndpointVisible;
 +      }
++    }
 +
-+      // Trust Gecko's endpoint visibility over the UIKit handle view's
-+      // frame, which includes decorative chrome (teardrop) that may be out
-+      // past the editor bounds at line edges (and therefore make the entire
-+      // handle hidden although it is supposed to be visible).
-+      const BOOL geckoEndpointIsVisible =
-+          (handleIndex == 0 && startEndpointVisible) ||
-+          (handleIndex == 1 && endEndpointVisible);
++    // Trust Gecko's endpoint visibility over the UIKit handle view's
++    // frame, which includes decorative chrome (teardrop) that may be out
++    // past the editor bounds at line edges (and therefore make the entire
++    // handle hidden although it is supposed to be visible).
++    const BOOL geckoEndpointIsVisible =
++        (handleIndex == 0 && startEndpointVisible) ||
++        (handleIndex == 1 && endEndpointVisible);
 +
-+      if (!shouldHide && !geckoEndpointIsVisible) {
-+        CGRect handleRect = [self convertRect:handleView.bounds
-+                                     fromView:handleView];
-+        shouldHide = CGRectIsEmpty(visibleBounds) ||
-+                     CGRectIsNull(visibleBounds) ||
-+                     !CGRectContainsRect(CGRectStandardize(visibleBounds),
-+                                         CGRectStandardize(handleRect));
-+      }
++    if (!shouldHide && !geckoEndpointIsVisible) {
++      CGRect handleRect = [self convertRect:handleView.bounds
++                                   fromView:handleView];
++      shouldHide = CGRectIsEmpty(visibleBounds) ||
++                   CGRectIsNull(visibleBounds) ||
++                   !CGRectContainsRect(CGRectStandardize(visibleBounds),
++                                       CGRectStandardize(handleRect));
 +    }
 +    handleView.hidden = shouldHide;
 +    handleIndex++;
@@ -2850,6 +3372,8 @@ index 000000000000..00c769dd37f7
 +    return;
 +  }
 +
++  [self configureTextInteractionForTouchInput:mEditable
++                                                  .mNonEditableTextInteraction];
 +  for (UIGestureRecognizer* gesture in mEditable.mNonEditableTextInteraction
 +           .gesturesForFailureRequirements) {
 +    gesture.delaysTouchesBegan = NO;
@@ -2880,6 +3404,8 @@ index 000000000000..00c769dd37f7
 +    if (mEditable.mEditableTextInteraction.view != self) {
 +      [self addInteraction:mEditable.mEditableTextInteraction];
 +    }
++    [self configureTextInteractionForTouchInput:mEditable
++                                                    .mEditableTextInteraction];
 +  }
 +}
 +
@@ -2888,6 +3414,11 @@ index 000000000000..00c769dd37f7
 +// endpoint is actually offscreen.
 +- (void)updateLegacyGrabbers {
 +  if (mEditable.mSelectionDisplayInteraction != nil || !self.window) {
++    return;
++  }
++
++  [self updateSelectionHandleSuppression];
++  if (!mEditable.mSelectionHandlesVisibleForTouchInput) {
 +    return;
 +  }
 +
@@ -3365,16 +3896,8 @@ index 000000000000..00c769dd37f7
 +    return NSMakeRange(NSNotFound, 0);
 +  }
 +
-+  NSRange selection = mEditable.mVietnameseBufferSelection;
-+  if (selection.length) {
-+    return selection;
-+  }
-+  if (selection.location == 0) {
-+    return NSMakeRange(NSNotFound, 0);
-+  }
-+
-+  return [mEditable.mVietnameseBufferText
-+      rangeOfComposedCharacterSequenceAtIndex:selection.location - 1];
++  return [self deleteBackwardRangeInText:mEditable.mVietnameseBufferText
++                               selection:mEditable.mVietnameseBufferSelection];
 +}
 +
 +// Applies a deferred Gecko delete when a Vietnamese selected delete was not
@@ -3394,6 +3917,340 @@ index 000000000000..00c769dd37f7
 +  NSRange geckoDeleteRange =
 +      [self geckoRangeForVietnameseBufferRange:deleteRange];
 +  handler->ReplaceRange(geckoDeleteRange, @"");
++}
++
++@end
++
++// MARK: - ChildView (Korean)
++
++namespace {
++
++struct HangulJamoIndices {
++  int leading;
++  int trailing;
++};
++
++constexpr HangulJamoIndices kHangulConsonantIndices[] = {
++    {0, 1},   {1, 2},   {-1, 3},  {2, 4},   {-1, 5},  {-1, 6},
++    {3, 7},   {4, -1},  {5, 8},   {-1, 9},  {-1, 10}, {-1, 11},
++    {-1, 12}, {-1, 13}, {-1, 14}, {-1, 15}, {6, 16},  {7, 17},
++    {8, -1},  {-1, 18}, {9, 19},  {10, 20}, {11, 21}, {12, 22},
++    {13, -1}, {14, 23}, {15, 24}, {16, 25}, {17, 26}, {18, 27}};
++
++int HangulConsonantTableIndex(char16_t aJamo) {
++  if (aJamo < 0x3131 || aJamo > 0x314E) {
++    return -1;
++  }
++  return aJamo - 0x3131;
++}
++
++int HangulLeadingIndex(char16_t aJamo) {
++  const int index = HangulConsonantTableIndex(aJamo);
++  return index >= 0 ? kHangulConsonantIndices[index].leading : -1;
++}
++
++int HangulVowelIndex(char16_t aJamo) {
++  if (aJamo < 0x314F || aJamo > 0x3163) {
++    return -1;
++  }
++  return aJamo - 0x314F;
++}
++
++int HangulTrailingIndex(char16_t aJamo) {
++  const int index = HangulConsonantTableIndex(aJamo);
++  return index >= 0 ? kHangulConsonantIndices[index].trailing : -1;
++}
++
++char16_t HangulCompatibilityVowel(int aVowel) {
++  return static_cast<char16_t>(0x314F + aVowel);
++}
++
++char16_t ComposeHangulSyllable(int aLeading, int aVowel, int aTrailing) {
++  return static_cast<char16_t>(0xAC00 + (aLeading * 21 + aVowel) * 28 +
++                               aTrailing);
++}
++
++bool DecomposeHangulSyllable(char16_t aSyllable, int& aLeading, int& aVowel,
++                             int& aTrailing) {
++  if (aSyllable < 0xAC00 || aSyllable > 0xD7A3) {
++    return false;
++  }
++
++  int offset = aSyllable - 0xAC00;
++  aLeading = offset / (21 * 28);
++  offset %= 21 * 28;
++  aVowel = offset / 28;
++  aTrailing = offset % 28;
++  return true;
++}
++
++bool IsHangulSyllable(char16_t aChar) {
++  return aChar >= 0xAC00 && aChar <= 0xD7A3;
++}
++
++NSString* HangulString(char16_t aFirst, char16_t aSecond = 0) {
++  const unichar chars[] = {static_cast<unichar>(aFirst),
++                           static_cast<unichar>(aSecond)};
++  return [NSString stringWithCharacters:chars length:aSecond ? 2 : 1];
++}
++
++int CombineHangulVowels(int aFirst, int aSecond) {
++  switch ((aFirst << 8) | aSecond) {
++    case (8 << 8) | 0:
++      return 9;
++    case (8 << 8) | 1:
++      return 10;
++    case (8 << 8) | 20:
++      return 11;
++    case (13 << 8) | 4:
++      return 14;
++    case (13 << 8) | 5:
++      return 15;
++    case (13 << 8) | 20:
++      return 16;
++    case (18 << 8) | 20:
++      return 19;
++  }
++  return -1;
++}
++
++int CombineHangulTrailingConsonants(int aFirst, int aSecond) {
++  switch ((aFirst << 8) | aSecond) {
++    case (1 << 8) | 19:
++      return 3;
++    case (4 << 8) | 22:
++      return 5;
++    case (4 << 8) | 27:
++      return 6;
++    case (8 << 8) | 1:
++      return 9;
++    case (8 << 8) | 16:
++      return 10;
++    case (8 << 8) | 17:
++      return 11;
++    case (8 << 8) | 19:
++      return 12;
++    case (8 << 8) | 25:
++      return 13;
++    case (8 << 8) | 26:
++      return 14;
++    case (8 << 8) | 27:
++      return 15;
++    case (17 << 8) | 19:
++      return 18;
++  }
++  return -1;
++}
++
++bool HangulLeadingIndexFromTrailing(int aTrailing, int& aLeading) {
++  constexpr int kTrailingToLeading[] = {-1, 0,  1,  -1, 2,  -1, -1, 3, 5,  -1,
++                                        -1, -1, -1, -1, -1, -1, 6,  7, -1, 9,
++                                        10, 11, 12, 14, 15, 16, 17, 18};
++  if (aTrailing <= 0 || aTrailing >= 28 || kTrailingToLeading[aTrailing] < 0) {
++    return false;
++  }
++  aLeading = kTrailingToLeading[aTrailing];
++  return true;
++}
++
++bool SplitHangulTrailingConsonants(int aTrailing, int& aFirstTrailing,
++                                   int& aSecondLeading) {
++  constexpr HangulJamoIndices kTrailingSplit[] = {
++      {-1, -1}, {-1, -1}, {-1, -1}, {1, 9},   {-1, -1}, {4, 12},  {4, 18},
++      {-1, -1}, {-1, -1}, {8, 0},   {8, 6},   {8, 7},   {8, 9},   {8, 16},
++      {8, 17},  {8, 18},  {-1, -1}, {-1, -1}, {17, 9},  {-1, -1}, {-1, -1},
++      {-1, -1}, {-1, -1}, {-1, -1}, {-1, -1}, {-1, -1}, {-1, -1}, {-1, -1}};
++  if (aTrailing <= 0 || aTrailing >= 28 ||
++      kTrailingSplit[aTrailing].leading < 0) {
++    return false;
++  }
++  aFirstTrailing = kTrailingSplit[aTrailing].leading;
++  aSecondLeading = kTrailingSplit[aTrailing].trailing;
++  return true;
++}
++
++}  // namespace
++
++@implementation ChildView (Korean)
++
++- (BOOL)isKoreanInputMode {
++  NSString* primaryLanguage = self.textInputMode.primaryLanguage;
++  return primaryLanguage && [primaryLanguage hasPrefix:@"ko"];
++}
++
++- (void)clearKoreanCompositionState {
++  [mEditable.mKoreanComposedText release];
++  mEditable.mKoreanComposedText = nil;
++}
++
++- (BOOL)handleKoreanInsertText:(NSString*)aText
++                   withHandler:(widget::TextInputHandler*)aHandler {
++  if ([aText length] == 1 && IsHangulSyllable([aText characterAtIndex:0]) &&
++      mEditable.mKoreanComposedText &&
++      [mEditable.mKoreanComposedText isEqualToString:aText]) {
++    [self clearKoreanCompositionState];
++    return YES;
++  }
++
++  return [self tryComposeHangulJamo:aText withHandler:aHandler];
++}
++
++- (BOOL)tryComposeHangulJamo:(NSString*)aText
++                 withHandler:(widget::TextInputHandler*)aHandler {
++  if (!aHandler || !aText || [aText length] != 1) {
++    return NO;
++  }
++
++  const char16_t inserted = [aText characterAtIndex:0];
++  const int insertedLeading = HangulLeadingIndex(inserted);
++  const int insertedVowel = HangulVowelIndex(inserted);
++  const int insertedTrailing = HangulTrailingIndex(inserted);
++  if (insertedLeading < 0 && insertedVowel < 0 && insertedTrailing < 0) {
++    return NO;
++  }
++
++  NSRange selection = NSMakeRange(NSNotFound, 0);
++  if (!aHandler->SelectedRange(selection) || selection.location == NSNotFound ||
++      selection.length != 0 || selection.location == 0) {
++    return NO;
++  }
++
++  nsString previousText;
++  if (!aHandler->TextInRange(NSMakeRange(selection.location - 1, 1),
++                             previousText) ||
++      previousText.Length() != 1) {
++    return NO;
++  }
++
++  const char16_t previous = previousText[0];
++  NSString* replacement = nil;
++
++  if (insertedVowel >= 0) {
++    const int previousLeading = HangulLeadingIndex(previous);
++    if (previousLeading >= 0) {
++      replacement = HangulString(
++          ComposeHangulSyllable(previousLeading, insertedVowel, 0));
++    }
++
++    const int previousVowel = HangulVowelIndex(previous);
++    if (!replacement && previousVowel >= 0) {
++      const int combinedVowel =
++          CombineHangulVowels(previousVowel, insertedVowel);
++      if (combinedVowel >= 0) {
++        replacement = HangulString(HangulCompatibilityVowel(combinedVowel));
++      }
++    }
++
++    int leading = 0;
++    int vowel = 0;
++    int trailing = 0;
++    if (!replacement &&
++        DecomposeHangulSyllable(previous, leading, vowel, trailing)) {
++      if (trailing == 0) {
++        const int combinedVowel = CombineHangulVowels(vowel, insertedVowel);
++        if (combinedVowel >= 0) {
++          replacement =
++              HangulString(ComposeHangulSyllable(leading, combinedVowel, 0));
++        }
++      } else {
++        int previousTrailing = 0;
++        int nextLeading = 0;
++        if (!SplitHangulTrailingConsonants(trailing, previousTrailing,
++                                           nextLeading) &&
++            !HangulLeadingIndexFromTrailing(trailing, nextLeading)) {
++          return NO;
++        }
++
++        replacement = HangulString(
++            ComposeHangulSyllable(leading, vowel, previousTrailing),
++            ComposeHangulSyllable(nextLeading, insertedVowel, 0));
++      }
++    }
++  } else if (insertedTrailing >= 0) {
++    int leading = 0;
++    int vowel = 0;
++    int trailing = 0;
++    if (DecomposeHangulSyllable(previous, leading, vowel, trailing)) {
++      if (trailing == 0) {
++        replacement = HangulString(
++            ComposeHangulSyllable(leading, vowel, insertedTrailing));
++      } else {
++        const int combinedTrailing =
++            CombineHangulTrailingConsonants(trailing, insertedTrailing);
++        if (combinedTrailing >= 0) {
++          replacement = HangulString(
++              ComposeHangulSyllable(leading, vowel, combinedTrailing));
++        }
++      }
++    }
++  }
++
++  if (!replacement) {
++    return NO;
++  }
++
++  NSRange replacementRange = NSMakeRange(selection.location - 1, 1);
++  if (!aHandler->ReplaceRange(replacementRange, replacement)) {
++    [self clearKoreanCompositionState];
++    return NO;
++  }
++
++  [mEditable.mKoreanComposedText release];
++  mEditable.mKoreanComposedText = [replacement copy];
++  return YES;
++}
++
++@end
++
++@implementation ChildView (PasswordAutofill)
++
++- (void)setAutofillDelegate:(id<ChildViewCredentialDelegate>)aDelegate {
++  mEditable.mCredentialDelegate = aDelegate;
++}
++
++- (void)activatePasswordInputForAutofill {
++  if (!mEditable.mWaitingForPasswordAutofillFocus) {
++    return;
++  }
++  mEditable.mWaitingForPasswordAutofillFocus = NO;
++  [self cancelResponderBlur];
++  [self becomeFirstResponder];
++  [self reloadInputViews];
++}
++
++- (NSURL*)activeAutofillURL {
++  id<ChildViewCredentialDelegate> credentialDelegate =
++      mEditable.mCredentialDelegate;
++  if (!credentialDelegate) {
++    return nil;
++  }
++  NSString* autofillOrigin = [credentialDelegate autofillOrigin];
++  if (!autofillOrigin || !mGeckoChild || mGeckoChild->Destroyed()) {
++    return nil;
++  }
++
++  const widget::InputContext& context = mGeckoChild->GetInputContext();
++  if (!context.mURI) {
++    return nil;
++  }
++
++  nsAutoCString spec;
++  if (NS_FAILED(context.mURI->GetSpec(spec))) {
++    return nil;
++  }
++  NSString* urlString =
++      [[[NSString alloc] initWithBytes:spec.BeginReading()
++                                length:spec.Length()
++                              encoding:NSUTF8StringEncoding] autorelease];
++  NSURL* autofillURL = [NSURL URLWithString:urlString];
++  NSString* scheme = autofillURL.scheme.lowercaseString;
++  if (!autofillURL ||
++      (![scheme isEqualToString:@"http"] &&
++       ![scheme isEqualToString:@"https"]) ||
++      !CredentialOriginsMatch(autofillURL, autofillOrigin)) {
++    return nil;
++  }
++  return autofillURL;
 +}
 +
 +@end

@@ -9,42 +9,44 @@ import UIKit
 
 final class BrowsingPreferencesViewController: SettingsTableViewController {
     private enum Section: CaseIterable {
+        case previews
+        case content
         case links
-        case media
-        case desktopWebsite
         
         var text: SettingsSectionText {
             switch self {
+            case .previews:
+                return SettingsSectionText(headerTitle: NSLocalizedString("Previews", comment: "Browsing settings section title"))
+            case .content:
+                return SettingsSectionText(headerTitle: NSLocalizedString("Content", comment: "Browsing settings section title"))
             case .links:
-                return SettingsSectionText(headerTitle: "Links")
-            case .media:
-                return SettingsSectionText(headerTitle: "Media")
-            case .desktopWebsite:
-                return SettingsSectionText(headerTitle: "Request Desktop Website On")
+                return SettingsSectionText(headerTitle: NSLocalizedString("Links", comment: "Browsing settings section title"))
             }
         }
     }
     
-    private enum LinksRow: CaseIterable {
+    private enum PreviewsRow: CaseIterable {
         case showLinkPreviews
-    }
-    
-    private enum MediaRow: CaseIterable {
-        case autoplay
         case showImagePreviews
     }
     
-    private enum DesktopWebsiteRow: CaseIterable {
+    private enum ContentRow: CaseIterable {
         case allWebsites
+        case pageZoom
+    }
+    
+    private enum LinksRow: CaseIterable {
+        case openLinksInExternalApps
+        case openLinksInNewTabs
     }
     
     private let showLinkPreviewsSwitch = UISwitch()
     private let showImagePreviewsSwitch = UISwitch()
-    private let requestDesktopWebsiteSwitch = UISwitch()
+    private let openLinksInExternalAppsSwitch = UISwitch()
     
     init() {
         super.init(style: .appGrouped)
-        title = "Browsing"
+        title = NSLocalizedString("Browsing", comment: "")
     }
     
     required init?(coder: NSCoder) {
@@ -73,12 +75,12 @@ final class BrowsingPreferencesViewController: SettingsTableViewController {
         }
         
         switch Section.allCases[section] {
+        case .previews:
+            return PreviewsRow.allCases.count
+        case .content:
+            return ContentRow.allCases.count
         case .links:
             return LinksRow.allCases.count
-        case .media:
-            return MediaRow.allCases.count
-        case .desktopWebsite:
-            return DesktopWebsiteRow.allCases.count
         }
     }
     
@@ -95,49 +97,58 @@ final class BrowsingPreferencesViewController: SettingsTableViewController {
         }
         
         switch Section.allCases[indexPath.section] {
-        case .links:
-            guard LinksRow.allCases.indices.contains(indexPath.row) else {
+        case .previews:
+            guard PreviewsRow.allCases.indices.contains(indexPath.row) else {
                 return UITableViewCell()
             }
-            let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
-            cell.selectionStyle = .none
-            cell.textLabel?.text = "Show Link Previews"
-            cell.detailTextLabel?.text = "When long-pressing links"
-            cell.detailTextLabel?.textColor = .appSecondaryLabel
-            cell.accessoryView = showLinkPreviewsSwitch
-            return cell
-        case .media:
-            guard MediaRow.allCases.indices.contains(indexPath.row) else {
-                return UITableViewCell()
-            }
-            switch MediaRow.allCases[indexPath.row] {
-            case .autoplay:
-                let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
-                cell.textLabel?.text = "Autoplay"
-                cell.detailTextLabel?.text = SiteSettingsUtils.actionTitle(
-                    for: SiteSettingsUtils.defaultAction(for: .autoplay),
-                    permission: .autoplay
-                )
-                cell.accessoryType = .disclosureIndicator
+            switch PreviewsRow.allCases[indexPath.row] {
+            case .showLinkPreviews:
+                let cell = SettingsTableViewCell(style: .subtitle, reuseIdentifier: nil)
+                cell.selectionStyle = .none
+                cell.textLabel?.text = NSLocalizedString("Show Link Previews", comment: "")
+                cell.detailTextLabel?.textColor = .appSecondaryLabel
+                cell.accessoryView = showLinkPreviewsSwitch
                 return cell
             case .showImagePreviews:
-                let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
+                let cell = SettingsTableViewCell(style: .subtitle, reuseIdentifier: nil)
                 cell.selectionStyle = .none
-                cell.textLabel?.text = "Show Image Previews"
-                cell.detailTextLabel?.text = "When long-pressing images"
+                cell.textLabel?.text = NSLocalizedString("Show Image Previews", comment: "")
                 cell.detailTextLabel?.textColor = .appSecondaryLabel
                 cell.accessoryView = showImagePreviewsSwitch
                 return cell
             }
-        case .desktopWebsite:
-            guard DesktopWebsiteRow.allCases.indices.contains(indexPath.row) else {
+        case .content:
+            guard ContentRow.allCases.indices.contains(indexPath.row) else {
                 return UITableViewCell()
             }
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-            cell.selectionStyle = .none
-            cell.textLabel?.text = "All Website"
-            cell.accessoryView = requestDesktopWebsiteSwitch
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
+            switch ContentRow.allCases[indexPath.row] {
+            case .allWebsites:
+                cell.textLabel?.text = NSLocalizedString("Request Desktop Website", comment: "")
+            case .pageZoom:
+                cell.textLabel?.text = NSLocalizedString("Page Zoom", comment: "")
+            }
+            cell.accessoryType = .disclosureIndicator
             return cell
+        case .links:
+            guard LinksRow.allCases.indices.contains(indexPath.row) else {
+                return UITableViewCell()
+            }
+            switch LinksRow.allCases[indexPath.row] {
+            case .openLinksInExternalApps:
+                let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
+                cell.textLabel?.text = NSLocalizedString("Open Links in External Apps", comment: "")
+                cell.selectionStyle = .none
+                cell.accessoryView = openLinksInExternalAppsSwitch
+                return cell
+            case .openLinksInNewTabs:
+                let cell = SettingsTableViewCell(style: .value1, reuseIdentifier: nil)
+                cell.textLabel?.text = NSLocalizedString("Open Links in New Tabs", comment: "")
+                cell.detailTextLabel?.text = Prefs.BrowsingSettings.openLinksInNewTabsBehavior.title
+                cell.detailTextLabel?.textColor = .secondaryLabel
+                cell.accessoryType = .disclosureIndicator
+                return cell
+            }
         }
     }
     
@@ -148,36 +159,44 @@ final class BrowsingPreferencesViewController: SettingsTableViewController {
         }
         
         switch Section.allCases[indexPath.section] {
-        case .links:
+        case .previews:
             return
-        case .media:
-            guard MediaRow.allCases.indices.contains(indexPath.row) else {
+        case .content:
+            guard ContentRow.allCases.indices.contains(indexPath.row) else {
                 return
             }
-            switch MediaRow.allCases[indexPath.row] {
-            case .autoplay:
+            switch ContentRow.allCases[indexPath.row] {
+            case .allWebsites:
+                navigationController?.pushViewController(RequestDesktopWebsitePreferencesViewController(), animated: true)
+            case .pageZoom:
+                navigationController?.pushViewController(PageZoomPreferencesViewController(), animated: true)
+            }
+        case .links:
+            guard LinksRow.allCases.indices.contains(indexPath.row) else {
+                return
+            }
+            switch LinksRow.allCases[indexPath.row] {
+            case .openLinksInExternalApps:
+                return
+            case .openLinksInNewTabs:
                 navigationController?.pushViewController(
-                    SitePermissionDetailsViewController(permission: .autoplay, title: "Autoplay"),
+                    OpenLinksInNewTabsPreferencesViewController(),
                     animated: true
                 )
-            case .showImagePreviews:
-                return
             }
-        case .desktopWebsite:
-            return
         }
     }
     
     private func configureSwitch() {
         showLinkPreviewsSwitch.addTarget(self, action: #selector(showLinkPreviewsSwitchDidChange(_:)), for: .valueChanged)
         showImagePreviewsSwitch.addTarget(self, action: #selector(showImagePreviewsSwitchDidChange(_:)), for: .valueChanged)
-        requestDesktopWebsiteSwitch.addTarget(self, action: #selector(requestDesktopWebsiteSwitchDidChange(_:)), for: .valueChanged)
+        openLinksInExternalAppsSwitch.addTarget(self, action: #selector(openLinksInExternalAppsSwitchDidChange(_:)), for: .valueChanged)
     }
     
     private func refreshDisplayedState() {
         showLinkPreviewsSwitch.isOn = Prefs.BrowsingSettings.showLinkPreviews
         showImagePreviewsSwitch.isOn = Prefs.BrowsingSettings.showImagePreviews
-        requestDesktopWebsiteSwitch.isOn = Prefs.BrowsingSettings.requestDesktopWebsite
+        openLinksInExternalAppsSwitch.isOn = Prefs.BrowsingSettings.openLinksInExternalApps
     }
     
     @objc private func showLinkPreviewsSwitchDidChange(_ sender: UISwitch) {
@@ -188,7 +207,7 @@ final class BrowsingPreferencesViewController: SettingsTableViewController {
         Prefs.BrowsingSettings.showImagePreviews = sender.isOn
     }
     
-    @objc private func requestDesktopWebsiteSwitchDidChange(_ sender: UISwitch) {
-        Prefs.BrowsingSettings.requestDesktopWebsite = sender.isOn
+    @objc private func openLinksInExternalAppsSwitchDidChange(_ sender: UISwitch) {
+        Prefs.BrowsingSettings.openLinksInExternalApps = sender.isOn
     }
 }

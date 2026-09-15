@@ -52,7 +52,17 @@ final class DonationRecommendationViewController: UIViewController, HomepageReco
         view.layer.borderColor = UIColor.systemYellow.cgColor
         view.layer.borderWidth = UX.borderWidth
         view.clipsToBounds = true
-        view.backgroundColor = .appSystemGray6
+        view.backgroundColor = .clear
+        return view
+    }()
+    
+    private let backgroundView: UIVisualEffectView = {
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isUserInteractionEnabled = false
+        view.layer.cornerCurve = .continuous
+        view.layer.cornerRadius = UX.cornerRadius
+        view.clipsToBounds = true
         return view
     }()
     
@@ -204,6 +214,7 @@ final class DonationRecommendationViewController: UIViewController, HomepageReco
         view.addSubview(cardView)
         view.addSubview(coffeeImageView)
         
+        cardView.addSubview(backgroundView)
         cardView.addSubview(tintView)
         cardView.addSubview(textStackView)
         
@@ -223,6 +234,11 @@ final class DonationRecommendationViewController: UIViewController, HomepageReco
             cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: UX.horizontalInset),
             cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -UX.horizontalInset),
             cardView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -UX.sectionBottomSpacing),
+            
+            backgroundView.topAnchor.constraint(equalTo: cardView.topAnchor),
+            backgroundView.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
+            backgroundView.trailingAnchor.constraint(equalTo: cardView.trailingAnchor),
+            backgroundView.bottomAnchor.constraint(equalTo: cardView.bottomAnchor),
             
             tintView.topAnchor.constraint(equalTo: cardView.topAnchor),
             tintView.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),

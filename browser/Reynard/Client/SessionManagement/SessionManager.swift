@@ -7,20 +7,59 @@
 
 import Foundation
 import GeckoView
+import UIKit
+
+protocol SessionManagerApplicationStateObserver: AnyObject {
+    func sessionManagerDidChangeApplicationState(_ sessionManager: SessionManager)
+    func sessionManagerWillResignActive(_ sessionManager: SessionManager)
+}
+
+protocol SessionManagerPictureInPictureHandler: AnyObject {
+    func stopPresenting(_ session: GeckoSession) -> Bool
+}
 
 final class SessionManager {
     private let sessionSettings: SessionSettingsManager
     private let history: NavigationHistory
+    private let tabStore: TabManagementStore
     private let permissionStore: SitePermissionStore
+    let universalLinkManager = UniversalLinkManager()
+    let trackingProtection: TrackingProtectionManager
+    
+    private var sessionsRequestedActive: [ObjectIdentifier: GeckoSession] = [:]
+    private var pageBackgroundColors: [ObjectIdentifier: UIColor] = [:]
+    private var isApplicationForeground = true
+    private(set) var isApplicationActive = true
+    private var sessionStateBackgroundTask = UIBackgroundTaskIdentifier.invalid
+    private weak var pictureInPictureSession: GeckoSession?
+    private var pendingSessionCleanup: (
+        session: GeckoSession,
+        perform: (SessionManager) -> Void
+    )?
+    weak var applicationStateObserver: SessionManagerApplicationStateObserver?
+    weak var pictureInPictureHandler: SessionManagerPictureInPictureHandler?
+    private var externalResponseReferenceCounts: [ObjectIdentifier: Int] = [:]
+    private var deferredExternalResponseCleanups: [ObjectIdentifier: (
+        session: GeckoSession,
+        perform: (SessionManager) -> Void
+    )] = [:]
+    
+    var isForeground: Bool {
+        return isApplicationForeground
+    }
     
     init(
         sessionSettings: SessionSettingsManager = SessionSettingsManager(),
         history: NavigationHistory = NavigationHistory(),
-        permissionStore: SitePermissionStore = .shared
+        tabStore: TabManagementStore = .shared,
+        permissionStore: SitePermissionStore = .shared,
+        trackingProtection: TrackingProtectionManager = TrackingProtectionManager()
     ) {
         self.sessionSettings = sessionSettings
         self.history = history
+        self.tabStore = tabStore
         self.permissionStore = permissionStore
+        self.trackingProtection = trackingProtection
     }
     
     // MARK: - Session Creation
@@ -49,7 +88,9 @@ final class SessionManager {
     
     func bindDelegates(to session: GeckoSession, delegates: SessionDelegates) {
         session.contentDelegate = delegates.content
+        session.contentBlockingDelegate = trackingProtection
         session.navigationDelegate = delegates.navigation
+        session.historyDelegate = delegates.history
         session.permissionDelegate = delegates.permission
         session.progressDelegate = delegates.progress
         session.promptDelegate = delegates.prompt
@@ -78,30 +119,245 @@ final class SessionManager {
         guard session.isOpen() else {
             return
         }
-        session.setActive(true)
+        sessionsRequestedActive[ObjectIdentifier(session)] = session
+        session.setActive(isApplicationForeground)
         session.setFocused(true)
     }
     
     func deactivate(_ session: GeckoSession) {
+        sessionsRequestedActive.removeValue(forKey: ObjectIdentifier(session))
         guard session.isOpen() else {
             return
         }
         session.setFocused(false)
+        if pictureInPictureSession === session {
+            return
+        }
         session.setActive(false)
     }
     
+    // MARK: - Application Lifecycle
+    
+    func setApplicationForeground(_ isForeground: Bool) {
+        guard isApplicationForeground != isForeground else {
+            return
+        }
+        isApplicationForeground = isForeground
+        for session in sessionsRequestedActive.values {
+            session.setActive(isForeground || pictureInPictureSession === session)
+            if pictureInPictureSession === session {
+                session.setFocused(isForeground)
+            }
+        }
+        if let pictureInPictureSession,
+           sessionsRequestedActive[ObjectIdentifier(pictureInPictureSession)] == nil {
+            pictureInPictureSession.setFocused(false)
+            pictureInPictureSession.setActive(true)
+        }
+        applicationStateObserver?.sessionManagerDidChangeApplicationState(self)
+    }
+    
+    func applicationWillResignActive() {
+        history.flushPendingWrites()
+        isApplicationActive = false
+        applicationStateObserver?.sessionManagerWillResignActive(self)
+        persistSessionState()
+    }
+    
+    func applicationDidBecomeActive() {
+        isApplicationActive = true
+        applicationStateObserver?.sessionManagerDidChangeApplicationState(self)
+    }
+    
+    // MARK: - Session State Persistence
+    
+    private func persistSessionState() {
+        guard sessionStateBackgroundTask == .invalid else {
+            return
+        }
+        let sessions = Array(sessionsRequestedActive.values)
+        sessionStateBackgroundTask = UIApplication.shared.beginBackgroundTask(
+            withName: "Session State Persistence"
+        ) { [weak self] in
+            self?.endSessionStateBackgroundTask()
+        }
+        Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+            defer {
+                endSessionStateBackgroundTask()
+            }
+            do {
+                for session in sessions where session.isOpen() {
+                    try await session.flushSessionState()
+                }
+                tabStore.flushPendingWrites()
+            } catch {
+                NSLog("Failed to persist session state before suspension: %@", "\(error)")
+            }
+        }
+    }
+    
+    private func endSessionStateBackgroundTask() {
+        guard sessionStateBackgroundTask != .invalid else {
+            return
+        }
+        UIApplication.shared.endBackgroundTask(sessionStateBackgroundTask)
+        sessionStateBackgroundTask = .invalid
+    }
+    
+    // MARK: - External Responses
+    
+    private func keepSessionActiveForExternalResponse(_ session: GeckoSession) {
+        guard session.isOpen() else {
+            return
+        }
+        sessionsRequestedActive[ObjectIdentifier(session)] = session
+        session.setActive(isApplicationForeground)
+        session.setFocused(false)
+    }
+    
+    func retainExternalResponse(for session: GeckoSession) {
+        let identifier = ObjectIdentifier(session)
+        externalResponseReferenceCounts[identifier, default: 0] += 1
+    }
+    
+    func releaseExternalResponse(for session: GeckoSession) {
+        let identifier = ObjectIdentifier(session)
+        guard let count = externalResponseReferenceCounts[identifier] else {
+            return
+        }
+        
+        if count > 1 {
+            externalResponseReferenceCounts[identifier] = count - 1
+            return
+        }
+        
+        externalResponseReferenceCounts.removeValue(forKey: identifier)
+        guard let cleanup = deferredExternalResponseCleanups.removeValue(forKey: identifier) else {
+            return
+        }
+        
+        scheduleSessionCleanup(for: cleanup.session, cleanup.perform)
+    }
+    
+    func clearExternalResponseRetention(for session: GeckoSession) {
+        let identifier = ObjectIdentifier(session)
+        externalResponseReferenceCounts.removeValue(forKey: identifier)
+        deferredExternalResponseCleanups.removeValue(forKey: identifier)
+    }
+    
+    // MARK: - Picture in Picture
+    
+    func setPictureInPictureSession(_ session: GeckoSession) {
+        pictureInPictureSession = session
+        if !isApplicationForeground {
+            session.setFocused(false)
+        }
+        session.setActive(true)
+    }
+    
+    func pictureInPicturePresentationDidEnd(_ session: GeckoSession) {
+        clearPictureInPictureSession(session)
+        executePendingSessionCleanup(for: session)
+    }
+    
+    private func clearPictureInPictureSession(_ session: GeckoSession) {
+        guard pictureInPictureSession === session else {
+            return
+        }
+        pictureInPictureSession = nil
+        if isApplicationForeground,
+           sessionsRequestedActive[ObjectIdentifier(session)] != nil {
+            session.setActive(true)
+            session.setFocused(true)
+        } else {
+            session.setFocused(false)
+            session.setActive(false)
+        }
+    }
+    
+    // MARK: - Session Cleanup
+    
     func close(_ session: GeckoSession) {
-        deactivate(session)
-        permissionStore.removePrivateActions(for: session)
-        session.close()
+        scheduleSessionCleanup(for: session) { manager in
+            manager.closeImmediately(session)
+        }
     }
     
     func discard(_ session: GeckoSession, forTab tabID: UUID, keepingHistory: Bool = false) {
+        scheduleSessionCleanup(for: session) { manager in
+            manager.discardImmediately(
+                session,
+                forTab: tabID,
+                keepingHistory: keepingHistory
+            )
+        }
+    }
+    
+    private func scheduleSessionCleanup(
+        for session: GeckoSession,
+        _ perform: @escaping (SessionManager) -> Void
+    ) {
+        let identifier = ObjectIdentifier(session)
+        if externalResponseReferenceCounts[identifier] != nil {
+            if deferredExternalResponseCleanups[identifier] == nil {
+                deferredExternalResponseCleanups[identifier] = (session, perform)
+            }
+            keepSessionActiveForExternalResponse(session)
+            return
+        }
+        
+        if let pendingSessionCleanup {
+            if pendingSessionCleanup.session !== session {
+                perform(self)
+            }
+            return
+        }
+        pendingSessionCleanup = (session, perform)
+        if pictureInPictureHandler?.stopPresenting(session) != true {
+            executePendingSessionCleanup(for: session)
+        }
+    }
+    
+    private func executePendingSessionCleanup(for session: GeckoSession) {
+        guard let cleanup = pendingSessionCleanup,
+              cleanup.session === session else {
+            return
+        }
+        pendingSessionCleanup = nil
+        cleanup.perform(self)
+    }
+    
+    private func closeImmediately(_ session: GeckoSession) {
+        deactivate(session)
+        trackingProtection.removeSession(session)
+        permissionStore.removePrivateActions(for: session)
+        pageBackgroundColors.removeValue(forKey: ObjectIdentifier(session))
+        session.close()
+    }
+    
+    private func discardImmediately(
+        _ session: GeckoSession,
+        forTab tabID: UUID,
+        keepingHistory: Bool
+    ) {
         sessionSettings.websiteMode.clearWebsiteOverrides(for: tabID)
         if !keepingHistory {
             history.removeHistory(for: tabID)
         }
-        close(session)
+        closeImmediately(session)
+    }
+    
+    // MARK: - Page Background Color
+    
+    func pageBackgroundColor(for session: GeckoSession) -> UIColor {
+        return pageBackgroundColors[ObjectIdentifier(session)] ?? .systemBackground
+    }
+    
+    func setPageBackgroundColor(_ color: UIColor, for session: GeckoSession) {
+        pageBackgroundColors[ObjectIdentifier(session)] = color
     }
     
     // MARK: - Addon Tab State
@@ -161,12 +417,21 @@ final class SessionManager {
         return history.availability(for: tabID, sessionState: sessionState)
     }
     
+    func navigationHistory(for tabID: UUID) -> NavigationHistoryStore.Snapshot {
+        return history.snapshot(for: tabID)
+    }
+    
+    func usesStoredNavigationHistory(for tabID: UUID) -> Bool {
+        return history.usesStoredHistory(for: tabID)
+    }
+    
     func recordNavigation(
         to url: String,
+        title: String,
         for tabID: UUID,
         sessionState: SessionNavigationAvailability
     ) -> NavigationAvailability {
-        return history.record(to: url, for: tabID, sessionState: sessionState)
+        return history.record(to: url, title: title, for: tabID, sessionState: sessionState)
     }
     
     func goBack(
@@ -176,6 +441,14 @@ final class SessionManager {
         return history.goBack(for: tabID, sessionState: sessionState)
     }
     
+    func goBack(
+        to index: Int,
+        for tabID: UUID,
+        sessionState: SessionNavigationAvailability
+    ) -> NavigationTransition? {
+        return history.goBack(to: index, for: tabID, sessionState: sessionState)
+    }
+    
     func goForward(
         for tabID: UUID,
         sessionState: SessionNavigationAvailability
@@ -183,7 +456,36 @@ final class SessionManager {
         return history.goForward(for: tabID, sessionState: sessionState)
     }
     
+    func goForward(
+        to index: Int,
+        for tabID: UUID,
+        sessionState: SessionNavigationAvailability
+    ) -> NavigationTransition? {
+        return history.goForward(to: index, for: tabID, sessionState: sessionState)
+    }
+    
     func useStoredNavigationHistory(for tabID: UUID) -> NavigationAvailability {
         return history.useStoredHistory(for: tabID)
+    }
+    
+    func updateCurrentHistoryTitle(_ title: String, for tabID: UUID, matching url: String) {
+        history.updateCurrentHistoryTitle(title, for: tabID, matching: url)
+    }
+    
+    func updateCurrentHistoryThumbnail(
+        _ image: UIImage?,
+        for tabID: UUID,
+        matching url: String,
+        completion: @escaping () -> Void
+    ) {
+        history.updateCurrentHistoryThumbnail(image, for: tabID, matching: url, completion: completion)
+    }
+    
+    func navigationPreviewImages(for tabID: UUID) -> NavigationPreviewImages {
+        return history.previewImages(for: tabID)
+    }
+    
+    func invalidateNavigationThumbnails() {
+        history.invalidateThumbnails()
     }
 }

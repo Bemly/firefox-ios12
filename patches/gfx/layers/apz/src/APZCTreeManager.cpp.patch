@@ -1,0 +1,509 @@
+diff --git a/gfx/layers/apz/src/APZCTreeManager.cpp b/gfx/layers/apz/src/APZCTreeManager.cpp
+index 525cc79ed3c3..403084dd6f1b 100644
+--- a/gfx/layers/apz/src/APZCTreeManager.cpp
++++ b/gfx/layers/apz/src/APZCTreeManager.cpp
+@@ -4,6 +4,7 @@
+ 
+ #include "APZCTreeManager.h"
+ 
++#include <algorithm>
+ #include <stack>
+ #include <unordered_set>
+ #include <utility>
+@@ -978,16 +979,21 @@ void APZCTreeManager::SampleForWebRender(const Maybe<VsyncId>& aVsyncId,
+ 
+   for (const FixedPositionInfo& info : mFixedPositionInfo) {
+     MOZ_ASSERT(info.mFixedPositionAnimationId.isSome());
+-    if (!IsFixedToRootContent(info, lock)) {
++    auto* apzc = GetRootContentApzc(info.mLayersId, info.mFixedPosTarget, lock);
++    if (!apzc) {
+       continue;
+     }
+ 
+     ScreenPoint translation = ComputeFixedMarginsOffset(
+-        lock, info.mFixedPosSides, mGeckoFixedLayerMargins);
++        apzc, info.mFixedPosSides, AsyncTransformConsumer::eForCompositing,
++        lock);
+ 
+-    LayerToParentLayerMatrix4x4 transform =
+-        LayerToParentLayerMatrix4x4::Translation(ViewAs<ParentLayerPixel>(
+-            translation, PixelCastJustification::ScreenIsParentLayerForRoot));
++    LayoutDevicePoint layoutTranslation =
++        ViewAs<ParentLayerPixel>(
++            translation, PixelCastJustification::ScreenIsParentLayerForRoot) /
++        apzc->GetCurrentPinchZoomScale(AsyncTransformConsumer::eForCompositing);
++    auto transform =
++        LayoutDeviceToLayoutDeviceMatrix4x4::Translation(layoutTranslation);
+ 
+     transforms.AppendElement(
+         wr::ToWrTransformProperty(*info.mFixedPositionAnimationId, transform));
+@@ -995,18 +1001,20 @@ void APZCTreeManager::SampleForWebRender(const Maybe<VsyncId>& aVsyncId,
+ 
+   for (const StickyPositionInfo& info : mStickyPositionInfo) {
+     MOZ_ASSERT(info.mStickyPositionAnimationId.isSome());
+-    SideBits sides = SidesStuckToRootContent(
+-        info, AsyncTransformConsumer::eForCompositing, lock);
+-    if (sides == SideBits::eNone) {
++    auto* apzc =
++        GetRootContentApzc(info.mLayersId, info.mStickyPosTarget, lock);
++    if (!apzc) {
+       continue;
+     }
++    ScreenPoint translation = ComputeStickyMarginsOffset(
++        info, apzc, AsyncTransformConsumer::eForCompositing, lock);
+ 
+-    ScreenPoint translation =
+-        ComputeFixedMarginsOffset(lock, sides, mGeckoFixedLayerMargins);
+-
+-    LayerToParentLayerMatrix4x4 transform =
+-        LayerToParentLayerMatrix4x4::Translation(ViewAs<ParentLayerPixel>(
+-            translation, PixelCastJustification::ScreenIsParentLayerForRoot));
++    LayoutDevicePoint layoutTranslation =
++        ViewAs<ParentLayerPixel>(
++            translation, PixelCastJustification::ScreenIsParentLayerForRoot) /
++        apzc->GetCurrentPinchZoomScale(AsyncTransformConsumer::eForCompositing);
++    auto transform =
++        LayoutDeviceToLayoutDeviceMatrix4x4::Translation(layoutTranslation);
+ 
+     transforms.AppendElement(
+         wr::ToWrTransformProperty(*info.mStickyPositionAnimationId, transform));
+@@ -1680,12 +1688,9 @@ APZEventResult APZCTreeManager::ReceiveInputEvent(
+           // like we do for other content. Scrollbars are "special" because they
+           // have special handling in AsyncCompositionManager when resolution is
+           // applied. TODO: we should find a better way to deal with this.
+-          ScreenToParentLayerMatrix4x4 transformToApzc =
+-              GetScreenToApzcTransform(state.mHit.mTargetApzc);
+-          ParentLayerToScreenMatrix4x4 transformToGecko =
+-              GetApzcToGeckoTransformForHit(state.mHit);
+           ScreenToScreenMatrix4x4 outTransform =
+-              transformToApzc * transformToGecko;
++              GetScreenToGeckoTransformForHit(state.mHit.mTargetApzc,
++                                              state.mHit);
+           Maybe<ScreenPoint> untransformedRefPoint =
+               UntransformBy(outTransform, mouseInput.mOrigin);
+           if (untransformedRefPoint) {
+@@ -1746,8 +1751,7 @@ APZEventResult APZCTreeManager::ReceiveInputEvent(
+         // events). Since we just flushed the pending repaints the transform to
+         // gecko space should only consist of overscroll-cancelling transforms.
+         ScreenToScreenMatrix4x4 transformToGecko =
+-            GetScreenToApzcTransform(state.mHit.mTargetApzc) *
+-            GetApzcToGeckoTransformForHit(state.mHit);
++            GetScreenToGeckoTransformForHit(state.mHit.mTargetApzc, state.mHit);
+         Maybe<ScreenPoint> untransformedOrigin =
+             UntransformBy(transformToGecko, wheelInput.mOrigin);
+ 
+@@ -1821,8 +1825,7 @@ APZEventResult APZCTreeManager::ReceiveInputEvent(
+         // transform to gecko space should only consist of overscroll-cancelling
+         // transforms.
+         ScreenToScreenMatrix4x4 transformToGecko =
+-            GetScreenToApzcTransform(state.mHit.mTargetApzc) *
+-            GetApzcToGeckoTransformForHit(state.mHit);
++            GetScreenToGeckoTransformForHit(state.mHit.mTargetApzc, state.mHit);
+         Maybe<ScreenPoint> untransformedStartPoint =
+             UntransformBy(transformToGecko, panInput.mPanStartPoint);
+         Maybe<ScreenPoint> untransformedDisplacement =
+@@ -1869,8 +1872,7 @@ APZEventResult APZCTreeManager::ReceiveInputEvent(
+ 
+       if (state.mHit.mTargetApzc) {
+         ScreenToScreenMatrix4x4 outTransform =
+-            GetScreenToApzcTransform(state.mHit.mTargetApzc) *
+-            GetApzcToGeckoTransformForHit(state.mHit);
++            GetScreenToGeckoTransformForHit(state.mHit.mTargetApzc, state.mHit);
+         Maybe<ScreenPoint> untransformedFocusPoint =
+             UntransformBy(outTransform, pinchInput.mFocusPoint);
+ 
+@@ -1895,8 +1897,7 @@ APZEventResult APZCTreeManager::ReceiveInputEvent(
+         MOZ_ASSERT(state.mHit.mHitResult != CompositorHitTestInvisibleToHit);
+ 
+         ScreenToScreenMatrix4x4 outTransform =
+-            GetScreenToApzcTransform(state.mHit.mTargetApzc) *
+-            GetApzcToGeckoTransformForHit(state.mHit);
++            GetScreenToGeckoTransformForHit(state.mHit.mTargetApzc, state.mHit);
+         Maybe<ScreenIntPoint> untransformedPoint =
+             UntransformBy(outTransform, tapInput.mPoint);
+ 
+@@ -2145,7 +2146,8 @@ void APZCTreeManager::ProcessTouchInput(InputHandlingState& aState,
+     // (By contrast, if we're in overscroll but not panning, such as after
+     // putting two fingers down during an overscroll animation, we process the
+     // second touch and proceed to pinch.)
+-    if (mTouchBlockHitResult.mTargetApzc &&
++    if (mTouchCounter.GetActiveTouchCount() > 0 &&
++        mTouchBlockHitResult.mTargetApzc &&
+         mTouchBlockHitResult.mTargetApzc->IsInPanningState() &&
+         BuildOverscrollHandoffChain(mTouchBlockHitResult.mTargetApzc)
+             ->HasOverscrolledApzc()) {
+@@ -2245,17 +2247,8 @@ void APZCTreeManager::ProcessTouchInput(InputHandlingState& aState,
+                                    : Some(std::move(touchBehaviors)),
+           initialTouchMove);
+ 
+-      // For computing the event to pass back to Gecko, use up-to-date
+-      // transforms (i.e. not anything cached in an input block). This ensures
+-      // that transformToApzc and transformToGecko are in sync.
+-      // Note: we are not using ConvertToGecko() here, because we don't
+-      // want to multiply transformToApzc and transformToGecko once
+-      // for each touch point.
+-      ScreenToParentLayerMatrix4x4 transformToApzc =
+-          GetScreenToApzcTransform(mTouchBlockHitResult.mTargetApzc);
+-      ParentLayerToScreenMatrix4x4 transformToGecko =
+-          GetApzcToGeckoTransformForHit(mTouchBlockHitResult);
+-      ScreenToScreenMatrix4x4 outTransform = transformToApzc * transformToGecko;
++      ScreenToScreenMatrix4x4 outTransform = GetScreenToGeckoTransformForHit(
++          mTouchBlockHitResult.mTargetApzc, mTouchBlockHitResult);
+ 
+       for (size_t i = 0; i < aInput.mTouches.Length(); i++) {
+         SingleTouchData& touchData = aInput.mTouches[i];
+@@ -2266,42 +2259,19 @@ void APZCTreeManager::ProcessTouchInput(InputHandlingState& aState,
+           return;
+         }
+         touchData.mScreenPoint = *untransformedScreenPoint;
+-        AdjustEventPointForDynamicToolbar(touchData.mScreenPoint,
+-                                          mTouchBlockHitResult);
+       }
+     }
+   }
+ 
+   mTouchCounter.Update(aInput);
+ 
+-  // If it's the end of the touch sequence then clear out variables so we
+-  // don't keep dangling references and leak things.
++  // Keep the hit result for tap gestures dispatched after the finger lifts.
+   if (mTouchCounter.GetActiveTouchCount() == 0) {
+-    mTouchBlockHitResult = HitTestResult();
+     mRetainedTouchIdentifier = -1;
+     mInScrollbarTouchDrag = false;
+   }
+ }
+ 
+-void APZCTreeManager::AdjustEventPointForDynamicToolbar(
+-    ScreenIntPoint& aEventPoint, const HitTestResult& aHit) {
+-  if (aHit.mFixedPosSides != SideBits::eNone) {
+-    MutexAutoLock lock(mMapLock);
+-    aEventPoint -= RoundedToInt(ComputeFixedMarginsOffset(
+-        lock, aHit.mFixedPosSides, mGeckoFixedLayerMargins));
+-  } else if (aHit.mNode && aHit.mNode->GetStickyPositionAnimationId()) {
+-    SideBits sideBits = SideBits::eNone;
+-    {
+-      RecursiveMutexAutoLock lock(mTreeLock);
+-      sideBits = SidesStuckToRootContent(
+-          aHit.mNode.Get(lock), AsyncTransformConsumer::eForEventHandling);
+-    }
+-    MutexAutoLock lock(mMapLock);
+-    aEventPoint -= RoundedToInt(
+-        ComputeFixedMarginsOffset(lock, sideBits, mGeckoFixedLayerMargins));
+-  }
+-}
+-
+ static MouseInput::MouseType MultiTouchTypeToMouseType(
+     MultiTouchInput::MultiTouchType aType) {
+   switch (aType) {
+@@ -2575,11 +2545,8 @@ void APZCTreeManager::ProcessUnhandledEvent(LayoutDeviceIntPoint* aRefPoint,
+   if (hit.mTargetApzc) {
+     MOZ_ASSERT(hit.mHitResult != CompositorHitTestInvisibleToHit);
+     hit.mTargetApzc->GetGuid(aOutTargetGuid);
+-    ScreenToParentLayerMatrix4x4 transformToApzc =
+-        GetScreenToApzcTransform(hit.mTargetApzc);
+-    ParentLayerToScreenMatrix4x4 transformToGecko =
+-        GetApzcToGeckoTransformForHit(hit);
+-    ScreenToScreenMatrix4x4 outTransform = transformToApzc * transformToGecko;
++    ScreenToScreenMatrix4x4 outTransform =
++        GetScreenToGeckoTransformForHit(hit.mTargetApzc, hit);
+     Maybe<ScreenIntPoint> untransformedRefPoint =
+         UntransformBy(outTransform, refPointAsScreen);
+     if (untransformedRefPoint) {
+@@ -2826,8 +2793,11 @@ void APZCTreeManager::ClearTree() {
+   // Ensure that no references to APZCs are alive in any lingering input
+   // blocks. This breaks cycles from InputBlockState::mTargetApzc back to
+   // the InputQueue.
+-  APZThreadUtils::RunOnControllerThread(NewRunnableMethod(
+-      "layers::InputQueue::Clear", mInputQueue, &InputQueue::Clear));
++  APZThreadUtils::RunOnControllerThread(NS_NewRunnableFunction(
++      "layers::APZCTreeManager::ClearInputState", [self = RefPtr{this}] {
++        self->mInputQueue->Clear();
++        self->mTouchBlockHitResult = HitTestResult();
++      }));
+ 
+   RecursiveMutexAutoLock lock(mTreeLock);
+ 
+@@ -3548,15 +3518,36 @@ ParentLayerToScreenMatrix4x4 APZCTreeManager::GetApzcToGeckoTransform(
+       PixelCastJustification::ScreenIsParentLayerForRoot);
+ }
+ 
+-ParentLayerToScreenMatrix4x4 APZCTreeManager::GetApzcToGeckoTransformForHit(
+-    HitTestResult& aHitResult) const {
++ScreenToScreenMatrix4x4 APZCTreeManager::GetScreenToGeckoTransformForHit(
++    const AsyncPanZoomController* aApzc, const HitTestResult& aHit) const {
+   // Fixed content is only subject to the visual component of the async
+   // transform.
+   AsyncTransformComponents components =
+-      aHitResult.mFixedPosSides == SideBits::eNone
++      aHit.mFixedPosSides == SideBits::eNone
+           ? LayoutAndVisual
+           : AsyncTransformComponents{AsyncTransformComponent::eVisual};
+-  return GetApzcToGeckoTransform(aHitResult.mTargetApzc, components);
++  ScreenToScreenMatrix4x4 transform =
++      GetScreenToApzcTransform(aApzc) *
++      GetApzcToGeckoTransform(aApzc, components);
++  ScreenPoint translation;
++  if (aHit.mFixedPosSides != SideBits::eNone && aHit.mTargetApzc &&
++      aHit.mTargetApzc->IsRootContent()) {
++    MutexAutoLock lock(mMapLock);
++    translation = ComputeFixedMarginsOffset(
++        aHit.mTargetApzc, aHit.mFixedPosSides,
++        AsyncTransformConsumer::eForEventHandling, lock);
++  } else if (aHit.mNode && aHit.mNode->GetStickyPositionAnimationId()) {
++    RecursiveMutexAutoLock treeLock(mTreeLock);
++    MutexAutoLock mapLock(mMapLock);
++    const auto* node = aHit.mNode.Get(treeLock);
++    if (auto* apzc = GetRootContentApzc(node->GetLayersId(),
++                                        node->GetStickyPosTarget(), mapLock)) {
++      translation = ComputeStickyMarginsOffset(
++          StickyPositionInfo(node), apzc,
++          AsyncTransformConsumer::eForEventHandling, mapLock);
++    }
++  }
++  return ScreenToScreenMatrix4x4::Translation(-translation) * transform;
+ }
+ 
+ CSSToCSSMatrix4x4 APZCTreeManager::GetOopifToRootContentTransform(
+@@ -3670,19 +3661,7 @@ Maybe<ScreenIntPoint> APZCTreeManager::ConvertToGecko(
+   const HitTestResult& hit = mInputQueue->GetCurrentTouchBlock()
+                                  ? mTouchBlockHitResult
+                                  : mTapGestureHitResult;
+-  AsyncTransformComponents components =
+-      hit.mFixedPosSides == SideBits::eNone
+-          ? LayoutAndVisual
+-          : AsyncTransformComponents{AsyncTransformComponent::eVisual};
+-  ScreenToScreenMatrix4x4 transformScreenToGecko =
+-      GetScreenToApzcTransform(aApzc) *
+-      GetApzcToGeckoTransform(aApzc, components);
+-  Maybe<ScreenIntPoint> geckoPoint =
+-      UntransformBy(transformScreenToGecko, aPoint);
+-  if (geckoPoint) {
+-    AdjustEventPointForDynamicToolbar(*geckoPoint, hit);
+-  }
+-  return geckoPoint;
++  return UntransformBy(GetScreenToGeckoTransformForHit(aApzc, hit), aPoint);
+ }
+ 
+ already_AddRefed<AsyncPanZoomController> APZCTreeManager::CommonAncestor(
+@@ -3732,68 +3711,80 @@ already_AddRefed<AsyncPanZoomController> APZCTreeManager::CommonAncestor(
+   return ancestor.forget();
+ }
+ 
+-bool APZCTreeManager::IsFixedToRootContent(
+-    const FixedPositionInfo& aFixedInfo,
++AsyncPanZoomController* APZCTreeManager::GetRootContentApzc(
++    LayersId aLayersId, ScrollableLayerGuid::ViewID aScrollId,
+     const MutexAutoLock& aProofOfMapLock) const {
+-  ScrollableLayerGuid::ViewID fixedTarget = aFixedInfo.mFixedPosTarget;
+-  if (fixedTarget == ScrollableLayerGuid::NULL_SCROLL_ID) {
+-    return false;
++  if (aScrollId == ScrollableLayerGuid::NULL_SCROLL_ID) {
++    return nullptr;
+   }
+-  auto it =
+-      mApzcMap.find(ScrollableLayerGuid(aFixedInfo.mLayersId, 0, fixedTarget));
++  auto it = mApzcMap.find(ScrollableLayerGuid(aLayersId, 0, aScrollId));
+   if (it == mApzcMap.end()) {
+-    return false;
++    return nullptr;
+   }
+-  RefPtr<AsyncPanZoomController> targetApzc = it->second.apzc;
+-  return targetApzc && targetApzc->IsRootContent();
+-}
+-
+-SideBits APZCTreeManager::SidesStuckToRootContent(
+-    const HitTestingTreeNode* aNode, AsyncTransformConsumer aMode) const {
+-  MutexAutoLock lock(mMapLock);
+-  return SidesStuckToRootContent(StickyPositionInfo(aNode), aMode, lock);
++  auto* apzc = it->second.apzc.get();
++  return apzc && apzc->IsRootContent() ? apzc : nullptr;
+ }
+ 
+-SideBits APZCTreeManager::SidesStuckToRootContent(
+-    const StickyPositionInfo& aStickyInfo, AsyncTransformConsumer aMode,
+-    const MutexAutoLock& aProofOfMapLock) const {
+-  SideBits result = SideBits::eNone;
+-
+-  ScrollableLayerGuid::ViewID stickyTarget = aStickyInfo.mStickyPosTarget;
+-  if (stickyTarget == ScrollableLayerGuid::NULL_SCROLL_ID) {
+-    return result;
+-  }
+-
+-  // We support the dynamic toolbar at top and bottom.
+-  if ((aStickyInfo.mFixedPosSides & SideBits::eTopBottom) == SideBits::eNone) {
+-    return result;
+-  }
+-
+-  auto it = mApzcMap.find(
+-      ScrollableLayerGuid(aStickyInfo.mLayersId, 0, stickyTarget));
+-  if (it == mApzcMap.end()) {
+-    return result;
+-  }
+-  RefPtr<AsyncPanZoomController> stickyTargetApzc = it->second.apzc;
+-  if (!stickyTargetApzc || !stickyTargetApzc->IsRootContent()) {
+-    return result;
+-  }
+-
+-  ParentLayerPoint translation =
+-      stickyTargetApzc
++ScreenPoint APZCTreeManager::ComputeStickyMarginsOffset(
++    const StickyPositionInfo& aStickyInfo, const AsyncPanZoomController* aApzc,
++    AsyncTransformConsumer aMode, const MutexAutoLock& aProofOfMapLock) const {
++  ScreenPoint result;
++  const ParentLayerPoint translation =
++      aApzc
+           ->GetCurrentAsyncTransform(
+               aMode, AsyncTransformComponents{AsyncTransformComponent::eLayout})
+           .mTranslation;
+-
+-  if (apz::IsStuckAtTop(translation.y, aStickyInfo.mStickyScrollRangeInner,
+-                        aStickyInfo.mStickyScrollRangeOuter)) {
+-    result |= SideBits::eTop;
+-  }
+-  if (apz::IsStuckAtBottom(translation.y, aStickyInfo.mStickyScrollRangeInner,
+-                           aStickyInfo.mStickyScrollRangeOuter)) {
+-    result |= SideBits::eBottom;
++  const float asyncZoom = aApzc->GetCurrentPinchZoomScale(aMode).scale /
++                          aApzc->GetCumulativeResolution().scale;
++  const float topMargin =
++      ComputeFixedMarginsOffset(aApzc, SideBits::eTop, aMode, aProofOfMapLock)
++          .y;
++  float ancestorOffset = 0;
++  float ancestorOffsetWithoutMargins = 0;
++
++  // WebRender includes each parent's sticky movement when positioning children.
++  for (const auto& range : aStickyInfo.mScrollRanges) {
++    result = ScreenPoint();
++    if ((range.mSides & SideBits::eTopBottom) == SideBits::eNone) {
++      continue;
++    }
++    const float scrollDelta = -translation.y * asyncZoom - ancestorOffset;
++    const float innerTop = range.mInner.YMost() * asyncZoom;
++    const float outerTop = range.mOuter.YMost() * asyncZoom;
++    const float innerBottom = range.mInner.Y() * asyncZoom;
++    const float outerBottom = range.mOuter.Y() * asyncZoom;
++    auto stickyOffset = [&](float aDelta) {
++      return std::clamp(aDelta, innerTop, outerTop) -
++             std::clamp(0.0f, innerTop, outerTop) +
++             std::clamp(aDelta, outerBottom, innerBottom) -
++             std::clamp(0.0f, outerBottom, innerBottom);
++    };
++
++    SideBits sides = SideBits::eNone;
++    if (apz::IsStuckAtTop(-scrollDelta / asyncZoom, range.mInner,
++                          range.mOuter)) {
++      sides |= SideBits::eTop;
++    }
++    if (apz::IsStuckAtBottom(-scrollDelta / asyncZoom, range.mInner,
++                             range.mOuter)) {
++      sides |= SideBits::eBottom;
++    }
++    result = ComputeFixedMarginsOffset(aApzc, sides, aMode, aProofOfMapLock);
++    if ((range.mSides & SideBits::eTop) != SideBits::eNone) {
++      const float adjustment =
++          std::clamp(scrollDelta + topMargin, innerTop, outerTop) -
++          std::clamp(scrollDelta, innerTop, outerTop);
++      if (adjustment != 0 || (sides & SideBits::eTop) != SideBits::eNone) {
++        result.y = adjustment;
++      }
++    }
++    ancestorOffset += stickyOffset(scrollDelta) + result.y;
++    ancestorOffsetWithoutMargins +=
++        stickyOffset(-translation.y * asyncZoom - ancestorOffsetWithoutMargins);
+   }
+-  return result;
++  return aMode == AsyncTransformConsumer::eForEventHandling
++             ? ScreenPoint(0, ancestorOffset - ancestorOffsetWithoutMargins)
++             : result;
+ }
+ 
+ LayerToParentLayerMatrix4x4 APZCTreeManager::ComputeTransformForScrollThumbNode(
+@@ -3959,11 +3950,15 @@ void APZCTreeManager::SendSubtreeTransformsToChromeMainThread(
+ }
+ 
+ void APZCTreeManager::SetFixedLayerMargins(ScreenIntCoord aTop,
+-                                           ScreenIntCoord aBottom) {
++                                           ScreenIntCoord aBottom,
++                                           ScreenIntCoord aTopInset,
++                                           ScreenIntCoord aBottomInset) {
+   {
+     MutexAutoLock lock(mMapLock);
+     mCompositorFixedLayerMargins.top = ScreenCoord(aTop);
+     mCompositorFixedLayerMargins.bottom = ScreenCoord(aBottom);
++    mContentTopInset = ScreenCoord(aTopInset);
++    mContentBottomInset = ScreenCoord(aBottomInset);
+   }
+   {
+     RecursiveMutexAutoLock lock(mTreeLock);
+@@ -3973,9 +3968,17 @@ void APZCTreeManager::SetFixedLayerMargins(ScreenIntCoord aTop,
+ 
+ void APZCTreeManager::SetFixedLayerMarginsOnRootContentApzcs(
+     const RecursiveMutexAutoLock& aProofOfTreeLock) {
+-  ScreenMargin margins = GetCompositorFixedLayerMargins();
++  ScreenMargin margins;
++  ScreenCoord topInset;
++  ScreenCoord bottomInset;
++  {
++    MutexAutoLock lock(mMapLock);
++    margins = GetCompositorFixedLayerMargins(lock);
++    topInset = mContentTopInset;
++    bottomInset = mContentBottomInset;
++  }
+   for (auto* apzc : mRootContentApzcs) {
+-    apzc->SetFixedLayerMargins(margins);
++    apzc->SetFixedLayerMargins(margins, topInset, bottomInset);
+   }
+ }
+ 
+@@ -4011,6 +4014,28 @@ ScreenPoint APZCTreeManager::ComputeFixedMarginsOffset(
+   return translation;
+ }
+ 
++ScreenPoint APZCTreeManager::ComputeFixedMarginsOffset(
++    const AsyncPanZoomController* aApzc, SideBits aFixedSides,
++    AsyncTransformConsumer aMode, const MutexAutoLock& aProofOfMapLock) const {
++  ScreenPoint translation = ComputeFixedMarginsOffset(
++      aProofOfMapLock, aFixedSides, mGeckoFixedLayerMargins);
++  if ((aFixedSides & SideBits::eTop) != SideBits::eNone &&
++      (!IsSoftwareKeyboardVisible(aProofOfMapLock) ||
++       InteractiveWidgetMode(aProofOfMapLock) ==
++           dom::InteractiveWidget::ResizesContent)) {
++    const ParentLayerPoint visualTranslation =
++        aApzc
++            ->GetCurrentAsyncTransform(
++                aMode,
++                AsyncTransformComponents{AsyncTransformComponent::eVisual})
++            .mTranslation;
++    translation.y -=
++        ViewAs<ScreenPixel>(visualTranslation.y,
++                            PixelCastJustification::ScreenIsParentLayerForRoot);
++  }
++  return translation;
++}
++
+ /*static*/
+ LayerToParentLayerMatrix4x4 APZCTreeManager::ComputeTransformForScrollThumb(
+     const LayerToParentLayerMatrix4x4& aCurrentTransform,
+@@ -4102,11 +4127,18 @@ APZCTreeManager::FixedPositionInfo::FixedPositionInfo(
+ APZCTreeManager::StickyPositionInfo::StickyPositionInfo(
+     const HitTestingTreeNode* aNode) {
+   mStickyPositionAnimationId = aNode->GetStickyPositionAnimationId();
+-  mFixedPosSides = aNode->GetFixedPosSides();
+   mStickyPosTarget = aNode->GetStickyPosTarget();
+   mLayersId = aNode->GetLayersId();
+-  mStickyScrollRangeInner = aNode->GetStickyScrollRangeInner();
+-  mStickyScrollRangeOuter = aNode->GetStickyScrollRangeOuter();
++  for (const auto* node = aNode; node; node = node->GetParent()) {
++    if (node->GetLayersId() == mLayersId &&
++        node->GetStickyPosTarget() == mStickyPosTarget &&
++        node->GetStickyPositionAnimationId()) {
++      mScrollRanges.push_back({node->GetFixedPosSides(),
++                               node->GetStickyScrollRangeInner(),
++                               node->GetStickyScrollRangeOuter()});
++    }
++  }
++  std::reverse(mScrollRanges.begin(), mScrollRanges.end());
+ }
+ 
+ }  // namespace layers

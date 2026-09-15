@@ -15,6 +15,7 @@ final class SidebarMenuViewController: UIViewController, UICollectionViewDelegat
     private let mainSection = "main"
     private let cellReuseIdentifier = "SidebarActionCell"
     private let childSidebarButtonTag = 9101
+    private(set) var shownSection: LibrarySection?
     // Diffable data source is iOS 13+. Stored type-erased so this class stays
     // available on iOS 12, which uses a classic UICollectionViewDataSource
     // instead (see the iOS 12 data source methods below). See IOS12_GATES.md.
@@ -40,7 +41,6 @@ final class SidebarMenuViewController: UIViewController, UICollectionViewDelegat
             layout = UICollectionViewCompositionalLayout.list(using: configuration)
         } else {
             let flowLayout = UICollectionViewFlowLayout()
-            flowLayout.itemSize = CGSize(width: 1, height: UX.legacyItemHeight)
             flowLayout.minimumLineSpacing = 0
             flowLayout.sectionInset = .zero
             layout = flowLayout
@@ -50,6 +50,9 @@ final class SidebarMenuViewController: UIViewController, UICollectionViewDelegat
         view.translatesAutoresizingMaskIntoConstraints = false
         view.backgroundColor = .appSystemGray6
         view.delegate = self
+        if #available(iOS 14.0, *) {
+            view.selectionFollowsFocus = false
+        }
         return view
     }()
     
@@ -90,6 +93,11 @@ final class SidebarMenuViewController: UIViewController, UICollectionViewDelegat
         refreshSidebarButton()
     }
     
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        refreshSidebarButton()
+    }
+    
     // MARK: - UINavigationControllerDelegate
     
     func navigationController(_ navigationController: UINavigationController, willShow viewController: UIViewController, animated: Bool) {
@@ -103,6 +111,9 @@ final class SidebarMenuViewController: UIViewController, UICollectionViewDelegat
     }
     
     func navigationController(_ navigationController: UINavigationController, didShow viewController: UIViewController, animated: Bool) {
+        if viewController === self {
+            shownSection = nil
+        }
         refreshSidebarButton(for: viewController)
     }
     
@@ -141,10 +152,23 @@ final class SidebarMenuViewController: UIViewController, UICollectionViewDelegat
         return CGSize(width: collectionView.bounds.width, height: UX.legacyItemHeight)
     }
     
+    func collectionView(
+        _ collectionView: UICollectionView,
+        layout collectionViewLayout: UICollectionViewLayout,
+        sizeForItemAt indexPath: IndexPath
+    ) -> CGSize {
+        return CGSize(width: collectionView.bounds.width, height: UX.legacyItemHeight)
+    }
+    
     // MARK: - Sections
     
-    func showSection(_ section: LibrarySection, animated: Bool) {
+    func showSection(
+        _ section: LibrarySection,
+        animated: Bool,
+        startsEditingBookmarks: Bool = false
+    ) {
         loadViewIfNeeded()
+        shownSection = section
 
         var indexPath: IndexPath?
         if #available(iOS 13.0, *) {
@@ -156,19 +180,25 @@ final class SidebarMenuViewController: UIViewController, UICollectionViewDelegat
             collectionView.selectItem(at: indexPath, animated: false, scrollPosition: [])
         }
 
-        let viewController = makeSectionViewController(for: section)
+        let viewController = makeSectionViewController(
+            for: section,
+            startsEditingBookmarks: startsEditingBookmarks
+        )
         navigationController?.setViewControllers([self, viewController], animated: animated)
         if let indexPath {
             collectionView.deselectItem(at: indexPath, animated: animated)
         }
     }
     
-    private func makeSectionViewController(for section: LibrarySection) -> UIViewController {
+    private func makeSectionViewController(
+        for section: LibrarySection,
+        startsEditingBookmarks: Bool
+    ) -> UIViewController {
         let contentViewController: UIViewController
         
         switch section {
         case .bookmarks:
-            contentViewController = BookmarksViewController()
+            contentViewController = BookmarksViewController(startsEditing: startsEditingBookmarks)
         case .history:
             contentViewController = HistoryViewController()
         case .downloads:
@@ -198,9 +228,11 @@ final class SidebarMenuViewController: UIViewController, UICollectionViewDelegat
         if viewController === self {
             if showChromeSidebarButton {
                 navigationItem.leftBarButtonItem = nil
+                navigationItem.leftBarButtonItems = nil
             } else {
                 configureSidebarButton(sidebarButton)
-                navigationItem.leftBarButtonItem = UIBarButtonItem(customView: sidebarButton)
+                navigationItem.leftBarButtonItem = nil
+                navigationItem.leftBarButtonItems = standaloneSidebarButtonItems(for: sidebarButton)
             }
             navigationItem.rightBarButtonItem = nil
             return
@@ -227,9 +259,33 @@ final class SidebarMenuViewController: UIViewController, UICollectionViewDelegat
         return button
     }
     
+    private func standaloneSidebarButtonItems(for button: UIButton) -> [UIBarButtonItem] {
+        let item = UIBarButtonItem(customView: button)
+        let leadingSpace = standaloneSidebarButtonLeadingSpace
+        guard leadingSpace > 0 else {
+            return [item]
+        }
+        
+        let spacer = UIBarButtonItem(barButtonSystemItem: .fixedSpace, target: nil, action: nil)
+        spacer.width = leadingSpace
+        return [spacer, item]
+    }
+    
     private func configureSidebarButton(_ button: UIButton) {
         button.setImage(splitViewController?.displayModeButtonItem.image ?? UIImage(named: "reynard.sidebar.left"), for: .normal)
         button.accessibilityLabel = splitViewController?.displayModeButtonItem.accessibilityLabel
+    }
+    
+    private var standaloneSidebarButtonLeadingSpace: CGFloat {
+        if #available(iOS 26.0, *) {
+            let layoutInsets = view.directionalEdgeInsets(for: .safeArea(cornerAdaptation: .horizontal))
+            let safeAreaLeadingInset = view.effectiveUserInterfaceLayoutDirection == .rightToLeft
+            ? view.safeAreaInsets.right
+            : view.safeAreaInsets.left
+            return max(0, layoutInsets.leading - safeAreaLeadingInset)
+        }
+        
+        return 0
     }
     
     private func rightBarButtonItemsExcludingSidebarButton(from navigationItem: UINavigationItem) -> [UIBarButtonItem] {

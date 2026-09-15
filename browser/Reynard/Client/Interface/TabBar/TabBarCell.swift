@@ -14,6 +14,7 @@ final class TabBarCell: UICollectionViewCell {
         static let tabTitleFontSize: CGFloat = 14
         static let tabTitleSpacing: CGFloat = 6
         static let tabFaviconSideLength: CGFloat = 16
+        static let tabFaviconCornerRadius: CGFloat = 3
         static let tabCloseButtonSideLength: CGFloat = 22
         static let tabCloseButtonTrailingInset: CGFloat = 6
         static let tabCloseButtonSymbolPointSize: CGFloat = 14
@@ -21,7 +22,9 @@ final class TabBarCell: UICollectionViewCell {
         static let expandedTabContentTrailingInset: CGFloat = 34
         static let collapsedTabContentHorizontalInset: CGFloat = 8
         static let expandedTabTitleWidthInset: CGFloat = 58
-        static let tabSeparatorWidth: CGFloat = 2 / UIScreen.main.scale
+        static let contentCornerRadius: CGFloat = 16
+        static let contentInsets = UIEdgeInsets(top: 2, left: 4, bottom: 2, right: 4)
+        static let borderWidth: CGFloat = 0.5
     }
     
     enum LayoutMode {
@@ -40,9 +43,29 @@ final class TabBarCell: UICollectionViewCell {
         return UX.collapsedTabMinimumWidth
     }
     
-    private static let fallbackFavicon = UIImage(named: "reynard.globe")
+    static var contentCornerRadius: CGFloat {
+        return UX.contentCornerRadius
+    }
     
+    static var contentInsets: UIEdgeInsets {
+        return UX.contentInsets
+    }
+    
+    private static let fallbackFavicon = UIImage(named: "reynard.globe")
+    private static let selectedTabBackgroundColor = UIColor { traitCollection in
+        let backgroundColor: UIColor = traitCollection.userInterfaceStyle == .dark
+        ? .tertiarySystemBackground.withAlphaComponent(0.8)
+        : .systemBackground.withAlphaComponent(0.8)
+        return backgroundColor.resolvedColor(with: traitCollection)
+    }
     var closeHandler: (() -> Void)?
+    private(set) var tabID: UUID?
+    
+    private let tabContentView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
     
     private let faviconView: UIImageView = {
         let imageView = UIImageView()
@@ -50,6 +73,7 @@ final class TabBarCell: UICollectionViewCell {
         imageView.contentMode = .scaleAspectFit
         imageView.tintColor = .appSecondaryLabel
         imageView.clipsToBounds = true
+        imageView.layer.cornerRadius = UX.tabFaviconCornerRadius
         return imageView
     }()
     
@@ -65,6 +89,9 @@ final class TabBarCell: UICollectionViewCell {
     
     private let closeButton: UIButton = {
         let button = UIButton(type: .system)
+        if #available(iOS 13.4, *) {
+            button.isPointerInteractionEnabled = true
+        }
         button.translatesAutoresizingMaskIntoConstraints = false
         button.setImage(UIImage(named: "reynard.x.square.fill"), for: .normal)
         if #available(iOS 13.0, *) {
@@ -76,13 +103,6 @@ final class TabBarCell: UICollectionViewCell {
         button.tintColor = .appSecondaryLabel
         button.isHidden = true
         return button
-    }()
-    
-    private let trailingSeparator: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = .appSeparator
-        return view
     }()
     
     private let titleStack: UIStackView = {
@@ -110,6 +130,7 @@ final class TabBarCell: UICollectionViewCell {
         configureContentPriorities()
         configureActions()
         configureConstraints()
+        updateBorderColor()
     }
     
     required init?(coder: NSCoder) {
@@ -118,26 +139,36 @@ final class TabBarCell: UICollectionViewCell {
     
     override func prepareForReuse() {
         super.prepareForReuse()
-        faviconView.image = Self.fallbackFavicon
-        titleLabel.isHidden = false
-        titleStack.spacing = UX.tabTitleSpacing
-        expandedLeadingConstraint.isActive = true
-        collapsedLeadingConstraint.isActive = false
-        expandedTrailingConstraint.isActive = true
-        collapsedTrailingConstraint.isActive = false
-        expandedTitleWidthConstraint.isActive = true
+        tabID = nil
         closeHandler = nil
+        tabContentView.layer.borderWidth = 0
+    }
+    
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else {
+            return
+        }
+        
+        updateBorderColor()
     }
     
     // MARK: - Configuration
     
-    func configure(tab: Tab, isSelected: Bool, layoutMode: LayoutMode, cellWidth: CGFloat) {
-        let displayTitle = tab.title.isEmpty ? "Homepage" : tab.title
+    func configure(
+        tab: Tab,
+        isSelected: Bool,
+        layoutMode: LayoutMode,
+        cellWidth: CGFloat
+    ) {
+        tabID = tab.id
+        let displayTitle = tab.title.isEmpty ? NSLocalizedString("Homepage", comment: "") : tab.title
         titleLabel.text = displayTitle
         faviconView.image = tab.favicon ?? Self.fallbackFavicon
-        contentView.backgroundColor = isSelected ? .appSystemGray6 : .appSystemGray5
-        titleLabel.textColor = isSelected ? .appLabel : .appSecondaryLabel
-        faviconView.tintColor = isSelected ? .appLabel : .appSecondaryLabel
+        tabContentView.backgroundColor = isSelected ? Self.selectedTabBackgroundColor : .clear
+        tabContentView.layer.borderWidth = isSelected ? UX.borderWidth : 0
+        titleLabel.textColor = isSelected ? .label : .secondaryLabel
+        faviconView.tintColor = isSelected ? .label : .secondaryLabel
         let minimumVisibleTitle = Self.minimumVisibleTabTitle as NSString
         let minimumTitleWidth = minimumVisibleTitle.size(withAttributes: [.font: titleLabel.font as Any]).width
         let availableTitleWidth = cellWidth - UX.expandedTabTitleWidthInset
@@ -152,7 +183,6 @@ final class TabBarCell: UICollectionViewCell {
         collapsedTrailingConstraint.isActive = isCollapsed
         expandedTitleWidthConstraint.isActive = !isCollapsed
         closeButton.isHidden = isCollapsed || !isSelected
-        trailingSeparator.isHidden = isSelected
     }
     
     func containsCloseButton(at point: CGPoint) -> Bool {
@@ -160,22 +190,26 @@ final class TabBarCell: UICollectionViewCell {
             return false
         }
         
-        let pointInContentView = convert(point, to: contentView)
-        return closeButton.frame.contains(pointInContentView)
+        let convertedPoint = convert(point, to: tabContentView)
+        return closeButton.frame.contains(convertedPoint)
     }
     
     // MARK: - View Setup
     
     private func configureAppearance() {
-        contentView.layer.cornerRadius = 0
+        contentView.backgroundColor = .clear
+        tabContentView.layer.cornerRadius = UX.contentCornerRadius
+        tabContentView.layer.cornerCurve = .continuous
+        tabContentView.layer.masksToBounds = true
+        tabContentView.layer.borderWidth = 0
     }
     
     private func configureHierarchy() {
-        contentView.addSubview(titleStack)
+        contentView.addSubview(tabContentView)
+        tabContentView.addSubview(titleStack)
         titleStack.addArrangedSubview(faviconView)
         titleStack.addArrangedSubview(titleLabel)
-        contentView.addSubview(closeButton)
-        contentView.addSubview(trailingSeparator)
+        tabContentView.addSubview(closeButton)
     }
     
     private func configureContentPriorities() {
@@ -189,15 +223,20 @@ final class TabBarCell: UICollectionViewCell {
     }
     
     private func configureConstraints() {
-        expandedTrailingConstraint = titleStack.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -UX.expandedTabContentTrailingInset)
-        collapsedTrailingConstraint = titleStack.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -UX.collapsedTabContentHorizontalInset)
-        expandedLeadingConstraint = titleStack.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: UX.expandedTabContentLeadingInset)
-        collapsedLeadingConstraint = titleStack.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: UX.collapsedTabContentHorizontalInset)
-        expandedTitleWidthConstraint = titleLabel.widthAnchor.constraint(lessThanOrEqualTo: contentView.widthAnchor, constant: -UX.expandedTabTitleWidthInset)
+        expandedTrailingConstraint = titleStack.trailingAnchor.constraint(lessThanOrEqualTo: tabContentView.trailingAnchor, constant: -UX.expandedTabContentTrailingInset)
+        collapsedTrailingConstraint = titleStack.trailingAnchor.constraint(lessThanOrEqualTo: tabContentView.trailingAnchor, constant: -UX.collapsedTabContentHorizontalInset)
+        expandedLeadingConstraint = titleStack.leadingAnchor.constraint(greaterThanOrEqualTo: tabContentView.leadingAnchor, constant: UX.expandedTabContentLeadingInset)
+        collapsedLeadingConstraint = titleStack.leadingAnchor.constraint(greaterThanOrEqualTo: tabContentView.leadingAnchor, constant: UX.collapsedTabContentHorizontalInset)
+        expandedTitleWidthConstraint = titleLabel.widthAnchor.constraint(lessThanOrEqualTo: tabContentView.widthAnchor, constant: -UX.expandedTabTitleWidthInset)
         
         NSLayoutConstraint.activate([
-            titleStack.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            titleStack.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            tabContentView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: UX.contentInsets.left),
+            tabContentView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -UX.contentInsets.right),
+            tabContentView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.contentInsets.top),
+            tabContentView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.contentInsets.bottom),
+            
+            titleStack.centerXAnchor.constraint(equalTo: tabContentView.centerXAnchor),
+            titleStack.centerYAnchor.constraint(equalTo: tabContentView.centerYAnchor),
             expandedLeadingConstraint,
             expandedTrailingConstraint,
             
@@ -206,16 +245,15 @@ final class TabBarCell: UICollectionViewCell {
             
             expandedTitleWidthConstraint,
             
-            closeButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -UX.tabCloseButtonTrailingInset),
-            closeButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            closeButton.trailingAnchor.constraint(equalTo: tabContentView.trailingAnchor, constant: -UX.tabCloseButtonTrailingInset),
+            closeButton.centerYAnchor.constraint(equalTo: tabContentView.centerYAnchor),
             closeButton.widthAnchor.constraint(equalToConstant: UX.tabCloseButtonSideLength),
             closeButton.heightAnchor.constraint(equalToConstant: UX.tabCloseButtonSideLength),
-            
-            trailingSeparator.topAnchor.constraint(equalTo: contentView.topAnchor),
-            trailingSeparator.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            trailingSeparator.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            trailingSeparator.widthAnchor.constraint(equalToConstant: UX.tabSeparatorWidth),
         ])
+    }
+    
+    private func updateBorderColor() {
+        tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
     }
     
     // MARK: - Actions

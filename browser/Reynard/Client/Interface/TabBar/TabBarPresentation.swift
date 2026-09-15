@@ -28,27 +28,30 @@ final class TabBarPresentation {
         }
         tabBar.applyVisibility(visibility)
         
-        let layoutChanges = {
-            self.tabBar.superview?.layoutIfNeeded()
-            return
-        }
-        let hideCompletion: (Bool) -> Void = { _ in
-            self.tabBar.isHidden = visibility != .visible
-        }
-        
         if animated {
             UIView.animate(
                 withDuration: UX.visibilityAnimationDuration,
-                animations: layoutChanges,
-                completion: hideCompletion
+                animations: {
+                    self.tabBar.superview?.layoutIfNeeded()
+                },
+                completion: { [weak self] _ in
+                    self?.finishVisibilityChange(to: visibility)
+                }
             )
         } else {
-            layoutChanges()
-            hideCompletion(true)
+            tabBar.superview?.layoutIfNeeded()
+            finishVisibilityChange(to: visibility)
         }
     }
     
     func setAlpha(_ alpha: CGFloat) {
         tabBar.alpha = alpha
+    }
+    
+    private func finishVisibilityChange(to visibility: TabBar.Visibility) {
+        guard tabBar.visibility == visibility else {
+            return
+        }
+        tabBar.isHidden = visibility != .visible
     }
 }

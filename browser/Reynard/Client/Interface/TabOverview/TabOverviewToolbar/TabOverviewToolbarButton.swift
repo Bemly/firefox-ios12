@@ -23,10 +23,14 @@ final class TabOverviewToolbarButton: UIButton {
     }
     
     private let action: Action
+    private var legacyMenuDelegate: LegacyMenuDelegate?
     
     init(action: Action) {
         self.action = action
         super.init(frame: .zero)
+        if #available(iOS 13.4, *) {
+            isPointerInteractionEnabled = true
+        }
         configureAppearance()
         configureImage()
         configureConstraints()
@@ -39,6 +43,21 @@ final class TabOverviewToolbarButton: UIButton {
     func setActionEnabled(_ enabled: Bool) {
         isEnabled = enabled
         alpha = enabled ? 1 : UX.disabledToolbarButtonAlpha
+    }
+    
+    func installMenu(_ menu: UIMenu?) {
+        if #available(iOS 14.0, *) {
+            self.menu = menu
+            showsMenuAsPrimaryAction = menu != nil
+        } else {
+            if legacyMenuDelegate == nil {
+                let delegate = LegacyMenuDelegate()
+                addInteraction(UIContextMenuInteraction(delegate: delegate))
+                addTarget(self, action: #selector(presentLegacyMenu), for: .touchUpInside)
+                legacyMenuDelegate = delegate
+            }
+            legacyMenuDelegate?.menu = menu
+        }
     }
     
     private func configureAppearance() {
@@ -73,6 +92,38 @@ final class TabOverviewToolbarButton: UIButton {
         case .clear: return "reynard.trash"
         case .add: return "reynard.plus"
         case .done: return "reynard.checkmark"
+        }
+    }
+    
+    @objc private func presentLegacyMenu() {
+        guard let interaction = interactions.compactMap({ $0 as? UIContextMenuInteraction }).first else {
+            return
+        }
+        
+        let selector = NSSelectorFromString("_presentMenuAtLocation:")
+        guard interaction.responds(to: selector) else {
+            return
+        }
+        
+        let center = NSValue(cgPoint: CGPoint(x: bounds.midX, y: bounds.midY))
+        _ = interaction.perform(selector, with: center)
+    }
+}
+
+@available(iOS 13.0, *)
+private final class LegacyMenuDelegate: NSObject, UIContextMenuInteractionDelegate {
+    var menu: UIMenu?
+    
+    func contextMenuInteraction(
+        _ interaction: UIContextMenuInteraction,
+        configurationForMenuAtLocation location: CGPoint
+    ) -> UIContextMenuConfiguration? {
+        guard let menu else {
+            return nil
+        }
+        
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { _ in
+            menu
         }
     }
 }

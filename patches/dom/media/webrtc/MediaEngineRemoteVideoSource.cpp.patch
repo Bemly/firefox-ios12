@@ -1,10 +1,10 @@
 diff --git a/dom/media/webrtc/MediaEngineRemoteVideoSource.cpp b/dom/media/webrtc/MediaEngineRemoteVideoSource.cpp
-index 1b7c214abee9..9b312d08dd52 100644
+index bc8a6317e8f5..11a416e9c166 100644
 --- a/dom/media/webrtc/MediaEngineRemoteVideoSource.cpp
 +++ b/dom/media/webrtc/MediaEngineRemoteVideoSource.cpp
 @@ -192,12 +192,13 @@ MediaEngineRemoteVideoSource::MediaEngineRemoteVideoSource(
        mDeviceUUID(NS_ConvertUTF16toUTF8(aMediaDevice->mRawID)) {
-   LOG("%s", __PRETTY_FUNCTION__);
+   LOG("{}", __PRETTY_FUNCTION__);
    if (mCapEngine == camera::CameraEngine) {
 -    // Only cameras can have a facing mode.
 -    Maybe<VideoFacingModeEnum> facingMode =

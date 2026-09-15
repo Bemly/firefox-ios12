@@ -5,6 +5,8 @@
 //  Created by Minh Ton on 16/6/26.
 //
 
+import GeckoView
+
 enum TabLoadingState: Equatable {
     case idle
     case loading(progress: Float)
@@ -30,7 +32,8 @@ enum TabLoadingState: Equatable {
 
 enum TabRestoreState: Equatable {
     case none
-    case pending(String)
+    case pendingSession
+    case pendingURL(String)
 }
 
 enum TabDisplayState: Equatable {
@@ -44,14 +47,24 @@ enum TabInsertionTarget: Equatable {
     case index(Int)
 }
 
+enum HistoryNavigationDirection {
+    case back
+    case forward
+}
+
 final class TabSessionState {
+    var tabSessionState: GeckoSessionState?
     var restoreState: TabRestoreState = .none
-    var displayState: TabDisplayState = .committed
-    var selectionOrder = 0
     var suppressInitialNavigation = true
     var isSuppressingInitialBlankPageLoad = false
-    var showsStartupHomepage = false
     var sessionNavigationAvailability = SessionNavigationAvailability.unavailable
     var navigationState = NavigationAvailability(canGoBack: false, canGoForward: false)
+    var pendingHistoryNavigations: [HistoryNavigationDirection] = []
+    var lastHistoryNavigationID = 0
+    var activeHistoryNavigationID: Int?
+    var preparedNavigationThumbnailURL: String?
+    var displayState: TabDisplayState = .committed
     var loadingState = TabLoadingState.idle
+    var showsStartupHomepage = false
+    var selectionOrder = 0
 }

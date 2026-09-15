@@ -1,21 +1,21 @@
 diff --git a/gfx/layers/apz/util/APZCCallbackHelper.cpp b/gfx/layers/apz/util/APZCCallbackHelper.cpp
-index 25ab0a1241dd..7abba9f85634 100644
+index 2f77c6ca1893..743c8b56b82f 100644
 --- a/gfx/layers/apz/util/APZCCallbackHelper.cpp
 +++ b/gfx/layers/apz/util/APZCCallbackHelper.cpp
-@@ -31,6 +31,8 @@
- #include "mozilla/dom/Document.h"
+@@ -30,6 +30,8 @@
+ #include "nsIDOMWindowUtils.h"
  #include "nsIInterfaceRequestorUtils.h"
  #include "nsLayoutUtils.h"
 +#include "nsIWidget.h"
 +#include "PuppetWidget.h"
  #include "nsMenuPopupFrame.h"
- #include "nsPrintfCString.h"
  #include "nsPIDOMWindow.h"
-@@ -184,6 +186,21 @@ static DisplayPortMargins ScrollFrame(nsIContent* aContent,
+ #include "nsPrintfCString.h"
+@@ -183,6 +185,21 @@ static DisplayPortMargins ScrollFrame(nsIContent* aContent,
    CSSPoint actualScrollOffset = ScrollFrameTo(sf, aRequest, scrollUpdated);
    CSSPoint scrollDelta = apzScrollOffset - actualScrollOffset;
  
-+  // REYNARD: If the scroll position was updated and an editable element is
++  // If the scroll position was updated and an editable element is
 +  // focused, notify the widget of position change so that the parent process
 +  // updates the cached editor/caret/selection rects for UIKit's selection
 +  // display.
@@ -33,3 +33,11 @@ index 25ab0a1241dd..7abba9f85634 100644
    if (scrollUpdated) {
      if (aRequest.IsScrollInfoLayer()) {
        // In cases where the APZ scroll offset is different from the content
+@@ -398,6 +415,7 @@ void APZCCallbackHelper::UpdateRootFrame(const RepaintRequest& aRequest) {
+   SetDisplayPortMargins(presShell, content, displayPortMargins,
+                         aRequest.CalculateCompositedSizeInCssPixels());
+   SetPaintRequestTime(content, aRequest.GetPaintRequestTime());
++  presShell->SetFixedPositionTopMargin(aRequest.GetFixedPositionTopMargin());
+ }
+ 
+ void APZCCallbackHelper::UpdateSubFrame(const RepaintRequest& aRequest) {

@@ -1,0 +1,56 @@
+diff --git a/gfx/layers/ipc/CompositorManagerParent.cpp b/gfx/layers/ipc/CompositorManagerParent.cpp
+index 190e53262888..acb2c68b0d20 100644
+--- a/gfx/layers/ipc/CompositorManagerParent.cpp
++++ b/gfx/layers/ipc/CompositorManagerParent.cpp
+@@ -15,6 +15,7 @@
+ #include "mozilla/layers/RemoteTextureMap.h"
+ #include "mozilla/layers/SharedSurfacesParent.h"
+ #include "mozilla/webrender/RenderThread.h"
++#include "nsThreadUtils.h"
+ 
+ namespace mozilla {
+ namespace layers {
+@@ -332,13 +333,42 @@ mozilla::ipc::IPCResult CompositorManagerParent::RecvReportSharedSurfacesMemory(
+   return IPC_OK();
+ }
+ 
++/* static */
++void CompositorManagerParent::NotifyMemoryPressure() {
++  MOZ_ASSERT(NS_IsMainThread());
++
++  RefPtr<CompositorThreadHolder> compositorThread =
++      CompositorThreadHolder::GetSingleton();
++  if (!compositorThread) {
++    return;
++  }
++
++  compositorThread->Dispatch(NS_NewRunnableFunction(
++      "layers::CompositorManagerParent::NotifyMemoryPressure", []() {
++        RefPtr<CompositorManagerParent> manager;
++        {
++          StaticMonitorAutoLock lock(sMonitor);
++          manager = sInstance;
++        }
++        if (manager) {
++          manager->NotifyMemoryPressureOnCompositorThread();
++        }
++      }));
++}
++
+ mozilla::ipc::IPCResult CompositorManagerParent::RecvNotifyMemoryPressure() {
++  NotifyMemoryPressureOnCompositorThread();
++  return IPC_OK();
++}
++
++void CompositorManagerParent::NotifyMemoryPressureOnCompositorThread() {
++  MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
++
+   nsTArray<PCompositorBridgeParent*> compositorBridges;
+   ManagedPCompositorBridgeParent(compositorBridges);
+   for (auto bridge : compositorBridges) {
+     static_cast<CompositorBridgeParentBase*>(bridge)->NotifyMemoryPressure();
+   }
+-  return IPC_OK();
+ }
+ 
+ mozilla::ipc::IPCResult CompositorManagerParent::RecvReportMemory(

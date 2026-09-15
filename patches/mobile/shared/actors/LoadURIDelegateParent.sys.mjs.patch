@@ -1,0 +1,17 @@
+diff --git a/mobile/shared/actors/LoadURIDelegateParent.sys.mjs b/mobile/shared/actors/LoadURIDelegateParent.sys.mjs
+index 2039c79e1d46..393f294b2fd6 100644
+--- a/mobile/shared/actors/LoadURIDelegateParent.sys.mjs
++++ b/mobile/shared/actors/LoadURIDelegateParent.sys.mjs
+@@ -7,6 +7,12 @@ import { GeckoViewActorParent } from "resource://gre/modules/GeckoViewActorParen
+ export class LoadURIDelegateParent extends GeckoViewActorParent {
+   async receiveMessage({ name, data }) {
+     switch (name) {
++      case "GeckoView:OnPreNavigation": {
++        return this.eventDispatcher.sendRequestForResult(
++          "GeckoView:OnPreNavigation",
++          data
++        );
++      }
+       case "GeckoView:OnLoadError": {
+         return this.eventDispatcher.sendRequestForResult(
+           "GeckoView:OnLoadError",

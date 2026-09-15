@@ -1,0 +1,20 @@
+diff --git a/uriloader/base/nsDocLoader.h b/uriloader/base/nsDocLoader.h
+index bb8837aa6548..eb4881d6de5b 100644
+--- a/uriloader/base/nsDocLoader.h
++++ b/uriloader/base/nsDocLoader.h
+@@ -193,10 +193,11 @@ class nsDocLoader : public nsIDocumentLoader,
+   // @param aRedirectFlags The flags being sent to OnStateChange that
+   //                       indicate the type of redirect.
+   // @param aStateFlags    The channel flags normally sent to OnStateChange.
+-  virtual void OnRedirectStateChange(nsIChannel* aOldChannel,
+-                                     nsIChannel* aNewChannel,
+-                                     uint32_t aRedirectFlags,
+-                                     uint32_t aStateFlags) {}
++  MOZ_CAN_RUN_SCRIPT_BOUNDARY virtual nsresult OnRedirectStateChange(
++      nsIChannel* aOldChannel, nsIChannel* aNewChannel, uint32_t aRedirectFlags,
++      uint32_t aStateFlags) {
++    return NS_OK;
++  }
+ 
+   void doStartDocumentLoad();
+   void doStartURLLoad(nsIRequest* request, int32_t aExtraFlags);

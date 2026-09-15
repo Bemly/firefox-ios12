@@ -1,8 +1,16 @@
 diff --git a/widget/uikit/EventDispatcher.mm b/widget/uikit/EventDispatcher.mm
-index 97d0ae64653b..c26fc1d639e2 100644
+index db8380bd78c2..f2ebbfdd8b21 100644
 --- a/widget/uikit/EventDispatcher.mm
 +++ b/widget/uikit/EventDispatcher.mm
-@@ -83,7 +83,7 @@ nsresult BoxArray(JSContext* aCx, JS::Handle<JSObject*> aArray,
+@@ -6,6 +6,7 @@
+ 
+ #include "CFTypeRefPtr.h"
+ #include "jsapi.h"
++#include "mozilla/CycleCollectedJSContext.h"
+ #include "mozilla/MacStringHelpers.h"
+ #include "mozilla/dom/ScriptSettings.h"
+ #include "mozilla/dom/TypedArray.h"
+@@ -84,7 +85,7 @@ nsresult BoxArray(JSContext* aCx, JS::Handle<JSObject*> aArray,
      }
      nsresult rv = BoxValue(aCx, valJS, valCF);
      NS_ENSURE_SUCCESS(rv, rv);
@@ -11,3 +19,30 @@ index 97d0ae64653b..c26fc1d639e2 100644
    }
  
    // NOTE: A CFRetain() and CFRelease() could be avoided here if we could steal
+@@ -395,6 +396,8 @@ static void CallbackFromSwift(nsIGeckoViewEventCallback* aCallback,
+                                   JS::Handle<JS::Value>, JSContext*)) {
+   MOZ_ASSERT(NS_IsMainThread());
+ 
++  nsAutoMicroTask mt;
++
+   // Use either the attached window's realm or a default realm.
+ 
+   dom::AutoJSAPI jsapi;
+@@ -520,6 +523,17 @@ - (BOOL)hasListener:(NSString*)type {
+   return NS_OK;
+ }
+ 
++void EventDispatcher::DispatchToEmbedder(const nsAString& aEvent) {
++  AssertIsOnMainThread();
++  if (!mDispatcher) {
++    return;
++  }
++  id<SwiftEventDispatcher> dispatcher = (id<SwiftEventDispatcher>)mDispatcher;
++  [dispatcher dispatchToSwift:XPCOMStringToNSString(aEvent)
++                      message:nil
++                     callback:nil];
++}
++
+ void EventDispatcher::Attach(id aDispatcher) {
+   AssertIsOnMainThread();
+   MOZ_ASSERT(aDispatcher);

@@ -40,7 +40,17 @@ final class UpdateAvailableViewController: UIViewController, HomepageRecommendat
         view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.cornerRadius
         view.clipsToBounds = true
-        view.backgroundColor = .appSystemGray6
+        view.backgroundColor = .clear
+        return view
+    }()
+    
+    private let backgroundView: UIVisualEffectView = {
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isUserInteractionEnabled = false
+        view.layer.cornerCurve = .continuous
+        view.layer.cornerRadius = UX.cornerRadius
+        view.clipsToBounds = true
         return view
     }()
     
@@ -59,7 +69,7 @@ final class UpdateAvailableViewController: UIViewController, HomepageRecommendat
         label.font = UIFontMetrics(forTextStyle: .title2).scaledFont(
             for: .systemFont(ofSize: UX.titleFontSize, weight: .bold)
         )
-        label.text = "Update Available"
+        label.text = NSLocalizedString("Update Available", comment: "")
         label.textAlignment = .left
         label.textColor = .appLabel
         label.numberOfLines = 0
@@ -70,7 +80,7 @@ final class UpdateAvailableViewController: UIViewController, HomepageRecommendat
     private let messageLabel: UILabel = {
         let label = UILabel()
         label.font = .preferredFont(forTextStyle: .body)
-        label.text = "A new version of Reynard Browser is available. Open Settings to update."
+        label.text = NSLocalizedString("A new version of Reynard Browser is available. Open Settings to update.", comment: "")
         label.textAlignment = .left
         label.textColor = .appSecondaryLabel
         label.numberOfLines = 0
@@ -96,7 +106,7 @@ final class UpdateAvailableViewController: UIViewController, HomepageRecommendat
     
     private lazy var settingsButton: UIButton = {
         return makeActionButton(
-            title: "Open Settings",
+            title: NSLocalizedString("Open Settings", comment: ""),
             imageName: "reynard.gearshape",
             action: #selector(openSettings)
         )
@@ -151,6 +161,10 @@ final class UpdateAvailableViewController: UIViewController, HomepageRecommendat
     }
     
     static func isRecommendationShown(isPrivateBrowsing: Bool, contentMode: HomepageContentMode) -> Bool {
+        guard Prefs.HomepageSettings.showsNewUpdates else {
+            return false
+        }
+        
         if isPrivateBrowsing || contentMode.isDetached {
             return false
         }
@@ -179,6 +193,7 @@ final class UpdateAvailableViewController: UIViewController, HomepageRecommendat
     
     private func configureHierarchy() {
         view.addSubview(cardView)
+        cardView.addSubview(backgroundView)
         cardView.addSubview(textStackView)
         
         textStackView.addArrangedSubview(titleLabel)
@@ -196,6 +211,11 @@ final class UpdateAvailableViewController: UIViewController, HomepageRecommendat
             cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: UX.horizontalInset),
             cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -UX.horizontalInset),
             cardView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -UX.sectionBottomSpacing),
+            
+            backgroundView.topAnchor.constraint(equalTo: cardView.topAnchor),
+            backgroundView.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
+            backgroundView.trailingAnchor.constraint(equalTo: cardView.trailingAnchor),
+            backgroundView.bottomAnchor.constraint(equalTo: cardView.bottomAnchor),
             
             textStackView.topAnchor.constraint(equalTo: cardView.layoutMarginsGuide.topAnchor),
             textStackView.leadingAnchor.constraint(equalTo: cardView.layoutMarginsGuide.leadingAnchor),

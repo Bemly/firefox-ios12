@@ -10,17 +10,37 @@ import UIKit
 final class LibraryViewController: UITabBarController, UITabBarControllerDelegate, UINavigationControllerDelegate {
     private let initialSection: LibrarySection
     private let isPrivateMode: Bool
+    private let startsEditingBookmarks: Bool
     private let onClose: (() -> Void)?
     
     private var visibleSections: [LibrarySection] {
         return isPrivateMode ? LibrarySection.allCases.filter { $0 != .history } : LibrarySection.allCases
     }
     
+    func toggleSection(_ section: LibrarySection) {
+        guard let index = visibleSections.firstIndex(of: section) else {
+            return
+        }
+        guard index != selectedIndex else {
+            onClose?()
+            return
+        }
+        selectedIndex = index
+        updateNavigationTitle()
+        removeNavigationActionsIfNeeded()
+    }
+    
     // MARK: - Lifecycle
     
-    init(initialSection: LibrarySection = .bookmarks, isPrivateMode: Bool = false, onClose: (() -> Void)? = nil) {
+    init(
+        initialSection: LibrarySection = .bookmarks,
+        isPrivateMode: Bool = false,
+        startsEditingBookmarks: Bool = false,
+        onClose: (() -> Void)? = nil
+    ) {
         self.initialSection = initialSection
         self.isPrivateMode = isPrivateMode
+        self.startsEditingBookmarks = startsEditingBookmarks
         self.onClose = onClose
         super.init(nibName: nil, bundle: nil)
     }
@@ -98,7 +118,7 @@ final class LibraryViewController: UITabBarController, UITabBarControllerDelegat
             let sectionController: UIViewController
             switch section {
             case .bookmarks:
-                sectionController = BookmarksViewController()
+                sectionController = BookmarksViewController(startsEditing: startsEditingBookmarks)
             case .history:
                 sectionController = HistoryViewController()
             case .downloads:
@@ -170,5 +190,31 @@ final class LibraryViewController: UITabBarController, UITabBarControllerDelegat
         viewControllers?.first { viewController in
             viewController.tabBarItem.tag == LibrarySection.settings.rawValue
         }?.tabBarItem.badgeValue = ""
+    }
+}
+
+extension LibraryViewController {
+    @objc private func showHistoryKeyCommand(_ sender: UIKeyCommand) {
+        toggleSection(.history)
+    }
+    
+    @objc private func showBookmarksKeyCommand(_ sender: UIKeyCommand) {
+        toggleSection(.bookmarks)
+    }
+    
+    @objc private func showDownloadsKeyCommand(_ sender: UIKeyCommand) {
+        toggleSection(.downloads)
+    }
+    
+    @objc private func editBookmarksKeyCommand(_ sender: UIKeyCommand) {
+        guard let index = visibleSections.firstIndex(of: .bookmarks),
+              let bookmarksController = viewControllers?[safe: index] as? BookmarksViewController else {
+            return
+        }
+        selectedIndex = index
+        updateNavigationTitle()
+        removeNavigationActionsIfNeeded()
+        bookmarksController.loadViewIfNeeded()
+        bookmarksController.setEditing(true, animated: true)
     }
 }

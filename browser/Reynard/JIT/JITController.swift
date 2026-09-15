@@ -29,6 +29,17 @@ final class JITController {
         getEntitlementValue("com.apple.private.security.no-sandbox")
     }
     
+    func startBackgroundAudioIfNeeded() {
+        guard !usePtraceJIT(),
+              Prefs.JITSettings.isJITEnabled,
+              hasTXMSupport(),
+              !hasHandledFailure else {
+            return
+        }
+        
+        BackgroundAudioManager.shared.start()
+    }
+    
     func start() {
         guard usePtraceJIT() || !isDDIMissing() else {
             hasHandledFailure = true
@@ -236,6 +247,7 @@ final class JITController {
                 return
             }
             self.hasHandledFailure = true
+            BackgroundAudioManager.shared.stop()
             self.presentEnablementFailureScreen(
                 error: error,
                 showsErrorDetails: error.code != Int(ETIMEDOUT)
@@ -262,21 +274,21 @@ final class JITController {
             return
         }
         
-        let description = error.localizedDescription.isEmpty ? "Unknown error." : error.localizedDescription
+        let description = error.localizedDescription.isEmpty ? NSLocalizedString("Unknown error.", comment: "") : error.localizedDescription
         let messageText: String
         if usePtraceJIT() {
-            messageText = "It's extremely rare that you encounter this issue! Make sure that your TrollStore installation or jailbroken environment is properly configured.\n\nYou may use the browser without JIT temporarily until the next launch by activating JIT-Less Mode."
+            messageText = NSLocalizedString("It's extremely rare that you encounter this issue! Make sure that your TrollStore installation or jailbroken environment is properly configured.\n\nYou may use the browser without JIT temporarily until the next launch by activating JIT-Less Mode.", comment: "Paragraph break intentional")
         } else {
-            messageText = "Please check that your pairing file is valid, your loopback VPN is on, and you're connected to a stable Wi-Fi network.\n\nYou may use the browser without JIT temporarily until the next launch by activating JIT-Less Mode."
+            messageText = NSLocalizedString("Please check that your pairing file is valid, your loopback VPN is on, and you're connected to a stable Wi-Fi network.\n\nYou may use the browser without JIT temporarily until the next launch by activating JIT-Less Mode.", comment: "Paragraph break intentional")
         }
         
         let viewController = JITFailureViewController(
             errorCode: error.code,
             errorDescription: description,
             showsErrorDetails: showsErrorDetails,
-            titleText: "Failed to enable JIT",
+            titleText: NSLocalizedString("Failed to enable JIT", comment: ""),
             messageText: messageText,
-            actionButtonTitle: "Activate JIT-Less Mode",
+            actionButtonTitle: NSLocalizedString("Activate JIT-Less Mode", comment: ""),
             onPrimaryAction: { [weak self] in
                 self?.activateJITLessMode()
             }
@@ -307,11 +319,11 @@ final class JITController {
         
         let viewController = JITFailureViewController(
             errorCode: Int(ENOENT),
-            errorDescription: "Required DDI files are missing.",
+            errorDescription: NSLocalizedString("Required DDI files are missing.", comment: ""),
             showsErrorDetails: false,
-            titleText: "Failed to enable JIT",
-            messageText: "The required Developer Disk Image files for enabling JIT were not found.\n\nJIT has been disabled. Quit the app using the button below, then re-enable JIT from the browser settings.",
-            actionButtonTitle: "Quit Reynard",
+            titleText: NSLocalizedString("Failed to enable JIT", comment: ""),
+            messageText: NSLocalizedString("The required Developer Disk Image files for enabling JIT were not found.\n\nJIT has been disabled. Quit the app using the button below, then re-enable JIT from the browser settings.", comment: "Paragraph break intentional"),
+            actionButtonTitle: NSLocalizedString("Quit Reynard", comment: ""),
             onPrimaryAction: {
                 self.disableJITAndQuit()
             }
@@ -339,6 +351,7 @@ final class JITController {
         }
         
         isJITLessModeActive = true
+        BackgroundAudioManager.shared.stop()
         attachQueue.async {
             self.cancelAllPreflightWatchdogs()
             self.attachedPIDs.removeAll()
@@ -398,6 +411,7 @@ final class JITController {
             }
             
             self.hasHandledFailure = true
+            BackgroundAudioManager.shared.stop()
             self.presentEnablementFailureScreen(error: NSError(domain: "Reynard.JIT", code: Int(ETIMEDOUT), userInfo: nil), showsErrorDetails: false)
         }
     }

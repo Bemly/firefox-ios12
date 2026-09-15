@@ -57,14 +57,29 @@ final class BrowserPreferences {
             // JIT
             key("JITSettings", "isJITEnabled"): false,
             
+            // Experimental
+            key("ExperimentalSettings", "isVideoPictureInPictureEnabled"): false,
+            
             // Compatibility
             key("CompatibilitySettings", "androidUserAgentDomains"): [],
-            key("CompatibilitySettings", "useAndroidUserAgent"): false,
+            key("CompatibilitySettings", "useAndroidUserAgent"): true,
+            key("CompatibilitySettings", "customUserAgent"): "",
+            key("CompatibilitySettings", "customPlatform"): "",
+            key("CompatibilitySettings", "customAppVersion"): "",
+            key("CompatibilitySettings", "customOscpu"): "",
+            key("CompatibilitySettings", "customBuildID"): "",
+            
+            // Developer
+            key("DeveloperSettings", "remoteDebuggingEnabled"): false,
+            key("DeveloperSettings", "remoteDebuggingPort"): 6000,
             
             // Browsing
             key("BrowsingSettings", "requestDesktopWebsite"): UIDevice.current.userInterfaceIdiom == .pad,
             key("BrowsingSettings", "showLinkPreviews"): true,
             key("BrowsingSettings", "showImagePreviews"): true,
+            key("BrowsingSettings", "openLinksInExternalApps"): true,
+            key("BrowsingSettings", "openLinksInNewTabsBehavior"): OpenLinksInNewTabsBehavior.switchTabImmediately.rawValue,
+            key("BrowsingSettings", "defaultPageZoomLevel"): PageZoomLevels.defaultLevel,
             
             // New Tab
             key("NewTabSettings", "newTabDisplayOption"): NewTabDisplayOption.homepage.rawValue,
@@ -80,6 +95,9 @@ final class BrowserPreferences {
             key("HomepageSettings", "frequentlyVisitedSiteCount"): 8,
             key("HomepageSettings", "showsRecentlyClosedTabs"): true,
             key("HomepageSettings", "recentlyClosedTabLimit"): 10,
+            key("HomepageSettings", "showsRecommendations"): true,
+            key("HomepageSettings", "showsNewUpdates"): true,
+            key("HomepageSettings", "showsWallpaper"): false,
             key("HomepageSettings", "donationRecommendationMultiplier"): 1,
             
             // Appearance
@@ -87,7 +105,13 @@ final class BrowserPreferences {
             key("AppearanceSettings", "addressBarPosition"): BrowserChromePosition.bottom.rawValue,
             key("AppearanceSettings", "showsFullWebsiteAddress"): false,
             key("AppearanceSettings", "showsLandscapeTabBar"): true,
-            key("AppearanceSettings", "defaultPageZoomLevel"): PageZoomLevels.defaultLevel,
+            key("AppearanceSettings", "pullToRefreshEnabled"): true,
+            key("AppearanceSettings", "scrollToHideToolbarEnabled"): true,
+            key("AppearanceSettings", "swipeAddressBarSidewaysEnabled"): true,
+            key("AppearanceSettings", "swipeAddressBarUpEnabled"): true,
+            
+            // Languages
+            key("LanguageSettings", "websiteLanguages"): (try? JSONEncoder().encode(WebsiteLanguageCatalog.defaultLanguageCodes())) ?? Data(),
             
             // Bookmarks
             key("BookmarkSettings", "placeFoldersOnTop"): true,
@@ -111,10 +135,33 @@ final class BrowserPreferences {
             key("ClearBrowsingData", "clearsBrowsingHistory"): true,
             key("ClearBrowsingData", "clearsCookiesAndSiteData"): true,
             key("ClearBrowsingData", "clearsCachedImagesAndFiles"): true,
-            key("ClearBrowsingData", "clearsDownloadsHistory"): false,
             key("ClearBrowsingData", "clearsDownloadedFiles"): false,
             key("ClearBrowsingData", "clearsSitePermissions"): true,
             key("ClearBrowsingData", "clearsOpenedTabs"): true,
+            
+            // HTTPS-Only Mode
+            key("HTTPSOnlyMode", "enabled"): false,
+            key("HTTPSOnlyMode", "scope"): HTTPSOnlyModeScope.allTabs.rawValue,
+            
+            // DNS over HTTPS
+            key("DNSOverHTTPS", "protectionLevel"): DNSOverHTTPSProtectionLevel.defaultProtection.rawValue,
+            key("DNSOverHTTPS", "provider"): SecureDNSProvider.cloudflare.rawValue,
+            key("DNSOverHTTPS", "customProviderURL"): "",
+            key("DNSOverHTTPS", "exceptions"): (try? JSONEncoder().encode([String]())) ?? Data(),
+            
+            // Tracking Protection
+            key("TrackingProtection", "enhancedTrackingProtectionLevel"): TrackingProtectionLevel.standard.rawValue,
+            key("TrackingProtection", "strictBaselineAllowListEnabled"): true,
+            key("TrackingProtection", "strictConvenienceAllowListEnabled"): false,
+            key("TrackingProtection", "customBaselineAllowListEnabled"): true,
+            key("TrackingProtection", "customConvenienceAllowListEnabled"): false,
+            key("TrackingProtection", "customCookiePolicy"): CustomCookiePolicy.isolateCrossSite.rawValue,
+            key("TrackingProtection", "customTrackingContentScope"): CustomBlockingScope.all.rawValue,
+            key("TrackingProtection", "customBlocksCryptominers"): true,
+            key("TrackingProtection", "customBlocksKnownFingerprinters"): true,
+            key("TrackingProtection", "customBlocksRedirectTrackers"): true,
+            key("TrackingProtection", "customSuspectedFingerprinterScope"): CustomBlockingScope.privateOnly.rawValue,
+            key("TrackingProtection", "globalPrivacyControlEnabled"): false,
         ])
     }
     
@@ -279,6 +326,38 @@ final class BrowserPreferences {
                 prefs.set(newValue, forSetting: "BrowsingSettings", key: "showImagePreviews")
             }
         }
+        
+        static var openLinksInExternalApps: Bool {
+            get {
+                return prefs.bool(forSetting: "BrowsingSettings", key: "openLinksInExternalApps")
+            }
+            set {
+                prefs.set(newValue, forSetting: "BrowsingSettings", key: "openLinksInExternalApps")
+            }
+        }
+        
+        static var openLinksInNewTabsBehavior: OpenLinksInNewTabsBehavior {
+            get {
+                let rawValue = prefs.string(forSetting: "BrowsingSettings", key: "openLinksInNewTabsBehavior") ?? OpenLinksInNewTabsBehavior.switchTabImmediately.rawValue
+                return OpenLinksInNewTabsBehavior(rawValue: rawValue) ?? .switchTabImmediately
+            }
+            set {
+                prefs.set(newValue.rawValue, forSetting: "BrowsingSettings", key: "openLinksInNewTabsBehavior")
+            }
+        }
+        
+        static var defaultPageZoomLevel: Int {
+            get {
+                let level = prefs.integer(forSetting: "BrowsingSettings", key: "defaultPageZoomLevel")
+                return PageZoomLevels.all.contains(level) ? level : PageZoomLevels.defaultLevel
+            }
+            set {
+                guard PageZoomLevels.all.contains(newValue) else {
+                    return
+                }
+                prefs.set(newValue, forSetting: "BrowsingSettings", key: "defaultPageZoomLevel")
+            }
+        }
     }
     
     // MARK: - Clear Browsing Data
@@ -310,15 +389,6 @@ final class BrowserPreferences {
             }
         }
         
-        static var clearsDownloadsHistory: Bool {
-            get {
-                return prefs.bool(forSetting: "ClearBrowsingData", key: "clearsDownloadsHistory")
-            }
-            set {
-                prefs.set(newValue, forSetting: "ClearBrowsingData", key: "clearsDownloadsHistory")
-            }
-        }
-        
         static var clearsDownloadedFiles: Bool {
             get {
                 return prefs.bool(forSetting: "ClearBrowsingData", key: "clearsDownloadedFiles")
@@ -344,6 +414,158 @@ final class BrowserPreferences {
             set {
                 prefs.set(newValue, forSetting: "ClearBrowsingData", key: "clearsOpenedTabs")
             }
+        }
+    }
+    
+    // MARK: - HTTPS-Only Mode
+    struct HTTPSOnlyModePreferences {
+        static var enabled: Bool {
+            get {
+                return prefs.bool(forSetting: "HTTPSOnlyMode", key: "enabled")
+            }
+            set {
+                prefs.set(newValue, forSetting: "HTTPSOnlyMode", key: "enabled")
+            }
+        }
+        
+        static var scope: HTTPSOnlyModeScope {
+            get {
+                let rawValue = prefs.string(forSetting: "HTTPSOnlyMode", key: "scope") ?? HTTPSOnlyModeScope.allTabs.rawValue
+                return HTTPSOnlyModeScope(rawValue: rawValue) ?? .allTabs
+            }
+            set {
+                prefs.set(newValue.rawValue, forSetting: "HTTPSOnlyMode", key: "scope")
+            }
+        }
+    }
+    
+    // MARK: - DNS over HTTPS
+    struct DNSOverHTTPSPreferences {
+        static var protectionLevel: DNSOverHTTPSProtectionLevel {
+            get {
+                let rawValue = prefs.integer(forSetting: "DNSOverHTTPS", key: "protectionLevel")
+                return DNSOverHTTPSProtectionLevel(rawValue: rawValue) ?? .defaultProtection
+            }
+            set {
+                prefs.set(newValue.rawValue, forSetting: "DNSOverHTTPS", key: "protectionLevel")
+            }
+        }
+        
+        static var provider: SecureDNSProvider {
+            get {
+                let rawValue = prefs.string(forSetting: "DNSOverHTTPS", key: "provider") ?? SecureDNSProvider.cloudflare.rawValue
+                return SecureDNSProvider(rawValue: rawValue) ?? .cloudflare
+            }
+            set {
+                prefs.set(newValue.rawValue, forSetting: "DNSOverHTTPS", key: "provider")
+            }
+        }
+        
+        static var customProviderURL: String {
+            get {
+                return prefs.string(forSetting: "DNSOverHTTPS", key: "customProviderURL") ?? ""
+            }
+            set {
+                prefs.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forSetting: "DNSOverHTTPS", key: "customProviderURL")
+            }
+        }
+        
+        static var exceptions: [String] {
+            get {
+                guard let data = prefs.data(forSetting: "DNSOverHTTPS", key: "exceptions"),
+                      let exceptions = try? JSONDecoder().decode([String].self, from: data) else {
+                    return []
+                }
+                return exceptions
+            }
+            set {
+                let data = try? JSONEncoder().encode(newValue)
+                prefs.set(data, forSetting: "DNSOverHTTPS", key: "exceptions")
+            }
+        }
+    }
+    
+    // MARK: - Tracking Protection
+    struct TrackingProtectionPreferences {
+        static var level: TrackingProtectionLevel {
+            get {
+                let rawValue = prefs.string(forSetting: "TrackingProtection", key: "enhancedTrackingProtectionLevel") ?? TrackingProtectionLevel.standard.rawValue
+                return TrackingProtectionLevel(rawValue: rawValue) ?? .standard
+            }
+            set {
+                prefs.set(newValue.rawValue, forSetting: "TrackingProtection", key: "enhancedTrackingProtectionLevel")
+            }
+        }
+        
+        static var strictBaselineAllowListEnabled: Bool {
+            get {
+                return prefs.bool(forSetting: "TrackingProtection", key: "strictBaselineAllowListEnabled")
+            }
+            set {
+                prefs.set(newValue, forSetting: "TrackingProtection", key: "strictBaselineAllowListEnabled")
+            }
+        }
+        
+        static var strictConvenienceAllowListEnabled: Bool {
+            get {
+                return prefs.bool(forSetting: "TrackingProtection", key: "strictConvenienceAllowListEnabled")
+            }
+            set {
+                prefs.set(newValue, forSetting: "TrackingProtection", key: "strictConvenienceAllowListEnabled")
+            }
+        }
+        
+        static var customBaselineAllowListEnabled: Bool {
+            get { return prefs.bool(forSetting: "TrackingProtection", key: "customBaselineAllowListEnabled") }
+            set { prefs.set(newValue, forSetting: "TrackingProtection", key: "customBaselineAllowListEnabled") }
+        }
+        
+        static var customConvenienceAllowListEnabled: Bool {
+            get { return prefs.bool(forSetting: "TrackingProtection", key: "customConvenienceAllowListEnabled") }
+            set { prefs.set(newValue, forSetting: "TrackingProtection", key: "customConvenienceAllowListEnabled") }
+        }
+        
+        static var customCookiePolicy: CustomCookiePolicy {
+            get {
+                return CustomCookiePolicy(rawValue: prefs.integer(forSetting: "TrackingProtection", key: "customCookiePolicy")) ?? .isolateCrossSite
+            }
+            set { prefs.set(newValue.rawValue, forSetting: "TrackingProtection", key: "customCookiePolicy") }
+        }
+        
+        static var customTrackingContentScope: CustomBlockingScope {
+            get {
+                let rawValue = prefs.string(forSetting: "TrackingProtection", key: "customTrackingContentScope") ?? CustomBlockingScope.all.rawValue
+                return CustomBlockingScope(rawValue: rawValue) ?? .all
+            }
+            set { prefs.set(newValue.rawValue, forSetting: "TrackingProtection", key: "customTrackingContentScope") }
+        }
+        
+        static var customBlocksCryptominers: Bool {
+            get { return prefs.bool(forSetting: "TrackingProtection", key: "customBlocksCryptominers") }
+            set { prefs.set(newValue, forSetting: "TrackingProtection", key: "customBlocksCryptominers") }
+        }
+        
+        static var customBlocksKnownFingerprinters: Bool {
+            get { return prefs.bool(forSetting: "TrackingProtection", key: "customBlocksKnownFingerprinters") }
+            set { prefs.set(newValue, forSetting: "TrackingProtection", key: "customBlocksKnownFingerprinters") }
+        }
+        
+        static var customBlocksRedirectTrackers: Bool {
+            get { return prefs.bool(forSetting: "TrackingProtection", key: "customBlocksRedirectTrackers") }
+            set { prefs.set(newValue, forSetting: "TrackingProtection", key: "customBlocksRedirectTrackers") }
+        }
+        
+        static var customSuspectedFingerprinterScope: CustomBlockingScope {
+            get {
+                let rawValue = prefs.string(forSetting: "TrackingProtection", key: "customSuspectedFingerprinterScope") ?? CustomBlockingScope.privateOnly.rawValue
+                return CustomBlockingScope(rawValue: rawValue) ?? .privateOnly
+            }
+            set { prefs.set(newValue.rawValue, forSetting: "TrackingProtection", key: "customSuspectedFingerprinterScope") }
+        }
+        
+        static var globalPrivacyControlEnabled: Bool {
+            get { return prefs.bool(forSetting: "TrackingProtection", key: "globalPrivacyControlEnabled") }
+            set { prefs.set(newValue, forSetting: "TrackingProtection", key: "globalPrivacyControlEnabled") }
         }
     }
     
@@ -458,6 +680,36 @@ final class BrowserPreferences {
             }
             set {
                 prefs.set(newValue, forSetting: "HomepageSettings", key: "recentlyClosedTabLimit")
+                NotificationCenter.default.post(name: .homepageSettingsDidChange, object: nil)
+            }
+        }
+        
+        static var showsRecommendations: Bool {
+            get {
+                return prefs.bool(forSetting: "HomepageSettings", key: "showsRecommendations")
+            }
+            set {
+                prefs.set(newValue, forSetting: "HomepageSettings", key: "showsRecommendations")
+                NotificationCenter.default.post(name: .homepageSettingsDidChange, object: nil)
+            }
+        }
+        
+        static var showsNewUpdates: Bool {
+            get {
+                return prefs.bool(forSetting: "HomepageSettings", key: "showsNewUpdates")
+            }
+            set {
+                prefs.set(newValue, forSetting: "HomepageSettings", key: "showsNewUpdates")
+                NotificationCenter.default.post(name: .homepageSettingsDidChange, object: nil)
+            }
+        }
+        
+        static var showsWallpaper: Bool {
+            get {
+                return prefs.bool(forSetting: "HomepageSettings", key: "showsWallpaper")
+            }
+            set {
+                prefs.set(newValue, forSetting: "HomepageSettings", key: "showsWallpaper")
                 NotificationCenter.default.post(name: .homepageSettingsDidChange, object: nil)
             }
         }
@@ -620,6 +872,72 @@ final class BrowserPreferences {
                 prefs.set(newValue, forSetting: "CompatibilitySettings", key: "useAndroidUserAgent")
             }
         }
+        
+        static var customUserAgent: String {
+            get {
+                return prefs.string(forSetting: "CompatibilitySettings", key: "customUserAgent") ?? ""
+            }
+            set {
+                prefs.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forSetting: "CompatibilitySettings", key: "customUserAgent")
+            }
+        }
+        
+        static var customPlatform: String {
+            get {
+                return prefs.string(forSetting: "CompatibilitySettings", key: "customPlatform") ?? ""
+            }
+            set {
+                prefs.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forSetting: "CompatibilitySettings", key: "customPlatform")
+            }
+        }
+        
+        static var customAppVersion: String {
+            get {
+                return prefs.string(forSetting: "CompatibilitySettings", key: "customAppVersion") ?? ""
+            }
+            set {
+                prefs.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forSetting: "CompatibilitySettings", key: "customAppVersion")
+            }
+        }
+        
+        static var customOscpu: String {
+            get {
+                return prefs.string(forSetting: "CompatibilitySettings", key: "customOscpu") ?? ""
+            }
+            set {
+                prefs.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forSetting: "CompatibilitySettings", key: "customOscpu")
+            }
+        }
+        
+        static var customBuildID: String {
+            get {
+                return prefs.string(forSetting: "CompatibilitySettings", key: "customBuildID") ?? ""
+            }
+            set {
+                prefs.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forSetting: "CompatibilitySettings", key: "customBuildID")
+            }
+        }
+    }
+    
+    // MARK: - Developer
+    struct DeveloperSettings {
+        static var remoteDebuggingEnabled: Bool {
+            get {
+                return prefs.bool(forSetting: "DeveloperSettings", key: "remoteDebuggingEnabled")
+            }
+            set {
+                prefs.set(newValue, forSetting: "DeveloperSettings", key: "remoteDebuggingEnabled")
+            }
+        }
+        
+        static var remoteDebuggingPort: Int {
+            get {
+                return prefs.integer(forSetting: "DeveloperSettings", key: "remoteDebuggingPort")
+            }
+            set {
+                prefs.set(newValue, forSetting: "DeveloperSettings", key: "remoteDebuggingPort")
+            }
+        }
     }
     
     // MARK: - Appearance
@@ -665,18 +983,46 @@ final class BrowserPreferences {
             }
         }
         
-        static var defaultPageZoomLevel: Int {
+        static var pullToRefreshEnabled: Bool {
             get {
-                let level = prefs.integer(forSetting: "AppearanceSettings", key: "defaultPageZoomLevel")
-                return PageZoomLevels.all.contains(level) ? level : PageZoomLevels.defaultLevel
+                prefs.bool(forSetting: "AppearanceSettings", key: "pullToRefreshEnabled")
             }
             set {
-                guard PageZoomLevels.all.contains(newValue) else {
-                    return
-                }
-                prefs.set(newValue, forSetting: "AppearanceSettings", key: "defaultPageZoomLevel")
+                prefs.set(newValue, forSetting: "AppearanceSettings", key: "pullToRefreshEnabled")
+                NotificationCenter.default.post(name: .appearanceGestureSettingsDidChange, object: nil)
             }
         }
+        
+        static var scrollToHideToolbarEnabled: Bool {
+            get {
+                prefs.bool(forSetting: "AppearanceSettings", key: "scrollToHideToolbarEnabled")
+            }
+            set {
+                prefs.set(newValue, forSetting: "AppearanceSettings", key: "scrollToHideToolbarEnabled")
+                NotificationCenter.default.post(name: .appearanceGestureSettingsDidChange, object: nil)
+            }
+        }
+        
+        static var swipeAddressBarSidewaysEnabled: Bool {
+            get {
+                prefs.bool(forSetting: "AppearanceSettings", key: "swipeAddressBarSidewaysEnabled")
+            }
+            set {
+                prefs.set(newValue, forSetting: "AppearanceSettings", key: "swipeAddressBarSidewaysEnabled")
+                NotificationCenter.default.post(name: .appearanceGestureSettingsDidChange, object: nil)
+            }
+        }
+        
+        static var swipeAddressBarUpEnabled: Bool {
+            get {
+                prefs.bool(forSetting: "AppearanceSettings", key: "swipeAddressBarUpEnabled")
+            }
+            set {
+                prefs.set(newValue, forSetting: "AppearanceSettings", key: "swipeAddressBarUpEnabled")
+                NotificationCenter.default.post(name: .appearanceGestureSettingsDidChange, object: nil)
+            }
+        }
+        
     }
     
     // MARK: - JIT
@@ -699,6 +1045,18 @@ final class BrowserPreferences {
         }
     }
     
+    // MARK: - Experimental
+    struct ExperimentalSettings {
+        static var isVideoPictureInPictureEnabled: Bool {
+            get {
+                return prefs.bool(forSetting: "ExperimentalSettings", key: "isVideoPictureInPictureEnabled")
+            }
+            set {
+                prefs.set(newValue, forSetting: "ExperimentalSettings", key: "isVideoPictureInPictureEnabled")
+            }
+        }
+    }
+    
     // MARK: - Bookmarks
     struct BookmarkSettings {
         static var placeFoldersOnTop: Bool {
@@ -717,6 +1075,24 @@ final class BrowserPreferences {
             }
             set {
                 prefs.set(newValue.rawValue, forSetting: "BookmarkSettings", key: "sortOrders")
+            }
+        }
+    }
+    
+    // MARK: - Languages
+    struct LanguageSettings {
+        static var websiteLanguages: [String] {
+            get {
+                guard let data = prefs.data(forSetting: "LanguageSettings", key: "websiteLanguages"),
+                      let values = try? JSONDecoder().decode([String].self, from: data) else {
+                    return WebsiteLanguageCatalog.defaultLanguageCodes()
+                }
+                return WebsiteLanguageCatalog.sanitizedLanguageCodes(values)
+            }
+            set {
+                let values = WebsiteLanguageCatalog.sanitizedLanguageCodes(newValue)
+                let data = try? JSONEncoder().encode(values)
+                prefs.set(data, forSetting: "LanguageSettings", key: "websiteLanguages")
             }
         }
     }

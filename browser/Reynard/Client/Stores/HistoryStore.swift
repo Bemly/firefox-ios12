@@ -75,12 +75,6 @@ final class HistoryStore {
     
     // MARK: - History
     
-    func currentSnapshot() -> HistoryStoreSnapshot {
-        stateQueue.sync {
-            HistoryStoreSnapshot(items: fetchSitesLocked())
-        }
-    }
-    
     func currentSnapshot(limit: Int, offset: Int) -> HistoryStoreSnapshot {
         stateQueue.sync {
             HistoryStoreSnapshot(items: fetchSitesLocked(limit: limit, offset: offset))
@@ -107,14 +101,40 @@ final class HistoryStore {
         sqlite3_interrupt(database)
     }
     
-    func recordVisit(url: URL, title: String, visitedAt: Date = Date()) {
+    func recordVisit(url: URL, title: String, isRedirectSource: Bool = false, visitedAt: Date = Date()) {
         stateQueue.async {
             guard URLUtils.isWebURL(url) else {
                 return
             }
             
-            if self.recordVisitLocked(url: url, title: title, visitedAt: visitedAt) {
+            if self.recordVisitLocked(url: url, title: title, isRedirectSource: isRedirectSource, visitedAt: visitedAt) {
                 self.postDidChange()
+            }
+        }
+    }
+    
+    func recordVisitImmediately(url: URL, title: String, isRedirectSource: Bool = false, visitedAt: Date = Date()) async -> Bool {
+        await withCheckedContinuation { continuation in
+            stateQueue.async {
+                guard URLUtils.isWebURL(url) else {
+                    continuation.resume(returning: false)
+                    return
+                }
+                
+                let didRecord = self.recordVisitLocked(url: url, title: title, isRedirectSource: isRedirectSource, visitedAt: visitedAt)
+                if didRecord {
+                    self.postDidChange()
+                }
+                continuation.resume(returning: didRecord)
+            }
+        }
+    }
+    
+    func visitedStatuses(for urls: [String]) async -> [Bool] {
+        await withCheckedContinuation { continuation in
+            stateQueue.async {
+                let statuses = urls.map { self.isVisitedLocked(urlString: $0) }
+                continuation.resume(returning: statuses)
             }
         }
     }
@@ -214,6 +234,7 @@ final class HistoryStore {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             siteID INTEGER NOT NULL REFERENCES history(id) ON DELETE CASCADE,
             date REAL NOT NULL,
+            is_redirect_source INTEGER NOT NULL DEFAULT 0,
             UNIQUE(siteID, date)
         );
         
@@ -226,19 +247,22 @@ final class HistoryStore {
         CREATE INDEX IF NOT EXISTS idx_history_stripped_url_frecency ON history(stripped_url, frecency DESC, id DESC);
         CREATE INDEX IF NOT EXISTS idx_history_frecency_id ON history(frecency DESC, id DESC);
         CREATE INDEX IF NOT EXISTS idx_visits_siteID_date ON visits(siteID, date DESC);
+        CREATE INDEX IF NOT EXISTS idx_visits_redirect_source_siteID_date ON visits(is_redirect_source, siteID, date DESC);
+        CREATE INDEX IF NOT EXISTS idx_visits_siteID_redirect_source_date ON visits(siteID, is_redirect_source, date DESC);
         """
         
         _ = executeLocked(sql)
-        ensureHistoryColumnLocked(name: "host", definition: "TEXT NOT NULL DEFAULT ''")
-        ensureHistoryColumnLocked(name: "stripped_url", definition: "TEXT NOT NULL DEFAULT ''")
-        ensureHistoryColumnLocked(name: "visit_count", definition: "INTEGER NOT NULL DEFAULT 0")
-        ensureHistoryColumnLocked(name: "frecency", definition: "INTEGER NOT NULL DEFAULT 0")
+        ensureColumnLocked(name: "host", table: "history", definition: "TEXT NOT NULL DEFAULT ''")
+        ensureColumnLocked(name: "stripped_url", table: "history", definition: "TEXT NOT NULL DEFAULT ''")
+        ensureColumnLocked(name: "visit_count", table: "history", definition: "INTEGER NOT NULL DEFAULT 0")
+        ensureColumnLocked(name: "frecency", table: "history", definition: "INTEGER NOT NULL DEFAULT 0")
+        ensureColumnLocked(name: "is_redirect_source", table: "visits", definition: "INTEGER NOT NULL DEFAULT 0")
         backfillHistorySearchMetadataLocked()
     }
     
     // MARK: - Record Mutations
     
-    private func recordVisitLocked(url: URL, title: String, visitedAt: Date) -> Bool {
+    private func recordVisitLocked(url: URL, title: String, isRedirectSource: Bool, visitedAt: Date) -> Bool {
         let normalizedTitle = pageTitle(title, fallbackURL: url)
         let timestamp = visitedAt.timeIntervalSince1970
         
@@ -248,8 +272,8 @@ final class HistoryStore {
         
         guard upsertHistoryLocked(url: url.absoluteString, title: normalizedTitle, timestamp: timestamp),
               let siteID = siteIDLocked(for: url.absoluteString),
-              insertVisitLocked(siteID: siteID, timestamp: timestamp),
-              incrementVisitStatsLocked(siteID: siteID, lastVisitedAt: visitedAt) else {
+              insertVisitLocked(siteID: siteID, timestamp: timestamp, isRedirectSource: isRedirectSource),
+              updateVisitStatsLocked(siteID: siteID) else {
             rollbackTransactionLocked()
             return false
         }
@@ -367,7 +391,7 @@ final class HistoryStore {
     private func rebuildHistoryStatsLocked() -> Bool {
         guard let selectStatement = prepareStatementLocked(
             """
-            SELECT history.id, COUNT(visits.id), MAX(visits.date)
+            SELECT history.id, COUNT(visits.id)
             FROM history
             JOIN visits ON visits.siteID = history.id
             GROUP BY history.id;
@@ -381,7 +405,7 @@ final class HistoryStore {
         }
         
         guard let updateStatement = prepareStatementLocked(
-            "UPDATE history SET visit_count = ?, updated_at = ?, frecency = ? WHERE id = ?;"
+            "UPDATE history SET visit_count = ?, frecency = ? WHERE id = ?;"
         ) else {
             return false
         }
@@ -393,15 +417,13 @@ final class HistoryStore {
         while sqlite3_step(selectStatement) == SQLITE_ROW {
             let id = sqlite3_column_int64(selectStatement, 0)
             let visitCount = Int(sqlite3_column_int64(selectStatement, 1))
-            let updatedAt = sqlite3_column_double(selectStatement, 2)
-            let frecency = frecencyScore(forVisitCount: visitCount, lastVisitedAt: Date(timeIntervalSince1970: updatedAt))
+            let frecency = frecencyScoreLocked(siteID: id)
             
             sqlite3_reset(updateStatement)
             sqlite3_clear_bindings(updateStatement)
             sqlite3_bind_int64(updateStatement, 1, Int64(visitCount))
-            sqlite3_bind_double(updateStatement, 2, updatedAt)
-            sqlite3_bind_int64(updateStatement, 3, Int64(frecency))
-            sqlite3_bind_int64(updateStatement, 4, id)
+            sqlite3_bind_int64(updateStatement, 2, Int64(frecency))
+            sqlite3_bind_int64(updateStatement, 3, id)
             
             guard sqlite3_step(updateStatement) == SQLITE_DONE else {
                 return false
@@ -421,16 +443,22 @@ final class HistoryStore {
         let sql: String
         if limit != nil {
             sql = """
-            SELECT id, title, url, updated_at
+            SELECT history.id, history.title, history.url, MAX(visits.date)
             FROM history
-            ORDER BY updated_at DESC
+            JOIN visits ON visits.siteID = history.id
+            WHERE visits.is_redirect_source = 0
+            GROUP BY history.id
+            ORDER BY MAX(visits.date) DESC
             LIMIT ? OFFSET ?;
             """
         } else {
             sql = """
-            SELECT id, title, url, updated_at
+            SELECT history.id, history.title, history.url, MAX(visits.date)
             FROM history
-            ORDER BY updated_at DESC;
+            JOIN visits ON visits.siteID = history.id
+            WHERE visits.is_redirect_source = 0
+            GROUP BY history.id
+            ORDER BY MAX(visits.date) DESC;
             """
         }
         
@@ -459,7 +487,12 @@ final class HistoryStore {
             """
             SELECT id, title, url, updated_at
             FROM history
-            WHERE visit_count >= ?
+                        WHERE (
+                                SELECT COUNT(*)
+                                FROM visits
+                                WHERE visits.siteID = history.id
+                                    AND visits.is_redirect_source = 0
+                        ) >= ?
             AND NOT EXISTS (
                 SELECT 1
                 FROM hide_from_suggestions
@@ -520,6 +553,11 @@ final class HistoryStore {
                 SELECT id, title, url, updated_at
                 FROM history
                 WHERE host >= ? AND host < ?
+                    AND EXISTS (
+                        SELECT 1
+                        FROM visits
+                        WHERE visits.siteID = history.id AND visits.is_redirect_source = 0
+                    )
                 ORDER BY frecency DESC, id DESC
                 LIMIT ?;
                 """
@@ -554,8 +592,13 @@ final class HistoryStore {
             SELECT id, title, url, updated_at
             FROM history
             WHERE (host = ? OR host = 'www.' || ?)
-              AND stripped_url >= ?
-              AND stripped_url < ?
+                AND stripped_url >= ?
+                AND stripped_url < ?
+                AND EXISTS (
+                    SELECT 1
+                    FROM visits
+                    WHERE visits.siteID = history.id AND visits.is_redirect_source = 0
+                )
             ORDER BY frecency DESC, id DESC
             LIMIT ?;
             """
@@ -591,7 +634,13 @@ final class HistoryStore {
         SELECT id, title, url, updated_at
         FROM history
         WHERE frecency > 0
-          AND \(conditions)
+            AND EXISTS (
+                SELECT 1
+                FROM visits
+                WHERE visits.siteID = history.id
+                    AND visits.is_redirect_source = 0
+            )
+            AND \(conditions)
         ORDER BY frecency DESC, id DESC
         LIMIT ?;
         """
@@ -708,9 +757,26 @@ final class HistoryStore {
         return sqlite3_column_int64(statement, 0)
     }
     
-    private func insertVisitLocked(siteID: Int64, timestamp: TimeInterval) -> Bool {
+    private func isVisitedLocked(urlString: String) -> Bool {
+        guard let url = URL(string: urlString),
+              URLUtils.isWebURL(url),
+              let statement = prepareStatementLocked(
+                "SELECT 1 FROM history WHERE url = ? AND visit_count > 0 LIMIT 1;"
+              ) else {
+            return false
+        }
+        
+        defer {
+            sqlite3_finalize(statement)
+        }
+        
+        bind(url.absoluteString, to: statement, at: 1)
+        return sqlite3_step(statement) == SQLITE_ROW
+    }
+    
+    private func insertVisitLocked(siteID: Int64, timestamp: TimeInterval, isRedirectSource: Bool) -> Bool {
         guard let statement = prepareStatementLocked(
-            "INSERT INTO visits (siteID, date) VALUES (?, ?);"
+            "INSERT INTO visits (siteID, date, is_redirect_source) VALUES (?, ?, ?);"
         ) else {
             return false
         }
@@ -721,6 +787,7 @@ final class HistoryStore {
         
         sqlite3_bind_int64(statement, 1, siteID)
         sqlite3_bind_double(statement, 2, timestamp)
+        sqlite3_bind_int(statement, 3, isRedirectSource ? 1 : 0)
         return sqlite3_step(statement) == SQLITE_DONE
     }
     
@@ -738,30 +805,25 @@ final class HistoryStore {
     
     // MARK: - Schema Migration
     
-    private func ensureHistoryColumnLocked(name: String, definition: String) {
-        guard !historyColumnExistsLocked(name) else {
+    private func ensureColumnLocked(name: String, table: String, definition: String) {
+        guard let statement = prepareStatementLocked("PRAGMA table_info(\(table));") else {
             return
         }
         
-        _ = executeLocked("ALTER TABLE history ADD COLUMN \(name) \(definition);")
-    }
-    
-    private func historyColumnExistsLocked(_ name: String) -> Bool {
-        guard let statement = prepareStatementLocked("PRAGMA table_info(history);") else {
-            return false
-        }
-        
-        defer {
-            sqlite3_finalize(statement)
-        }
-        
+        var hasColumn = false
         while sqlite3_step(statement) == SQLITE_ROW {
             if string(from: statement, at: 1) == name {
-                return true
+                hasColumn = true
+                break
             }
         }
+        sqlite3_finalize(statement)
         
-        return false
+        guard !hasColumn else {
+            return
+        }
+        
+        _ = executeLocked("ALTER TABLE \(table) ADD COLUMN \(name) \(definition);")
     }
     
     private func backfillHistorySearchMetadataLocked() {
@@ -792,13 +854,12 @@ final class HistoryStore {
         while sqlite3_step(selectStatement) == SQLITE_ROW {
             let id = sqlite3_column_int64(selectStatement, 0)
             let urlString = string(from: selectStatement, at: 1)
-            let updatedAt = sqlite3_column_double(selectStatement, 2)
             guard let url = URL(string: urlString), URLUtils.isWebURL(url) else {
                 continue
             }
             
             let visitCount = visitCountLocked(siteID: id)
-            let frecency = frecencyScore(forVisitCount: visitCount, lastVisitedAt: Date(timeIntervalSince1970: updatedAt))
+            let frecency = frecencyScoreLocked(siteID: id)
             
             sqlite3_reset(updateStatement)
             sqlite3_clear_bindings(updateStatement)
@@ -813,10 +874,11 @@ final class HistoryStore {
     
     // MARK: - Frecency
     
-    private func incrementVisitStatsLocked(siteID: Int64, lastVisitedAt: Date) -> Bool {
-        let recencyWeight = frecencyWeight(for: lastVisitedAt)
+    private func updateVisitStatsLocked(siteID: Int64) -> Bool {
+        let visitCount = visitCountLocked(siteID: siteID)
+        let frecency = frecencyScoreLocked(siteID: siteID)
         guard let statement = prepareStatementLocked(
-            "UPDATE history SET visit_count = visit_count + 1, frecency = (visit_count + 1) * ? WHERE id = ?;"
+            "UPDATE history SET visit_count = ?, frecency = ? WHERE id = ?;"
         ) else {
             return false
         }
@@ -825,8 +887,9 @@ final class HistoryStore {
             sqlite3_finalize(statement)
         }
         
-        sqlite3_bind_int64(statement, 1, Int64(recencyWeight))
-        sqlite3_bind_int64(statement, 2, siteID)
+        sqlite3_bind_int64(statement, 1, Int64(visitCount))
+        sqlite3_bind_int64(statement, 2, Int64(frecency))
+        sqlite3_bind_int64(statement, 3, siteID)
         return sqlite3_step(statement) == SQLITE_DONE
     }
     
@@ -849,8 +912,26 @@ final class HistoryStore {
         return Int(sqlite3_column_int64(statement, 0))
     }
     
-    private func frecencyScore(forVisitCount visitCount: Int, lastVisitedAt: Date) -> Int {
-        max(visitCount, 1) * frecencyWeight(for: lastVisitedAt)
+    private func frecencyScoreLocked(siteID: Int64) -> Int {
+        guard let statement = prepareStatementLocked(
+            "SELECT date, is_redirect_source FROM visits WHERE siteID = ?;"
+        ) else {
+            return 0
+        }
+        
+        defer {
+            sqlite3_finalize(statement)
+        }
+        
+        sqlite3_bind_int64(statement, 1, siteID)
+        var score = 0
+        while sqlite3_step(statement) == SQLITE_ROW {
+            let date = sqlite3_column_double(statement, 0)
+            let isRedirectSource = sqlite3_column_int(statement, 1) != 0
+            let weight = frecencyWeight(for: Date(timeIntervalSince1970: date))
+            score += isRedirectSource ? weight / 4 : weight
+        }
+        return score
     }
     
     private func frecencyWeight(for lastVisitedAt: Date) -> Int {

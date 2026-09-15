@@ -1,0 +1,22 @@
+diff --git a/widget/uikit/ScreenHelperUIKit.h b/widget/uikit/ScreenHelperUIKit.h
+index a719298c4602..7d7914db39fb 100644
+--- a/widget/uikit/ScreenHelperUIKit.h
++++ b/widget/uikit/ScreenHelperUIKit.h
+@@ -5,6 +5,8 @@
+ #ifndef mozilla_widget_uikit_ScreenHelperUIKit_h
+ #define mozilla_widget_uikit_ScreenHelperUIKit_h
+ 
++#include <stdint.h>
++
+ #include "mozilla/widget/ScreenManager.h"
+ 
+ @class UIScreen;
+@@ -16,7 +18,7 @@ class ScreenHelperUIKit final : public ScreenManager::Helper {
+  public:
+   ScreenHelperUIKit();
+ 
+-  void RefreshScreens();
++  static void RefreshScreens(UIScreen* aScreen, int32_t aInterfaceOrientation);
+ };
+ 
+ }  // namespace widget

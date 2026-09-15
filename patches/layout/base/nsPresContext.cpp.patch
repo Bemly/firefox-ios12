@@ -1,0 +1,84 @@
+diff --git a/layout/base/nsPresContext.cpp b/layout/base/nsPresContext.cpp
+index e9f3ce4be656..2cfab817f737 100644
+--- a/layout/base/nsPresContext.cpp
++++ b/layout/base/nsPresContext.cpp
+@@ -714,7 +714,7 @@ void nsPresContext::Init(nsDeviceContext* aDeviceContext) {
+ 
+   mEventManager->SetPresContext(this);
+ 
+-#if defined(MOZ_WIDGET_ANDROID)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
+   if (IsRootContentDocumentCrossProcess()) {
+     if (BrowserChild* browserChild = BrowserChild::GetFrom(GetDocShell())) {
+       if (MOZ_LIKELY(!Preferences::HasUserValue(
+@@ -2903,13 +2903,16 @@ void nsPresContext::SetDynamicToolbarMaxHeight(ScreenIntCoord aHeight) {
+   AdjustSizeForViewportUnits();
+ 
+   if (RefPtr<mozilla::PresShell> presShell = mPresShell) {
+-    // Changing the max height of the dynamic toolbar changes the ICB size, we
+-    // need to kick a reflow with the current window dimensions since the max
+-    // height change doesn't change the window dimensions but
+-    // PresShell::ResizeReflow ends up subtracting the new dynamic toolbar
+-    // height from the window dimensions and kick a reflow with the proper ICB
+-    // size.
+-    presShell->ForceResizeReflowWithCurrentDimensions();
++    if (presShell->UsesMobileViewportSizing()) {
++      presShell->ForceResizeReflowWithCurrentDimensions();
++    } else {
++      LayoutDeviceIntSize size;
++      if (nsLayoutUtils::GetDocumentViewerSize(this, size)) {
++        presShell->SetLayoutViewportSize(
++            LayoutDeviceIntSize::ToAppUnits(size, AppUnitsPerDevPixel()),
++            false);
++      }
++    }
+   }
+ }
+ 
+@@ -2959,15 +2962,13 @@ void nsPresContext::UpdateDynamicToolbarOffset(ScreenIntCoord aOffset) {
+     return;
+   }
+ 
+-  // Forcibly flush position:fixed elements and position:sticky elements stuck
+-  // to the root scroll container in the case where the dynamic toolbar is
+-  // going to be completely hidden or starts to be visible so that %-based style
+-  // values will be recomputed with the visual viewport size which is including
+-  // the area covered by the dynamic toolbar, it also ensures that each
+-  // position:fixed or position:sticky element is painted at the correct
+-  // position on the main-thread.
++  // Resize fixed elements as the toolbar moves, including when it remains
++  // partially visible in its minimized state.
++  mPresShell->MarkFixedFramesForReflow();
++
++  // Update sticky positions and dispatch a regular resize event when the
++  // toolbar becomes fully hidden or starts to reappear.
+   if (mDynamicToolbarHeight == 0 || aOffset == -mDynamicToolbarMaxHeight) {
+-    mPresShell->MarkFixedFramesForReflow();
+     mPresShell->MarkStickyFramesForReflow();
+     mPresShell->ScheduleResizeEventIfNeeded(
+         PresShell::ResizeEventKind::Regular);
+@@ -3050,19 +3051,18 @@ nscoord nsPresContext::GetBimodalDynamicToolbarHeightInAppUnits() const {
+              : 0;
+ }
+ 
+-nscoord nsPresContext::GetBimodalDynamicToolbarHeightForFixedPosInAppUnits()
++nscoord nsPresContext::GetHiddenDynamicToolbarHeightForFixedPosInAppUnits()
+     const {
+-  if (GetDynamicToolbarState() != DynamicToolbarState::Collapsed) {
+-    return 0;
+-  }
+-  if (mDynamicToolbarMaxHeight == 0) {
++  const ScreenIntCoord hiddenHeight =
++      mDynamicToolbarMaxHeight - mDynamicToolbarHeight;
++  if (hiddenHeight == 0) {
+     return 0;
+   }
+   RefPtr<MobileViewportManager> mvm = mPresShell->GetMobileViewportManager();
+   if (!mvm) {
+     return 0;
+   }
+-  return CSSPixel::ToAppUnits(ScreenCoord(GetDynamicToolbarMaxHeight()) /
++  return CSSPixel::ToAppUnits(ScreenCoord(hiddenHeight) /
+                               mvm->GetIntrinsicScaleForFixedViewport());
+ }
+ 

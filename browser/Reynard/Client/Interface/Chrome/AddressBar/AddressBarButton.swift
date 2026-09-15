@@ -77,16 +77,8 @@ final class AddressBarButton: UIButton {
     func setMenuPreservingPresentation(_ menu: UIMenu?) {
         (legacyMenuDelegate as? LegacyContextMenuDelegate)?.menu = menu
         if #available(iOS 14.0, *) {
-            if isMenuVisible,
-               let menu,
-               let contextMenuInteraction = self.contextMenuInteraction {
+            if isMenuVisible {
                 pendingMenuAfterDismissal = menu
-                contextMenuInteraction.updateVisibleMenu { visibleMenu in
-                    if let replacementMenu = self.replacementMenu(for: visibleMenu, in: menu) {
-                        return replacementMenu
-                    }
-                    return menu
-                }
                 return
             }
             pendingMenuAfterDismissal = nil
@@ -103,29 +95,6 @@ final class AddressBarButton: UIButton {
         }
         
         pendingMenuDismissalHandlers.append(action)
-    }
-    
-    @available(iOS 13.0, *)
-    private func replacementMenu(for visibleMenu: UIMenu, in rootMenu: UIMenu) -> UIMenu? {
-        if visibleMenu.identifier == rootMenu.identifier {
-            return rootMenu
-        }
-        
-        for child in rootMenu.children {
-            guard let childMenu = child as? UIMenu else {
-                continue
-            }
-            
-            if childMenu.identifier == visibleMenu.identifier {
-                return childMenu
-            }
-            
-            if let nestedReplacement = replacementMenu(for: visibleMenu, in: childMenu) {
-                return nestedReplacement
-            }
-        }
-        
-        return nil
     }
     
     // MARK: - Context Menu Lifecycle

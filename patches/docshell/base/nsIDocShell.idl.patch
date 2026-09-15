@@ -1,0 +1,17 @@
+diff --git a/docshell/base/nsIDocShell.idl b/docshell/base/nsIDocShell.idl
+index db0721841de3..a7422cdd537e 100644
+--- a/docshell/base/nsIDocShell.idl
++++ b/docshell/base/nsIDocShell.idl
+@@ -342,6 +342,12 @@ interface nsIDocShell : nsIDocShellTreeItem
+ 
+   void clearCachedPlatform();
+ 
++  void clearCachedAppVersion();
++
++  void clearCachedOscpu();
++
++  void clearCachedBuildID();
++
+   /* Track whether we're currently restoring a document presentation. */
+   readonly attribute boolean restoringDocument;
+ 

@@ -1,0 +1,17 @@
+diff --git a/mobile/shared/modules/geckoview/GeckoViewMediaControl.sys.mjs b/mobile/shared/modules/geckoview/GeckoViewMediaControl.sys.mjs
+index da9f86ea8c05..3e0a55665142 100644
+--- a/mobile/shared/modules/geckoview/GeckoViewMediaControl.sys.mjs
++++ b/mobile/shared/modules/geckoview/GeckoViewMediaControl.sys.mjs
+@@ -100,10 +100,10 @@ export class GeckoViewMediaControl extends GeckoViewModule {
+         this.controller.prevTrack();
+         break;
+       case "GeckoView:MediaSession:SeekForward":
+-        this.controller.seekForward();
++        this.controller.seekForward(aData.offset);
+         break;
+       case "GeckoView:MediaSession:SeekBackward":
+-        this.controller.seekBackward();
++        this.controller.seekBackward(aData.offset);
+         break;
+       case "GeckoView:MediaSession:SkipAd":
+         this.controller.skipAd();

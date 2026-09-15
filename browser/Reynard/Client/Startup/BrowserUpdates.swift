@@ -41,7 +41,7 @@ final class BrowserUpdates: NSObject {
                   let latestVersionStr = latestEntry["version"] as? String,
                   let latestDateStr = latestEntry["date"] as? String else { return }
             
-            let currentVersionStr = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+            let currentVersionStr = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0").replacingOccurrences(of: "-dev", with: "")
             
             let versionIsNewer = Self.isVersion(latestVersionStr, greaterThan: currentVersionStr)
             guard versionIsNewer else { return }

@@ -11,6 +11,10 @@ xcuserdata/
 
 # AI agent stuff
 AGENTS.md
+.agents
+
+# Research stuff
+research/
 
 # Build artifacts
 dist/

@@ -13,21 +13,19 @@ extension ContentPermission {
         let host = Self.permissionHost(from: uri)
         switch permission {
         case .geolocation:
-            return "Allow \(host) to use your location?"
+            return String(format: NSLocalizedString("Allow %@ to use your location?", comment: "Website host"), host)
         case .desktopNotification:
-            return "Allow \(host) to send notifications?"
+            return String(format: NSLocalizedString("Allow %@ to send notifications?", comment: "Website host"), host)
         case .persistentStorage:
-            return "Allow \(host) to store data in persistent storage?"
+            return String(format: NSLocalizedString("Allow %@ to store data in persistent storage?", comment: "Website host"), host)
         case .mediaKeySystemAccess:
-            return "Allow \(host) to play DRM-controlled content?"
+            return String(format: NSLocalizedString("Allow %@ to play DRM-controlled content?", comment: "Website host"), host)
         case .storageAccess:
-            return "Allow \(Self.permissionHost(from: thirdPartyOrigin)) to use its cookies on \(host)?"
+            return String(format: NSLocalizedString("Allow %@ to use its cookies on %@?", comment: "Third-party and site hosts"), Self.permissionHost(from: thirdPartyOrigin), host)
         case .localDeviceAccess:
-            return "Allow \(host) to access other apps and services on this device?"
+            return String(format: NSLocalizedString("Allow %@ to access other apps and services on this device?", comment: "Website host"), host)
         case .localNetworkAccess:
-            return "Allow \(host) to access apps and services on devices connected to your local network?"
-        case .deviceSensors:
-            return "Allow \(host) to use motion & orientation sensors?"
+            return String(format: NSLocalizedString("Allow %@ to access apps and services on devices connected to your local network?", comment: "Website host"), host)
         case .camera,
                 .microphone,
                 .webxr,
@@ -41,7 +39,7 @@ extension ContentPermission {
     var alertMessage: String? {
         switch permission {
         case .storageAccess:
-            return "You may want to block access if it’s not clear why \(Self.permissionHost(from: thirdPartyOrigin)) needs this data."
+            return String(format: NSLocalizedString("You may want to block access if it’s not clear why %@ needs this data.", comment: "Third-party host"), Self.permissionHost(from: thirdPartyOrigin))
         case .camera,
                 .microphone,
                 .geolocation,
@@ -53,7 +51,6 @@ extension ContentPermission {
                 .tracking,
                 .localDeviceAccess,
                 .localNetworkAccess,
-                .deviceSensors,
             nil:
             return nil
         }
@@ -63,13 +60,13 @@ extension ContentPermission {
         let host = permissionHost(from: uri)
         switch (videoRequested, audioRequested) {
         case (true, true):
-            return "Allow \(host) to use your camera and microphone?"
+            return String(format: NSLocalizedString("Allow %@ to use your camera and microphone?", comment: "Website host"), host)
         case (true, false):
-            return "Allow \(host) to use your camera?"
+            return String(format: NSLocalizedString("Allow %@ to use your camera?", comment: "Website host"), host)
         case (false, true):
-            return "Allow \(host) to use your microphone?"
+            return String(format: NSLocalizedString("Allow %@ to use your microphone?", comment: "Website host"), host)
         case (false, false):
-            return "Allow \(host) to use your camera and microphone?"
+            return String(format: NSLocalizedString("Allow %@ to use your camera and microphone?", comment: "Website host"), host)
         }
     }
 }

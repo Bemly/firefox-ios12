@@ -36,15 +36,17 @@ final class PrivateBrowsingSectionViewController: UIViewController {
         view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.cornerRadius
         view.clipsToBounds = true
-        let backgroundColor: UIColor
-        if #available(iOS 13.0, *) {
-            backgroundColor = UIColor { traitCollection in
-                traitCollection.userInterfaceStyle == .dark ? .appSystemGray6 : UIColor.black.withAlphaComponent(0.7)
-            }
-        } else {
-            backgroundColor = UIColor.black.withAlphaComponent(0.7)
-        }
-        view.backgroundColor = backgroundColor
+        view.backgroundColor = .clear
+        return view
+    }()
+    
+    private let backgroundView: UIVisualEffectView = {
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isUserInteractionEnabled = false
+        view.layer.cornerCurve = .continuous
+        view.layer.cornerRadius = UX.cornerRadius
+        view.clipsToBounds = true
         return view
     }()
     
@@ -70,9 +72,9 @@ final class PrivateBrowsingSectionViewController: UIViewController {
         label.font = UIFontMetrics(forTextStyle: .title1).scaledFont(
             for: .systemFont(ofSize: UX.titleFontSize, weight: .bold)
         )
-        label.text = "Private Browsing"
+        label.text = NSLocalizedString("Private Browsing", comment: "")
         label.textAlignment = .center
-        label.textColor = .white
+        label.textColor = .label
         label.numberOfLines = 0
         label.adjustsFontForContentSizeCategory = true
         return label
@@ -84,9 +86,9 @@ final class PrivateBrowsingSectionViewController: UIViewController {
         label.font = UIFontMetrics(forTextStyle: .body).scaledFont(
             for: .systemFont(ofSize: UX.messageFontSize, weight: .regular)
         )
-        label.text = "After you close a tab, Reynard won't remember any of your browsing history or cookies. However, downloads and new bookmarks will be saved."
+        label.text = NSLocalizedString("After you close a tab, Reynard won’t remember any of your browsing history or cookies. However, downloads and new bookmarks will be saved.", comment: "")
         label.textAlignment = .center
-        label.textColor = UIColor.white.withAlphaComponent(0.72)
+        label.textColor = .secondaryLabel
         label.numberOfLines = 0
         label.adjustsFontForContentSizeCategory = true
         return label
@@ -137,6 +139,7 @@ final class PrivateBrowsingSectionViewController: UIViewController {
     
     private func configureHierarchy() {
         view.addSubview(cardView)
+        cardView.addSubview(backgroundView)
         cardView.addSubview(textContainerView)
         textContainerView.addSubview(textStackView)
         textStackView.addArrangedSubview(titleLabel)
@@ -154,6 +157,11 @@ final class PrivateBrowsingSectionViewController: UIViewController {
             cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: UX.horizontalInset),
             cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -UX.horizontalInset),
             cardView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -UX.sectionBottomSpacing),
+            
+            backgroundView.topAnchor.constraint(equalTo: cardView.topAnchor),
+            backgroundView.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
+            backgroundView.trailingAnchor.constraint(equalTo: cardView.trailingAnchor),
+            backgroundView.bottomAnchor.constraint(equalTo: cardView.bottomAnchor),
             
             textContainerView.topAnchor.constraint(equalTo: cardView.layoutMarginsGuide.topAnchor),
             textContainerView.bottomAnchor.constraint(equalTo: cardView.layoutMarginsGuide.bottomAnchor),

@@ -1,32 +1,23 @@
 diff --git a/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs b/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
-index 6996d0f77a2c..2c65a0702095 100644
+index d58e0276979b..955f99246337 100644
 --- a/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
 +++ b/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
-@@ -126,6 +126,8 @@ export class GeckoViewStartup {
+@@ -178,6 +178,11 @@ export class GeckoViewStartup {
              "GeckoView:GetPermissionsByURI",
              "GeckoView:SetPermission",
              "GeckoView:SetPermissionByURI",
 +            "GeckoView:RemovePermission",
 +            "GeckoView:RemovePermissionByURI",
-             "GeckoView:GetCookieBannerModeForDomain",
-             "GeckoView:SetCookieBannerModeForDomain",
-             "GeckoView:RemoveCookieBannerModeForDomain",
-@@ -269,18 +271,22 @@ export class GeckoViewStartup {
++            "GeckoView:GetCookieBannerModeForDomain",
++            "GeckoView:SetCookieBannerModeForDomain",
++            "GeckoView:RemoveCookieBannerModeForDomain",
+           ],
+         });
+ 
+@@ -336,6 +341,23 @@ export class GeckoViewStartup {
            ged: ["GeckoView:Autofill:GetAddressStructure"],
          });
  
--        // We don't register this using the LazyGetter because it needs to be ready before
--        // the first call to the listener is received.
--        lazy.EventDispatcher.instance.registerListener(
--          lazy.GeckoViewPreferences,
--          [
--            "GeckoView:Preferences:GetPref",
--            "GeckoView:Preferences:SetPref",
--            "GeckoView:Preferences:ClearPref",
--            "GeckoView:Preferences:RegisterObserver",
--            "GeckoView:Preferences:UnregisterObserver",
--          ]
--        );
 +        if (
 +          Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_DEFAULT
 +        ) {
@@ -43,6 +34,20 @@ index 6996d0f77a2c..2c65a0702095 100644
 +            ]
 +          );
 +        }
- 
++
          break;
        }
+ 
+@@ -378,6 +400,12 @@ export class GeckoViewStartup {
+ 
+         Services.obs.addObserver(this, "browser-idle-startup-tasks-finished");
+         Services.obs.addObserver(this, "handlersvc-store-initialized");
++
++        // We have no equivalent to GeckoView:InitialForeground, but have this notification sent from nsAppShell. Use this to initialize DoHController
++        Services.obs.addObserver(
++          () => lazy.DoHController.init(),
++          "geckoview-initial-foreground"
++        );
+         Services.obs.addObserver(
+           this,
+           "network:request-local-network-permission"

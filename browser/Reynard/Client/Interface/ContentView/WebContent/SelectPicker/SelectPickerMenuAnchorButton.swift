@@ -9,11 +9,16 @@ import UIKit
 
 final class SelectPickerMenuAnchorButton: UIButton {
     // MARK: - State
-
+    
+    var onMenuWillDismiss: (() -> Void)?
     var onMenuDismissed: (() -> Void)?
-
+    
     // MARK: - Overrides
-
+    
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        return false
+    }
+    
     @available(iOS 14.0, *)
     override func contextMenuInteraction(
         _ interaction: UIContextMenuInteraction,
@@ -21,6 +26,7 @@ final class SelectPickerMenuAnchorButton: UIButton {
         animator: UIContextMenuInteractionAnimating?
     ) {
         super.contextMenuInteraction(interaction, willEndFor: configuration, animator: animator)
+        onMenuWillDismiss?()
         let handler = onMenuDismissed
         if let animator {
             animator.addCompletion {

@@ -14,7 +14,7 @@ final class NewTabPreferencesViewController: SettingsTableViewController, UIText
         var text: SettingsSectionText {
             switch self {
             case .showOnNewTab:
-                return SettingsSectionText(headerTitle: "Show on New Tab")
+                return SettingsSectionText(headerTitle: NSLocalizedString("Open New Tabs To", comment: ""))
             }
         }
     }
@@ -27,11 +27,11 @@ final class NewTabPreferencesViewController: SettingsTableViewController, UIText
         var title: String {
             switch self {
             case .homepage:
-                return "Homepage"
+                return NSLocalizedString("Homepage", comment: "")
             case .blankPage:
-                return "Blank Page"
+                return NSLocalizedString("Blank Page", comment: "")
             case .customURL:
-                return "Custom URL"
+                return NSLocalizedString("Custom URL", comment: "")
             }
         }
         
@@ -48,8 +48,8 @@ final class NewTabPreferencesViewController: SettingsTableViewController, UIText
     }
     
     init() {
-        super.init(style: .appGrouped)
-        title = "New Tab"
+        super.init(style: .insetGrouped)
+        title = NSLocalizedString("New Tab", comment: "")
     }
     
     required init?(coder: NSCoder) {
@@ -179,7 +179,7 @@ final class NewTabPreferencesViewController: SettingsTableViewController, UIText
     }
     
     private func checkmarkCell(for row: Row) -> UITableViewCell {
-        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
         cell.textLabel?.text = row.title
         cell.accessoryType = Prefs.NewTabSettings.newTabDisplayOption == row.newTabDisplayOption ? .checkmark : .none
         return cell

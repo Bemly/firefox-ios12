@@ -1,0 +1,23 @@
+diff --git a/gfx/layers/FrameMetrics.cpp b/gfx/layers/FrameMetrics.cpp
+index 64b40a5c7080..c49ecef8bc36 100644
+--- a/gfx/layers/FrameMetrics.cpp
++++ b/gfx/layers/FrameMetrics.cpp
+@@ -88,7 +88,7 @@ void FrameMetrics::RecalculateLayoutViewportOffset(
+   // viewport needs to keep enclosing the visual viewport.
+   KeepLayoutViewportEnclosingVisualViewport(
+       GetVisualViewportForLayoutViewportContainment(aFixedLayerBottomMargin),
+-      mScrollableRect, mLayoutViewport);
++      GetScrollableRectWithContentInsets(mZoom), mLayoutViewport);
+ }
+ 
+ /* static */
+@@ -194,7 +194,8 @@ bool FrameMetrics::ScrollLayoutViewportTo(const CSSPoint& aDestination) {
+   // RecalculateLayoutViewportOffset() could see divergent layout and
+   // visual offsets.
+   bool offsetChanged = SetLayoutScrollOffset(aDestination);
+-  offsetChanged |= ClampAndSetVisualScrollOffset(aDestination + relativeOffset);
++  offsetChanged |= ClampAndSetVisualScrollOffset(
++      AdjustScrollDestinationForTopInset(aDestination + relativeOffset));
+   return offsetChanged;
+ }
+ 

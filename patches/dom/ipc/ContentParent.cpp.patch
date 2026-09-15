@@ -1,8 +1,8 @@
 diff --git a/dom/ipc/ContentParent.cpp b/dom/ipc/ContentParent.cpp
-index a63cb68d9f9d..9a01280b040e 100644
+index 21a9c93a1325..be168c76b0eb 100644
 --- a/dom/ipc/ContentParent.cpp
 +++ b/dom/ipc/ContentParent.cpp
-@@ -3002,14 +3002,15 @@ bool ContentParent::InitInternal(ProcessPriority aInitialPriority) {
+@@ -3020,14 +3020,15 @@ bool ContentParent::InitInternal(ProcessPriority aInitialPriority) {
    Endpoint<PVRManagerChild> vrBridge;
    Endpoint<PRemoteMediaManagerChild> videoManager;
    AutoTArray<uint32_t, 4> namespaces;
@@ -20,7 +20,7 @@ index a63cb68d9f9d..9a01280b040e 100644
    } else {
      // This can fail if we've already started shutting down the compositor
      // thread. See Bug 1562763 comment 8. On Android this can fail we are are
-@@ -3188,16 +3189,17 @@ void ContentParent::OnCompositorUnexpectedShutdown() {
+@@ -3199,16 +3200,17 @@ void ContentParent::OnCompositorUnexpectedShutdown() {
    Endpoint<PVRManagerChild> vrBridge;
    Endpoint<PRemoteMediaManagerChild> videoManager;
    AutoTArray<uint32_t, 4> namespaces;
@@ -40,13 +40,31 @@ index a63cb68d9f9d..9a01280b040e 100644
  }
  
  void ContentParent::OnCompositorDeviceReset() {
-@@ -7992,6 +7994,17 @@ IPCResult ContentParent::RecvKillGPUProcess() {
+@@ -3964,9 +3966,16 @@ ContentParent::Observe(nsISupports* aSubject, const char* aTopic,
+ 
+   // listening for memory pressure event
+   if (!strcmp(aTopic, "memory-pressure")) {
++    // Each content process handles native memory pressure independently.
++    // The parent forwards only explicit heap-minimize requests.
++    if (!aData || !nsDependentString(aData).EqualsLiteral("heap-minimize")) {
++      return NS_OK;
++    }
+     (void)SendMemoryPressure(nsDependentString(aData));
+   } else if (!strcmp(aTopic, "memory-pressure-stop")) {
+-    (void)SendMemoryPressureStop();
++    // Each content process clears its memory pressure state independently.
++    return NS_OK;
++    // (void)SendMemoryPressureStop();
+   } else if (!strcmp(aTopic, "application-background")) {
+     (void)SendApplicationBackground();
+   } else if (!strcmp(aTopic, "application-foreground")) {
+@@ -8224,6 +8233,17 @@ IPCResult ContentParent::RecvKillGPUProcess() {
  }
  #endif
  
 +IPCResult ContentParent::RecvNotifyGPUProcessLost(
 +    const uint64_t& aProcessToken) {
-+  // REYNARD: Route content-side abnormal compositor shutdown events through
++  // Route content-side abnormal compositor shutdown events through
 +  // the active GPU process token so recovery targets the correct process.
 +  gfx::GPUProcessManager* gpm = gfx::GPUProcessManager::Get();
 +  if (gpm) {
@@ -56,5 +74,5 @@ index a63cb68d9f9d..9a01280b040e 100644
 +}
 +
  nsCString ThreadsafeContentParentHandle::GetRemoteType() {
-   RecursiveMutexAutoLock lock(mMutex);
-   return mRemoteType;
+   return mLoadedOrigins->GetRemoteType();
+ }

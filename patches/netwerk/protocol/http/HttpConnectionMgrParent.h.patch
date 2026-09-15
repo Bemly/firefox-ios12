@@ -1,14 +1,13 @@
 diff --git a/netwerk/protocol/http/HttpConnectionMgrParent.h b/netwerk/protocol/http/HttpConnectionMgrParent.h
-index 63b67dfcdd8a..76134b58973b 100644
+index c264f8864e48..e25a3ef45a95 100644
 --- a/netwerk/protocol/http/HttpConnectionMgrParent.h
 +++ b/netwerk/protocol/http/HttpConnectionMgrParent.h
-@@ -6,9 +6,12 @@
- #define HttpConnectionMgrParent_h_
+@@ -7,8 +7,11 @@
  
  #include "HttpConnectionMgrShell.h"
+ #include "mozilla/StaticMutex.h"
 +#include "mozilla/ipc/PBackgroundSharedTypes.h"
  #include "mozilla/net/PHttpConnectionMgrParent.h"
- #include "mozilla/StaticMutex.h"
  
 +class nsIWebTransportHash;
 +

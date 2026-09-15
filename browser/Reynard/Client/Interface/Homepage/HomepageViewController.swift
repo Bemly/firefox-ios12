@@ -9,7 +9,11 @@ import UIKit
 
 protocol HomepageViewControllerDelegate: AnyObject {
     func homepageViewController(_ controller: HomepageViewController, didRequestOpenURL url: URL, disposition: TabOpenDisposition)
-    func homepageViewController(_ controller: HomepageViewController, didRequestShareURL url: URL)
+    func homepageViewController(
+        _ controller: HomepageViewController,
+        didRequestShareURL url: URL,
+        sourceView: UIView
+    )
     func homepageViewController(_ controller: HomepageViewController, didRequestHideFromSuggestions siteID: Int64)
     func homepageViewController(_ controller: HomepageViewController, didSelectRecentlyClosedTab id: UUID)
     func homepageViewControllerDidSelectSettings(_ controller: HomepageViewController)
@@ -23,6 +27,7 @@ final class HomepageViewController: UINavigationController {
     private let bookmarkStore: BookmarkStore
     private var isPrivateBrowsing: Bool
     private var contentMode: HomepageContentMode = .embeddedNarrow
+    private var visibleContentInsets: UIEdgeInsets = .zero
     private var showsBackground = false
     
     // MARK: - Lifecycle
@@ -56,7 +61,11 @@ final class HomepageViewController: UINavigationController {
     override func setViewControllers(_ viewControllers: [UIViewController], animated: Bool) {
         super.setViewControllers(viewControllers, animated: animated)
         viewControllers.forEach { viewController in
-            (viewController as? HomepageRootViewController)?.delegate = self
+            guard let viewController = viewController as? HomepageRootViewController else {
+                return
+            }
+            viewController.delegate = self
+            viewController.setVisibleContentInsets(visibleContentInsets)
         }
     }
     
@@ -72,6 +81,17 @@ final class HomepageViewController: UINavigationController {
     func setShowsBackground(_ showsBackground: Bool) {
         self.showsBackground = showsBackground
         updateBackgroundColor()
+    }
+    
+    func setVisibleContentInsets(_ visibleContentInsets: UIEdgeInsets) {
+        guard self.visibleContentInsets != visibleContentInsets else {
+            return
+        }
+        
+        self.visibleContentInsets = visibleContentInsets
+        viewControllers.forEach { viewController in
+            (viewController as? HomepageRootViewController)?.setVisibleContentInsets(visibleContentInsets)
+        }
     }
     
     func setPrivateBrowsing(_ isPrivateBrowsing: Bool) {
@@ -119,8 +139,16 @@ extension HomepageViewController: HomepageRootViewControllerDelegate {
         homepageDelegate?.homepageViewController(self, didRequestOpenURL: url, disposition: disposition)
     }
     
-    func homepageRootViewController(_ controller: HomepageRootViewController, didRequestShareURL url: URL) {
-        homepageDelegate?.homepageViewController(self, didRequestShareURL: url)
+    func homepageRootViewController(
+        _ controller: HomepageRootViewController,
+        didRequestShareURL url: URL,
+        sourceView: UIView
+    ) {
+        homepageDelegate?.homepageViewController(
+            self,
+            didRequestShareURL: url,
+            sourceView: sourceView
+        )
     }
     
     func homepageRootViewController(_ controller: HomepageRootViewController, didRequestHideFromSuggestions siteID: Int64) {
@@ -144,6 +172,7 @@ extension HomepageViewController: HomepageRootViewControllerDelegate {
         )
         viewController.delegate = self
         viewController.setContentMode(contentMode)
+        viewController.setVisibleContentInsets(visibleContentInsets)
         setNavigationBarHidden(false, animated: false)
         pushViewController(viewController, animated: true)
     }

@@ -169,54 +169,44 @@ final class AddonUpdateCoordinator {
                 failedCount: failedCount
             ))
         }
-
-        func processNext(_ index: Int) {
-            guard index < addons.count else {
-                finish()
-                return
+        
+        for addon in addons {
+            await MainActor.run {
+                status(addon.id, NSLocalizedString("Updating…", comment: ""))
             }
-
-            let addon = addons[index]
-            DispatchQueue.main.async {
-                status(addon.id, "Updating...")
-            }
-
-            AddonRuntime.shared.update(addon) { result in
-                switch result {
-                case .success(let updatedAddon):
-                    if updatedAddon == nil {
-                        noUpdateCount += 1
-                        self.clearPendingApproval(addon.id)
-                        DispatchQueue.main.async {
-                            status(addon.id, "No update available")
-                        }
-                    } else {
-                        updatedCount += 1
-                        self.clearPendingApproval(addon.id)
-                        DispatchQueue.main.async {
-                            status(addon.id, "Successfully updated")
-                        }
+            
+            do {
+                let updatedAddon = try await AddonRuntime.shared.update(addon)
+                if updatedAddon == nil {
+                    noUpdateCount += 1
+                    clearPendingApproval(addon.id)
+                    await MainActor.run {
+                        status(addon.id, NSLocalizedString("No Update Available", comment: ""))
                     }
-                case .failure(let error):
-                    if AddonErrorPresenter.updateRequiresPermissions(error) {
-                        self.markNeedsApproval(addon.id)
-                        DispatchQueue.main.async {
-                            status(addon.id, "Needs permission to update")
-                        }
-                        processNext(index + 1)
-                        return
-                    }
-
-                    failedCount += 1
-                    let presentation = AddonErrorPresenter.updateErrorPresentation(
-                        for: error,
-                        addonName: addon.metaData.name ?? addon.id
-                    )
-                    DispatchQueue.main.async {
-                        status(addon.id, presentation.statusText)
+                } else {
+                    updatedCount += 1
+                    clearPendingApproval(addon.id)
+                    await MainActor.run {
+                        status(addon.id, NSLocalizedString("Updated", comment: ""))
                     }
                 }
-                processNext(index + 1)
+            } catch {
+                if AddonErrorPresenter.updateRequiresPermissions(error) {
+                    markNeedsApproval(addon.id)
+                    await MainActor.run {
+                        status(addon.id, NSLocalizedString("Needs Permission to Update", comment: ""))
+                    }
+                    continue
+                }
+                
+                failedCount += 1
+                let presentation = AddonErrorPresenter.updateErrorPresentation(
+                    for: error,
+                    addonName: addon.metaData.name ?? addon.id
+                )
+                await MainActor.run {
+                    status(addon.id, presentation.statusText)
+                }
             }
         }
 

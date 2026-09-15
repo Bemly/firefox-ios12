@@ -23,7 +23,7 @@ final class FrequentlyVisitedIconView: UIView {
         return view
     }()
     
-    private lazy var faviconLoader = HomepageFaviconLoader { [weak self] image, tintColor in
+    private lazy var faviconLoader = HomepageFaviconLoader { [weak self] image, tintColor, _ in
         self?.applyIcon(image, tintColor: tintColor)
     }
     

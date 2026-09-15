@@ -1,0 +1,118 @@
+diff --git a/uriloader/exthandler/uikit/nsOSHelperAppService.mm b/uriloader/exthandler/uikit/nsOSHelperAppService.mm
+index 552dd81e8461..1a86a18a8339 100644
+--- a/uriloader/exthandler/uikit/nsOSHelperAppService.mm
++++ b/uriloader/exthandler/uikit/nsOSHelperAppService.mm
+@@ -2,7 +2,59 @@
+  * License, v. 2.0. If a copy of the MPL was not distributed with this
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
++#import <MobileCoreServices/MobileCoreServices.h>
++
++#include "CFTypeRefPtr.h"
++#include "nsMIMEInfoUIKit.h"
+ #include "nsOSHelperAppService.h"
++#include "nsReadableUtils.h"
++#include "nsString.h"
++
++static CFTypeRefPtr<CFStringRef> CreateUTIForTag(CFStringRef aTagClass,
++                                                 const nsACString& aTag) {
++  if (aTag.IsEmpty()) {
++    return nullptr;
++  }
++
++  const nsCString& flatTag = PromiseFlatCString(aTag);
++  auto tag =
++      CFTypeRefPtr<CFStringRef>::WrapUnderCreateRule(CFStringCreateWithBytes(
++          kCFAllocatorDefault, reinterpret_cast<const UInt8*>(flatTag.get()),
++          flatTag.Length(), kCFStringEncodingUTF8, false));
++  if (!tag) {
++    return nullptr;
++  }
++
++  return CFTypeRefPtr<CFStringRef>::WrapUnderCreateRule(
++      UTTypeCreatePreferredIdentifierForTag(aTagClass, tag.get(), kUTTypeData));
++}
++
++static bool IsUsableUTI(CFStringRef aUTI) {
++  return aUTI && UTTypeIsDeclared(aUTI) && !UTTypeIsDynamic(aUTI);
++}
++
++static bool CopyUTITag(CFStringRef aUTI, CFStringRef aTagClass,
++                       nsACString& aTag) {
++  aTag.Truncate();
++  auto tag = CFTypeRefPtr<CFStringRef>::WrapUnderCreateRule(
++      UTTypeCopyPreferredTagWithClass(aUTI, aTagClass));
++  if (!tag) {
++    return false;
++  }
++
++  CFIndex bufferLength =
++      CFStringGetMaximumSizeForEncoding(CFStringGetLength(tag.get()),
++                                        kCFStringEncodingUTF8) +
++      1;
++  nsAutoCString buffer;
++  buffer.SetLength(bufferLength);
++  bool copied = CFStringGetCString(tag.get(), buffer.BeginWriting(),
++                                   bufferLength, kCFStringEncodingUTF8);
++  if (copied) {
++    aTag.Assign(buffer.get());
++  }
++  return copied;
++}
+ 
+ nsOSHelperAppService::nsOSHelperAppService() : nsExternalHelperAppService() {}
+ 
+@@ -42,9 +94,52 @@
+ NS_IMETHODIMP nsOSHelperAppService::GetMIMEInfoFromOS(
+     const nsACString& aMIMEType, const nsACString& aFileExt, bool* aFound,
+     nsIMIMEInfo** aMIMEInfo) {
++  nsCString fileExt(aFileExt);
++  if (!fileExt.IsEmpty() && fileExt.CharAt(0) == '.') {
++    fileExt.Cut(0, 1);
++  }
++  ToLowerCase(fileExt);
++
+   *aMIMEInfo = nullptr;
+   *aFound = false;
+-  return NS_ERROR_NOT_IMPLEMENTED;
++
++  RefPtr<nsMIMEInfoUIKit> mimeInfo;
++
++  if (!aMIMEType.IsEmpty()) {
++    auto typeUTI = CreateUTIForTag(kUTTagClassMIMEType, aMIMEType);
++    if (IsUsableUTI(typeUTI.get()) &&
++        !UTTypeEqual(typeUTI.get(), kUTTypeData)) {
++      nsAutoCString preferredExtension;
++      if (CopyUTITag(typeUTI.get(), kUTTagClassFilenameExtension,
++                     preferredExtension) &&
++          !preferredExtension.IsEmpty()) {
++        mimeInfo = new nsMIMEInfoUIKit(aMIMEType);
++        ToLowerCase(preferredExtension);
++        mimeInfo->SetPrimaryExtension(preferredExtension);
++        *aFound = true;
++      }
++    }
++  }
++
++  if (!*aFound && !fileExt.IsEmpty()) {
++    auto extensionUTI = CreateUTIForTag(kUTTagClassFilenameExtension, fileExt);
++    if (IsUsableUTI(extensionUTI.get())) {
++      nsAutoCString mimeType;
++      if (CopyUTITag(extensionUTI.get(), kUTTagClassMIMEType, mimeType) &&
++          !mimeType.IsEmpty()) {
++        mimeInfo = new nsMIMEInfoUIKit(mimeType);
++        mimeInfo->SetPrimaryExtension(fileExt);
++        *aFound = true;
++      }
++    }
++  }
++
++  if (!*aFound) {
++    mimeInfo = new nsMIMEInfoUIKit(aMIMEType);
++  }
++
++  mimeInfo.forget(aMIMEInfo);
++  return NS_OK;
+ }
+ 
+ NS_IMETHODIMP

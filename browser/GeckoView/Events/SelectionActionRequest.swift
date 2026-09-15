@@ -13,7 +13,7 @@ public struct SelectionActionRequest {
     public let actions: [String]
     public let selection: String
     public let editable: Bool
-    public let screenRect: CGRect
+    public let clientRect: CGRect
 }
 
 public enum SelectionActionCommand {

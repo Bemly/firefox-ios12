@@ -1,0 +1,12 @@
+diff --git a/widget/uikit/EventDispatcher.h b/widget/uikit/EventDispatcher.h
+index 285e855e3d81..84d71404a21d 100644
+--- a/widget/uikit/EventDispatcher.h
++++ b/widget/uikit/EventDispatcher.h
+@@ -30,6 +30,7 @@ class EventDispatcher final : public EventDispatcherBase {
+                               JS::Handle<JS::Value> aData,
+                               nsIGeckoViewEventCallback* aCallback) override
+       MOZ_REQUIRES(sMainThreadCapability);
++  void DispatchToEmbedder(const nsAString& aEvent);
+ 
+   static nsresult UnboxBundle(JSContext* aCx, CFDictionaryRef aData,
+                               JS::MutableHandle<JS::Value> aOut);

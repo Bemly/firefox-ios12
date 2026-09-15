@@ -1,0 +1,43 @@
+diff --git a/gfx/ipc/RemoteCompositorSession.cpp b/gfx/ipc/RemoteCompositorSession.cpp
+index f489d0889ed5..1caa2fb77f92 100644
+--- a/gfx/ipc/RemoteCompositorSession.cpp
++++ b/gfx/ipc/RemoteCompositorSession.cpp
+@@ -12,9 +12,9 @@
+ #include "mozilla/layers/CompositorBridgeChild.h"
+ #include "mozilla/layers/GeckoContentController.h"
+ #include "nsIWidget.h"
+-#if defined(MOZ_WIDGET_ANDROID)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
+ #  include "mozilla/layers/UiCompositorControllerChild.h"
+-#endif  // defined(MOZ_WIDGET_ANDROID)
++#endif
+ 
+ namespace mozilla {
+ namespace layers {
+@@ -38,9 +38,9 @@ RemoteCompositorSession::RemoteCompositorSession(
+ RemoteCompositorSession::~RemoteCompositorSession() {
+   // This should have been shutdown first.
+   MOZ_ASSERT(!mCompositorBridgeChild);
+-#if defined(MOZ_WIDGET_ANDROID)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
+   MOZ_ASSERT(!mUiCompositorControllerChild);
+-#endif  // defined(MOZ_WIDGET_ANDROID)
++#endif
+ }
+ 
+ void RemoteCompositorSession::NotifySessionLost() {
+@@ -86,12 +86,12 @@ void RemoteCompositorSession::Shutdown() {
+   }
+   mCompositorWidgetDelegate = nullptr;
+   mWidget = nullptr;
+-#if defined(MOZ_WIDGET_ANDROID)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
+   if (mUiCompositorControllerChild) {
+     mUiCompositorControllerChild->Destroy();
+     mUiCompositorControllerChild = nullptr;
+   }
+-#endif  // defined(MOZ_WIDGET_ANDROID)
++#endif
+   GPUProcessManager::Get()->UnregisterRemoteProcessSession(this);
+ }
+ 

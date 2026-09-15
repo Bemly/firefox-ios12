@@ -1,8 +1,8 @@
 diff --git a/gfx/webrender_bindings/Cargo.toml b/gfx/webrender_bindings/Cargo.toml
-index 766f82a5ee04..1f900bff6ab2 100644
+index d449f911406a..7be65b25c846 100644
 --- a/gfx/webrender_bindings/Cargo.toml
 +++ b/gfx/webrender_bindings/Cargo.toml
-@@ -41,5 +41,6 @@ winapi = "0.3"
+@@ -40,5 +40,6 @@ winapi = "0.3"
  [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
  core-foundation = "0.9"
  core-graphics = "0.23"

@@ -1,0 +1,54 @@
+diff --git a/mobile/shared/modules/geckoview/GeckoViewWebExtension.sys.mjs b/mobile/shared/modules/geckoview/GeckoViewWebExtension.sys.mjs
+index 2f2120d22694..61a6e2fe2e56 100644
+--- a/mobile/shared/modules/geckoview/GeckoViewWebExtension.sys.mjs
++++ b/mobile/shared/modules/geckoview/GeckoViewWebExtension.sys.mjs
+@@ -25,6 +25,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
+   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
+   AddonRepository: "resource://gre/modules/addons/AddonRepository.sys.mjs",
+   AddonSettings: "resource://gre/modules/addons/AddonSettings.sys.mjs",
++  Downloads: "resource://gre/modules/Downloads.sys.mjs",
+   EventDispatcher: "resource://gre/modules/Messaging.sys.mjs",
+   Extension: "resource://gre/modules/Extension.sys.mjs",
+   ExtensionData: "resource://gre/modules/Extension.sys.mjs",
+@@ -66,6 +67,41 @@ export var DownloadTracker = new (class extends EventEmitter {
+     }
+   }
+ 
++  async startDownload(downloadItem, localFilePath) {
++    let succeeded = false;
++    try {
++      const download = await lazy.Downloads.createDownload({
++        source: {
++          url: downloadItem.url,
++          isPrivate: downloadItem.incognito === true,
++        },
++        target: {
++          path: localFilePath,
++          partFilePath: `${localFilePath}.part`,
++        },
++      });
++      const list = await lazy.Downloads.getList(lazy.Downloads.ALL);
++      list.add(download);
++      download.tryToKeepPartialData = true;
++      await download.start();
++      succeeded = true;
++    } catch (error) {
++      warn`WebExtension download failed: ${error}`;
++    }
++
++    try {
++      await lazy.EventDispatcher.instance.sendRequestForResult(
++        "GeckoView:WebExtension:DownloadComplete",
++        {
++          localFilePath,
++          succeeded,
++        }
++      );
++    } catch (error) {
++      warn`Unable to report WebExtension download completion: ${error}`;
++    }
++  }
++
+   addDownloadItem(item) {
+     this._downloads.set(item.id, item);
+   }

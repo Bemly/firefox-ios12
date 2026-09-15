@@ -1,20 +1,31 @@
 diff --git a/widget/nsGUIEventIPC.h b/widget/nsGUIEventIPC.h
-index baf960fdb593..4fd872fb0889 100644
+index a2a73f583d28..9fef62375d3a 100644
 --- a/widget/nsGUIEventIPC.h
 +++ b/widget/nsGUIEventIPC.h
-@@ -1149,6 +1149,7 @@ struct ParamTraits<mozilla::ContentCache> {
-     WriteParam(aWriter, aParam.mCaret);
-     WriteParam(aWriter, aParam.mTextRectArray);
-     WriteParam(aWriter, aParam.mLastCommitStringTextRectArray);
-+    WriteParam(aWriter, aParam.mEditorRectIsEditable);
-     WriteParam(aWriter, aParam.mEditorRect);
+@@ -840,7 +840,8 @@ DEFINE_IPC_SERIALIZER_WITH_FIELDS(mozilla::ContentCache::TextRectArray, mStart,
+ DEFINE_IPC_SERIALIZER_WITH_FIELDS(mozilla::ContentCache, mCompositionStart,
+                                   mText, mSelection, mFirstCharRect, mCaret,
+                                   mTextRectArray,
+-                                  mLastCommitStringTextRectArray, mEditorRect);
++                                  mLastCommitStringTextRectArray,
++                                  mEditorRectIsEditable, mEditorRect);
+ 
+ // InputData.h
+ 
+@@ -1009,6 +1010,7 @@ struct ParamTraits<mozilla::PanGestureInput>
+     WriteParam(aWriter, aParam.mMayTriggerSwipe);
+     WriteParam(aWriter, aParam.mOverscrollBehaviorAllowsSwipe);
+     WriteParam(aWriter, aParam.mSimulateMomentum);
++    WriteParam(aWriter, aParam.mAllowFlingAcceleration);
+     WriteParam(aWriter, aParam.mIsNoLineOrPageDelta);
    }
  
-@@ -1160,6 +1161,7 @@ struct ParamTraits<mozilla::ContentCache> {
-            ReadParam(aReader, &aResult->mCaret) &&
-            ReadParam(aReader, &aResult->mTextRectArray) &&
-            ReadParam(aReader, &aResult->mLastCommitStringTextRectArray) &&
-+           ReadParam(aReader, &aResult->mEditorRectIsEditable) &&
-            ReadParam(aReader, &aResult->mEditorRect);
+@@ -1032,6 +1034,8 @@ struct ParamTraits<mozilla::PanGestureInput>
+                                &paramType::SetOverscrollBehaviorAllowsSwipe) &&
+            ReadBoolForBitfield(aReader, aResult,
+                                &paramType::SetSimulateMomentum) &&
++           ReadBoolForBitfield(aReader, aResult,
++                               &paramType::SetAllowFlingAcceleration) &&
+            ReadBoolForBitfield(aReader, aResult,
+                                &paramType::SetIsNoLineOrPageDelta);
    }
- };

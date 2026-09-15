@@ -38,6 +38,9 @@ class SettingsTableViewController: UITableViewController {
     private func configureTableView() {
         tableView.alwaysBounceVertical = true
         tableView.keyboardDismissMode = .interactive
+        if #available(iOS 14.0, *) {
+            tableView.selectionFollowsFocus = false
+        }
         
         if #available(iOS 15.0, *) {
             tableView.sectionHeaderTopPadding = UX.sectionHeaderTopPadding

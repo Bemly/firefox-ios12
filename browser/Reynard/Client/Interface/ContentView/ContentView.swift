@@ -8,11 +8,40 @@
 import GeckoView
 import UIKit
 
-final class ContentView: UIView {
+final class ContentView: UIView, UIGestureRecognizerDelegate {
+    struct ThumbnailGeometry {
+        let fullFrame: CGRect
+        let cropRect: CGRect
+    }
+    
+    struct ThumbnailCaptureGeometry {
+        let size: CGSize
+        let visibleRect: CGRect
+    }
+    
     private enum UX {
         static let phoneSearchFocusedBottomInset: CGFloat = 94
         static let focusedInputBottomClearance: CGFloat = 12
         static let focusedInputOffsetThreshold: CGFloat = 0.5
+        static let historyPreviewParallaxRatio: CGFloat = 0.33
+        static let historyTransitionOverlayMaximumAlpha: CGFloat = 0.12
+        static let historyTransitionProjectionDuration: CGFloat = 0.2
+        static let historyTransitionDuration: TimeInterval = 0.35
+    }
+    
+    private enum HistorySwipeDirection: Equatable {
+        case back
+        case forward
+    }
+    
+    private enum HistorySwipeState {
+        case idle // No history swipe is active.
+        case swiping(HistorySwipeDirection) // Gesture is tracking the user's drag.
+        case settling // Swipe completed; finish animation is running.
+        case settled // Location changed before finish animation ended.
+        case loaded // Page load completed before finish animation ended.
+        case loading // Finish animation ended; waiting for page load.
+        case resetting // Location changed without a load; reset on next run loop.
     }
     
     struct State: Equatable {
@@ -35,18 +64,50 @@ final class ContentView: UIView {
         let mode: Mode
     }
     
-    private(set) var state: State = .browsing
+    private(set) var state: State = .browsing {
+        didSet {
+            onAppearanceChanged?()
+        }
+    }
     private var layoutState = LayoutState(mode: .standard)
     private var session: GeckoSession?
+    // Guard against stale async focused-input responses; token is bumped on
+    // every keyboard state change (iOS 12 completion-style port).
     private var focusedInputToken: Int = 0
-    private var inputBottomRatio: CGFloat?
+    private var dynamicToolbarMaxHeight: CGFloat = 0
+    private var contentBottomOffset: CGFloat = 0
+    private var toolbarTopOffset: CGFloat = 0
+    private var contentTopInset: CGFloat = 0
+    private var contentBottomInset: CGFloat = 0
+    private var webContentBottomOffset: CGFloat = 0
     private var focusedInputOffset: CGFloat = 0
+    private var resizesPageWithToolbar = false
+    
+    private var canGoBack = false
+    private var canGoForward = false
+    private var backPreviewImage: UIImage?
+    private var forwardPreviewImage: UIImage?
+    private var isHistorySwipeEnabled = false
+    private var historySwipeState = HistorySwipeState.idle
+    private var activeHistorySwipeDirection: HistorySwipeDirection?
+    private var webContentSize: CGSize?
     
     private let webContentView = WebContentView()
     private let overlayContentView = OverlayContentView()
+    private let historyPreviewImageView = UIImageView()
+    private let historyTransitionOverlayView = UIView()
+    
+    var onBack: (() -> Void)?
+    var onForward: (() -> Void)?
+    var onHistorySwipeBegan: (() -> Void)?
+    var onHistorySwipeEnded: (() -> Void)?
+    var onVerticalScroll: ((CGFloat, CGFloat) -> Void)?
+    var onAppearanceChanged: (() -> Void)?
     
     private var topConstraint: NSLayoutConstraint?
     private var bottomConstraint: NSLayoutConstraint?
+    private var webContentTopConstraint: NSLayoutConstraint?
+    private var webContentBottomConstraint: NSLayoutConstraint?
     
     // MARK: - Lifecycle
     
@@ -55,11 +116,31 @@ final class ContentView: UIView {
         configureAppearance()
         configureHierarchy()
         configureConstraints()
+        configureHistoryNavigation()
+        configureObservers()
         applyState()
     }
     
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+    
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        guard !super.point(inside: point, with: event) else {
+            return true
+        }
+        guard !webContentView.isHidden,
+              webContentView.isUserInteractionEnabled else {
+            return false
+        }
+        return webContentView.point(
+            inside: webContentView.convert(point, from: self),
+            with: event
+        )
     }
     
     // MARK: - Configuration
@@ -71,20 +152,85 @@ final class ContentView: UIView {
     
     private func configureHierarchy() {
         webContentView.translatesAutoresizingMaskIntoConstraints = false
+        historyPreviewImageView.translatesAutoresizingMaskIntoConstraints = false
+        historyTransitionOverlayView.translatesAutoresizingMaskIntoConstraints = false
         overlayContentView.translatesAutoresizingMaskIntoConstraints = false
+        historyPreviewImageView.isHidden = true
+        historyPreviewImageView.backgroundColor = .systemBackground
+        historyPreviewImageView.contentMode = .scaleAspectFill
+        historyPreviewImageView.clipsToBounds = true
+        historyTransitionOverlayView.isHidden = true
+        historyTransitionOverlayView.backgroundColor = .black
+        historyTransitionOverlayView.alpha = 0
         addSubview(webContentView)
+        addSubview(historyPreviewImageView)
+        addSubview(historyTransitionOverlayView)
         addSubview(overlayContentView)
     }
     
     private func configureConstraints() {
-        [webContentView, overlayContentView].forEach { contentView in
+        let topConstraint = webContentView.topAnchor.constraint(equalTo: topAnchor)
+        webContentTopConstraint = topConstraint
+        NSLayoutConstraint.activate([
+            topConstraint,
+            webContentView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            webContentView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            overlayContentView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            overlayContentView.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+        
+        [historyPreviewImageView, historyTransitionOverlayView].forEach { contentView in
             NSLayoutConstraint.activate([
-                contentView.topAnchor.constraint(equalTo: topAnchor),
                 contentView.leadingAnchor.constraint(equalTo: leadingAnchor),
                 contentView.trailingAnchor.constraint(equalTo: trailingAnchor),
-                contentView.bottomAnchor.constraint(equalTo: bottomAnchor),
             ])
         }
+    }
+    
+    private func configureHistoryNavigation() {
+        let backGesture = UIScreenEdgePanGestureRecognizer(
+            target: self,
+            action: #selector(handleBackHistoryPan(_:))
+        )
+        backGesture.edges = .left
+        backGesture.delegate = self
+        addGestureRecognizer(backGesture)
+        
+        let forwardGesture = UIScreenEdgePanGestureRecognizer(
+            target: self,
+            action: #selector(handleForwardHistoryPan(_:))
+        )
+        forwardGesture.edges = .right
+        forwardGesture.delegate = self
+        addGestureRecognizer(forwardGesture)
+        
+        webContentView.historySwipeDirectionsProvider = { [weak self] in
+            return self?.allowedTrackpadHistorySwipeDirections() ?? []
+        }
+        webContentView.onHistorySwipeDidStart = { [weak self] direction in
+            self?.beginTrackpadHistoryNavigation(direction)
+        }
+        webContentView.onHistorySwipeDidUpdate = { [weak self] progress in
+            self?.updateTrackpadHistoryNavigation(progress)
+        }
+        webContentView.onHistorySwipeDidComplete = { [weak self] direction in
+            self?.completeTrackpadHistoryNavigation(direction)
+        }
+        webContentView.onHistorySwipeDidEnd = { [weak self] in
+            self?.endTrackpadHistoryNavigation()
+        }
+        webContentView.onVerticalScroll = { [weak self] delta, position in
+            self?.onVerticalScroll?(delta, position)
+        }
+    }
+    
+    private func configureObservers() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appearanceGestureSettingsDidChange),
+            name: .appearanceGestureSettingsDidChange,
+            object: nil
+        )
     }
     
     // MARK: - Layout
@@ -95,7 +241,94 @@ final class ContentView: UIView {
         bottomAnchor: NSLayoutYAxisAnchor
     ) {
         self.layoutState = layoutState
+        webContentView.setFullscreen(layoutState.mode == .fullscreen)
         applyLayoutState(topAnchor: topAnchor, bottomAnchor: bottomAnchor)
+    }
+    
+    func updateWebContentSize() -> Bool {
+        let size = webContentView.bounds.size
+        guard size.width > 1, size.height > 1 else {
+            return false
+        }
+        defer { webContentSize = size }
+        
+        guard let previousSize = webContentSize else {
+            return false
+        }
+        
+        return previousSize != size
+    }
+    
+    func setToolbarLimits(
+        maxHeight: CGFloat,
+        contentTopInset: CGFloat,
+        contentBottomInset: CGFloat,
+        webContentBottomOffset: CGFloat
+    ) {
+        defer { updateToolbarLayout() }
+        
+        dynamicToolbarMaxHeight = maxHeight
+        self.contentBottomInset = contentBottomInset
+        guard abs(contentTopInset - self.contentTopInset) > 0.5
+                || abs(webContentBottomOffset - self.webContentBottomOffset) > 0.5 else {
+            return
+        }
+        self.contentTopInset = contentTopInset
+        webContentTopConstraint?.constant = -contentTopInset
+        self.webContentBottomOffset = webContentBottomOffset
+        updateContentBottomInset()
+        superview?.layoutIfNeeded()
+    }
+    
+    func applyToolbarOffsets(top: CGFloat, bottom: CGFloat, resizesPage: Bool, refresh: Bool = false) {
+        let contentBottomOffset = -bottom
+        guard refresh || top != toolbarTopOffset || contentBottomOffset != self.contentBottomOffset
+                || resizesPage != resizesPageWithToolbar else {
+            return
+        }
+        toolbarTopOffset = top
+        resizesPageWithToolbar = resizesPage
+        self.contentBottomOffset = contentBottomOffset
+        updateToolbarLayout()
+    }
+    
+    func configureLayout(
+        topAnchor: NSLayoutYAxisAnchor,
+        bottomAnchor: NSLayoutYAxisAnchor
+    ) {
+        let bottomConstraint = webContentView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        bottomConstraint.isActive = true
+        webContentBottomConstraint = bottomConstraint
+        webContentView.extendPageBackground(from: topAnchor, to: bottomAnchor)
+        [historyPreviewImageView, historyTransitionOverlayView].forEach { contentView in
+            NSLayoutConstraint.activate([
+                contentView.topAnchor.constraint(equalTo: topAnchor),
+                contentView.bottomAnchor.constraint(equalTo: webContentView.bottomAnchor),
+            ])
+        }
+        overlayContentView.topAnchor.constraint(equalTo: topAnchor).isActive = true
+        overlayContentView.bottomAnchor.constraint(equalTo: bottomAnchor).isActive = true
+        overlayContentView.configureContentLayout(
+            topAnchor: safeAreaLayoutGuide.topAnchor,
+            bottomAnchor: self.bottomAnchor
+        )
+    }
+    
+    private func updateToolbarLayout() {
+        let toolbarHeight = resizesPageWithToolbar
+        ? dynamicToolbarMaxHeight - toolbarTopOffset + contentBottomOffset
+        : dynamicToolbarMaxHeight
+        session?.setDynamicToolbarMaxHeight(toolbarHeight)
+        session?.setContentOffsets(
+            top: resizesPageWithToolbar ? 0 : -toolbarTopOffset,
+            bottom: resizesPageWithToolbar ? 0 : contentBottomOffset,
+            topInset: layoutTopInset,
+            bottomInset: contentBottomInset
+        )
+    }
+    
+    private var layoutTopInset: CGFloat {
+        return contentTopInset - (resizesPageWithToolbar ? toolbarTopOffset : 0)
     }
     
     private func applyLayoutState(
@@ -115,6 +348,8 @@ final class ContentView: UIView {
         topConstraint = nextTopConstraint
         bottomConstraint = nextBottomConstraint
         updateLayoutOffsets()
+        transform = focusedInputTransform
+        updatePullToRefreshAvailability()
     }
     
     private func canActivateConstraints(_ constraints: [NSLayoutConstraint]) -> Bool {
@@ -141,26 +376,41 @@ final class ContentView: UIView {
     }
     
     private func updateLayoutOffsets() {
-        topConstraint?.constant = layoutState.mode == .fullscreen ? 0 : -focusedInputOffset
+        let constraintOffset = layoutState.mode == .standard ? 0 : focusedInputOffset
+        topConstraint?.constant = layoutState.mode == .fullscreen ? 0 : -constraintOffset
         switch layoutState.mode {
         case .standard:
-            bottomConstraint?.constant = -focusedInputOffset
+            bottomConstraint?.constant = 0
         case .searchFocused:
             bottomConstraint?.constant = -UX.phoneSearchFocusedBottomInset
         case .fullscreen:
             bottomConstraint?.constant = 0
         }
+        updateContentBottomInset()
+    }
+    
+    private func updateContentBottomInset() {
+        let constraintOffset = layoutState.mode == .standard ? 0 : focusedInputOffset
+        webContentBottomConstraint?.constant = webContentBottomOffset - constraintOffset
+    }
+    
+    private var focusedInputTransform: CGAffineTransform {
+        guard layoutState.mode == .standard else {
+            return .identity
+        }
+        return CGAffineTransform(translationX: 0, y: -focusedInputOffset)
     }
     
     // MARK: - Focused Input Relocation
     
-    func relocateFocusedInput(
-        above keyboardFrame: CGRect,
+    func updateFocusedInputRelocation(
+        above keyboardFrame: CGRect?,
+        bottomInset: CGFloat = 0,
         animationDuration: TimeInterval,
         animationOptions: UIView.AnimationOptions
     ) {
         focusedInputToken += 1
-        guard let session else {
+        guard let keyboardFrame, let session, isDisplaying(session: session) else {
             resetFocusedInputRelocation(
                 animationDuration: animationDuration,
                 animationOptions: animationOptions
@@ -169,14 +419,33 @@ final class ContentView: UIView {
         }
 
         let token = focusedInputToken
-        session.focusedInputBottomRatio { [weak self] bottomRatio in
+        session.focusedInputMetrics { [weak self] metrics in
             DispatchQueue.main.async {
                 guard let self else { return }
                 guard token == self.focusedInputToken else { return }
+                guard session === self.session, self.isDisplaying(session: session) else { return }
+                guard let metrics, let engineView = session.engineView else {
+                    self.resetFocusedInputRelocation(
+                        animationDuration: animationDuration,
+                        animationOptions: animationOptions
+                    )
+                    return
+                }
 
-                self.inputBottomRatio = bottomRatio
                 self.superview?.layoutIfNeeded()
-                let newOffset = self.calculateFocusedInputOffset(keyboardFrame: keyboardFrame)
+                let engineFrame = engineView.convert(engineView.bounds, to: self)
+                let viewportFrame = engineFrame.inset(by: UIEdgeInsets(
+                    top: max(0, self.contentTopInset - self.toolbarTopOffset),
+                    left: 0,
+                    bottom: max(0, self.dynamicToolbarMaxHeight - self.contentTopInset + self.contentBottomOffset),
+                    right: 0
+                ))
+                let newOffset = self.calculateFocusedInputOffset(
+                    focusedInputBottom: engineFrame.minY + self.layoutTopInset + viewportFrame.height * metrics.bottomRatio,
+                    webContentBottom: viewportFrame.maxY,
+                    caretTop: metrics.caretTop.map { engineFrame.minY + $0 },
+                    keyboardTop: keyboardFrame.minY - bottomInset - self.frame.minY - self.focusedInputOffset
+                )
                 guard abs(newOffset - self.focusedInputOffset) > UX.focusedInputOffsetThreshold else {
                     return
                 }
@@ -188,21 +457,17 @@ final class ContentView: UIView {
         }
     }
     
-    private func calculateFocusedInputOffset(keyboardFrame: CGRect) -> CGFloat {
-        guard let inputBottomRatio else { return 0 }
-        
-        let unshiftedFrame = frame.offsetBy(dx: 0, dy: focusedInputOffset)
-        guard unshiftedFrame.height > 1 else { return 0 }
-        
-        let keyboardOverlap = max(0, unshiftedFrame.maxY - keyboardFrame.minY)
-        guard keyboardOverlap > 0 else { return 0 }
-        
-        let focusBottom = unshiftedFrame.height * inputBottomRatio
-        let visibleBottom = max(
-            0,
-            unshiftedFrame.height - keyboardOverlap - UX.focusedInputBottomClearance
-        )
-        return min(keyboardOverlap, max(0, focusBottom - visibleBottom))
+    private func calculateFocusedInputOffset(
+        focusedInputBottom: CGFloat,
+        webContentBottom: CGFloat,
+        caretTop: CGFloat?,
+        keyboardTop: CGFloat
+    ) -> CGFloat {
+        let maximumViewOffset = max(0, webContentBottom - keyboardTop)
+        let visibleBottom = max(0, keyboardTop - UX.focusedInputBottomClearance)
+        let elementOffset = max(0, focusedInputBottom - visibleBottom)
+        let caretLimit = caretTop.map { max(0, $0 - UX.focusedInputBottomClearance) }
+        return min(elementOffset, maximumViewOffset, caretLimit ?? maximumViewOffset)
     }
     
     func resetFocusedInputRelocation(
@@ -210,7 +475,6 @@ final class ContentView: UIView {
         animationOptions: UIView.AnimationOptions = []
     ) {
         focusedInputToken += 1
-        inputBottomRatio = nil
         guard focusedInputOffset != 0 else { return }
         
         focusedInputOffset = 0
@@ -220,6 +484,7 @@ final class ContentView: UIView {
     
     private func animateLayout(duration: TimeInterval, options: UIView.AnimationOptions) {
         guard duration > 0 else {
+            transform = focusedInputTransform
             superview?.layoutIfNeeded()
             return
         }
@@ -229,6 +494,7 @@ final class ContentView: UIView {
             delay: 0,
             options: [options, .beginFromCurrentState, .allowUserInteraction]
         ) {
+            self.transform = self.focusedInputTransform
             self.superview?.layoutIfNeeded()
         }
     }
@@ -262,19 +528,42 @@ final class ContentView: UIView {
         )
         webContentView.setVisibility(state.webVisibility)
         overlayContentView.setPresentation(presentation, animated: animated, completion: completion)
+        updatePullToRefreshAvailability()
     }
     
     private func applyState() {
         webContentView.setVisibility(state.webVisibility)
         overlayContentView.setPresentation(state.overlayPresentation, animated: false)
+        updatePullToRefreshAvailability()
     }
     
     // MARK: - Session
     
-    func setSession(_ session: GeckoSession?) {
-        self.session = session
+    func setTab(_ tab: Tab?, pageBackgroundColor: UIColor? = nil) {
+        resetHistoryNavigation()
+        self.session = tab?.session
         resetFocusedInputRelocation()
-        webContentView.setSession(session)
+        webContentView.setTab(tab, pageBackgroundColor: pageBackgroundColor)
+        onAppearanceChanged?()
+        updateToolbarLayout()
+        updatePullToRefreshAvailability()
+    }
+    
+    func setPageBackgroundColor(_ color: UIColor) {
+        webContentView.setPageBackgroundColor(color)
+        onAppearanceChanged?()
+    }
+    
+    func resetScrollTracking() {
+        webContentView.resetScrollTracking()
+    }
+    
+    func showPageError(for url: String?) {
+        webContentView.showPageError(for: url)
+    }
+    
+    func didFinishLoading(session: GeckoSession) {
+        webContentView.didFinishLoading(session: session)
     }
     
     func isDisplaying(session: GeckoSession) -> Bool {
@@ -291,6 +580,393 @@ final class ContentView: UIView {
         webContentView.addWebViewInteraction(interaction)
     }
     
+    // MARK: - History Navigation
+    
+    func setHistoryNavigation(
+        canGoBack: Bool,
+        canGoForward: Bool,
+        backPreviewImage: UIImage?,
+        forwardPreviewImage: UIImage?,
+        isSwipeEnabled: Bool
+    ) {
+        self.canGoBack = canGoBack
+        self.canGoForward = canGoForward
+        self.backPreviewImage = backPreviewImage
+        self.forwardPreviewImage = forwardPreviewImage
+        isHistorySwipeEnabled = isSwipeEnabled
+    }
+    
+    @objc private func handleBackHistoryPan(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        handleHistoryPan(gesture, direction: .back)
+    }
+    
+    @objc private func handleForwardHistoryPan(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        handleHistoryPan(gesture, direction: .forward)
+    }
+    
+    private func handleHistoryPan(
+        _ gesture: UIScreenEdgePanGestureRecognizer,
+        direction: HistorySwipeDirection
+    ) {
+        switch gesture.state {
+        case .began:
+            beginHistoryNavigation(direction)
+        case .changed:
+            updateHistoryNavigation(gesture, direction: direction)
+        case .ended:
+            finishHistoryNavigation(gesture, direction: direction, cancelled: false)
+        case .cancelled, .failed:
+            finishHistoryNavigation(gesture, direction: direction, cancelled: true)
+        default:
+            break
+        }
+    }
+    
+    private func beginHistoryNavigation(_ direction: HistorySwipeDirection) {
+        guard case .idle = historySwipeState else {
+            return
+        }
+        
+        onHistorySwipeBegan?()
+        historySwipeState = .swiping(direction)
+        activeHistorySwipeDirection = direction
+        updatePullToRefreshAvailability()
+        historyPreviewImageView.image = direction == .back ? backPreviewImage : forwardPreviewImage
+        historyPreviewImageView.isHidden = false
+        historyTransitionOverlayView.isHidden = false
+        
+        let width = bounds.width
+        switch direction {
+        case .back:
+            insertSubview(historyPreviewImageView, belowSubview: webContentView)
+            insertSubview(historyTransitionOverlayView, belowSubview: webContentView)
+            historyPreviewImageView.transform = CGAffineTransform(
+                translationX: -width * UX.historyPreviewParallaxRatio, y: 0
+            )
+            updateHistoryTransitionOverlay(direction: direction, progress: 0)
+        case .forward:
+            insertSubview(historyTransitionOverlayView, aboveSubview: webContentView)
+            insertSubview(historyPreviewImageView, aboveSubview: historyTransitionOverlayView)
+            historyPreviewImageView.transform = CGAffineTransform(translationX: width, y: 0)
+            updateHistoryTransitionOverlay(direction: direction, progress: 0)
+        }
+        historyTransitionOverlayView.transform = .identity
+    }
+    
+    private func updateHistoryNavigation(
+        _ gesture: UIScreenEdgePanGestureRecognizer,
+        direction: HistorySwipeDirection
+    ) {
+        let progress = historyNavigationProgress(for: gesture, direction: direction)
+        updateHistoryNavigation(progress: progress, direction: direction)
+    }
+    
+    private func updateHistoryNavigation(
+        progress: CGFloat,
+        direction: HistorySwipeDirection
+    ) {
+        guard case .swiping(let activeDirection) = historySwipeState,
+              activeDirection == direction else {
+            return
+        }
+        
+        let width = bounds.width
+        switch direction {
+        case .back:
+            webContentView.transform = CGAffineTransform(translationX: width * progress, y: 0)
+            historyPreviewImageView.transform = CGAffineTransform(
+                translationX: -width * UX.historyPreviewParallaxRatio * (1 - progress), y: 0
+            )
+        case .forward:
+            historyPreviewImageView.transform = CGAffineTransform(
+                translationX: width * (1 - progress), y: 0
+            )
+        }
+        updateHistoryTransitionOverlay(direction: direction, progress: progress)
+    }
+    
+    private func finishHistoryNavigation(
+        _ gesture: UIScreenEdgePanGestureRecognizer,
+        direction: HistorySwipeDirection,
+        cancelled: Bool
+    ) {
+        guard case .swiping(let activeDirection) = historySwipeState,
+              activeDirection == direction else {
+            resetHistoryNavigation()
+            return
+        }
+        
+        let progress = historyNavigationProgress(for: gesture, direction: direction)
+        let velocityX = gesture.velocity(in: self).x
+        let directionalVelocity: CGFloat
+        switch direction {
+        case .back:
+            directionalVelocity = max(velocityX, 0)
+        case .forward:
+            directionalVelocity = max(-velocityX, 0)
+        }
+        
+        let width = bounds.width
+        let projectedDistance = width * progress
+        + directionalVelocity * UX.historyTransitionProjectionDuration
+        let shouldComplete = !cancelled && projectedDistance >= width
+        
+        settleHistoryNavigation(
+            direction: direction,
+            shouldComplete: shouldComplete,
+            velocityX: velocityX
+        )
+    }
+    
+    private func settleHistoryNavigation(
+        direction: HistorySwipeDirection,
+        shouldComplete: Bool,
+        velocityX: CGFloat
+    ) {
+        let width = bounds.width
+        UIView.animate(
+            withDuration: UX.historyTransitionDuration,
+            delay: 0,
+            usingSpringWithDamping: 1,
+            initialSpringVelocity: abs(velocityX) / max(width, 1),
+            options: [.beginFromCurrentState, .allowUserInteraction]
+        ) {
+            if shouldComplete {
+                self.historySwipeState = .settling
+                switch direction {
+                case .back:
+                    self.webContentView.transform = CGAffineTransform(translationX: width, y: 0)
+                    self.historyPreviewImageView.transform = .identity
+                    self.updateHistoryTransitionOverlay(direction: direction, progress: 1)
+                    self.onBack?()
+                case .forward:
+                    self.historyPreviewImageView.transform = .identity
+                    self.updateHistoryTransitionOverlay(direction: direction, progress: 1)
+                    self.onForward?()
+                }
+            } else {
+                self.webContentView.transform = .identity
+                switch direction {
+                case .back:
+                    self.historyPreviewImageView.transform = CGAffineTransform(
+                        translationX: -width * UX.historyPreviewParallaxRatio, y: 0
+                    )
+                    self.updateHistoryTransitionOverlay(direction: direction, progress: 0)
+                case .forward:
+                    self.historyPreviewImageView.transform = CGAffineTransform(translationX: width, y: 0)
+                    self.updateHistoryTransitionOverlay(direction: direction, progress: 0)
+                }
+            }
+        } completion: { _ in
+            guard shouldComplete else {
+                self.resetHistoryNavigation()
+                return
+            }
+            
+            if case .loaded = self.historySwipeState {
+                self.resetHistoryNavigation()
+                return
+            }
+            
+            switch self.historySwipeState {
+            case .settling:
+                self.historySwipeState = .loading
+            case .settled:
+                self.scheduleHistoryLocationReset()
+            default:
+                break
+            }
+        }
+    }
+    
+    private func historyNavigationProgress(
+        for gesture: UIScreenEdgePanGestureRecognizer,
+        direction: HistorySwipeDirection
+    ) -> CGFloat {
+        let translationX = gesture.translation(in: self).x
+        let distance: CGFloat
+        switch direction {
+        case .back:
+            distance = translationX
+        case .forward:
+            distance = -translationX
+        }
+        return min(max(distance / max(bounds.width, 1), 0), 1)
+    }
+    
+    private func allowedTrackpadHistorySwipeDirections() -> GeckoEdgeSwipeDirections {
+        guard canBeginHistoryNavigation else {
+            return []
+        }
+        
+        var directions: GeckoEdgeSwipeDirections = []
+        if canGoBack {
+            directions.insert(.left)
+        }
+        if canGoForward {
+            directions.insert(.right)
+        }
+        return directions
+    }
+    
+    private func beginTrackpadHistoryNavigation(_ direction: GeckoEdgeSwipeDirections) {
+        guard let direction = historySwipeDirection(from: direction) else {
+            return
+        }
+        beginHistoryNavigation(direction)
+    }
+    
+    private func updateTrackpadHistoryNavigation(_ progress: CGFloat) {
+        guard let direction = activeHistorySwipeDirection else {
+            return
+        }
+        updateHistoryNavigation(
+            progress: min(max(progress, 0), 1),
+            direction: direction
+        )
+    }
+    
+    private func completeTrackpadHistoryNavigation(_ direction: GeckoEdgeSwipeDirections) {
+        guard let direction = historySwipeDirection(from: direction),
+              direction == activeHistorySwipeDirection,
+              case .swiping(let activeDirection) = historySwipeState,
+              activeDirection == direction else {
+            return
+        }
+        
+        settleHistoryNavigation(
+            direction: direction,
+            shouldComplete: true,
+            velocityX: 0
+        )
+    }
+    
+    private func endTrackpadHistoryNavigation() {
+        guard case .swiping = historySwipeState else {
+            return
+        }
+        resetHistoryNavigation()
+    }
+    
+    private func historySwipeDirection(
+        from direction: GeckoEdgeSwipeDirections
+    ) -> HistorySwipeDirection? {
+        if direction.contains(.left) {
+            return .back
+        }
+        if direction.contains(.right) {
+            return .forward
+        }
+        return nil
+    }
+    
+    private func updateHistoryTransitionOverlay(
+        direction: HistorySwipeDirection,
+        progress: CGFloat
+    ) {
+        let leadingEdgeProgress: CGFloat
+        switch direction {
+        case .back:
+            leadingEdgeProgress = 1 - progress
+        case .forward:
+            leadingEdgeProgress = progress
+        }
+        
+        historyTransitionOverlayView.alpha = UX.historyTransitionOverlayMaximumAlpha * leadingEdgeProgress
+    }
+    
+    private func resetHistoryNavigation() {
+        webContentView.transform = .identity
+        historyPreviewImageView.transform = .identity
+        historyTransitionOverlayView.transform = .identity
+        historyPreviewImageView.image = nil
+        historyPreviewImageView.isHidden = true
+        historyTransitionOverlayView.alpha = 0
+        historyTransitionOverlayView.isHidden = true
+        historySwipeState = .idle
+        activeHistorySwipeDirection = nil
+        updatePullToRefreshAvailability()
+        onHistorySwipeEnded?()
+    }
+    
+    private func updatePullToRefreshAvailability() {
+        let isHistoryNavigationIdle: Bool
+        if case .idle = historySwipeState {
+            isHistoryNavigationIdle = true
+        } else {
+            isHistoryNavigationIdle = false
+        }
+        let isEnabled = session != nil &&
+        state == .browsing &&
+        webContentView.visibility == .visible &&
+        layoutState.mode != .fullscreen &&
+        Prefs.AppearanceSettings.pullToRefreshEnabled &&
+        isHistoryNavigationIdle
+        webContentView.setPullToRefreshEnabled(isEnabled)
+    }
+    
+    @objc private func appearanceGestureSettingsDidChange() {
+        updatePullToRefreshAvailability()
+    }
+    
+    func finishHistoryLoad() {
+        switch historySwipeState {
+        case .settling, .settled:
+            historySwipeState = .loaded
+        case .loading, .resetting:
+            resetHistoryNavigation()
+        case .idle, .swiping, .loaded:
+            break
+        }
+    }
+    
+    func noteHistoryLocationChange() {
+        switch historySwipeState {
+        case .settling:
+            historySwipeState = .settled
+        case .loading:
+            scheduleHistoryLocationReset()
+        case .idle, .swiping, .settled, .loaded, .resetting:
+            break
+        }
+    }
+    
+    private func scheduleHistoryLocationReset() {
+        historySwipeState = .resetting
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  case .resetting = self.historySwipeState else {
+                return
+            }
+            
+            self.resetHistoryNavigation()
+        }
+    }
+    
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard gestureRecognizer is UIScreenEdgePanGestureRecognizer,
+              canBeginHistoryNavigation else {
+            return false
+        }
+        
+        if let backGesture = gestureRecognizer as? UIScreenEdgePanGestureRecognizer,
+           backGesture.edges == .left {
+            return canGoBack
+        }
+        
+        return canGoForward
+    }
+    
+    private var canBeginHistoryNavigation: Bool {
+        guard case .idle = historySwipeState else {
+            return false
+        }
+        
+        return isHistorySwipeEnabled &&
+        state == .browsing &&
+        webContentView.visibility == .visible
+    }
+    
     // MARK: - Presentation
     
     func setTransitionTransform(_ transform: CGAffineTransform) {
@@ -305,16 +981,48 @@ final class ContentView: UIView {
         convert(bounds, to: view)
     }
     
-    func makeThumbnail() -> UIImage? {
-        layoutIfNeeded()
-        guard bounds.width > 1, bounds.height > 1 else {
+    // MARK: - Thumbnail
+    
+    func thumbnailGeometry(in view: UIView) -> ThumbnailGeometry? {
+        let fullFrame = webContentView.thumbnailFrame(in: view)
+        let visibleFrame = fullFrame.intersection(frame(in: view))
+        guard fullFrame.width > 1,
+              fullFrame.height > 1,
+              visibleFrame.width > 1,
+              visibleFrame.height > 1 else {
             return nil
         }
         
-        let renderer = UIGraphicsImageRenderer(size: bounds.size)
-        return renderer.image { context in
-            layer.render(in: context.cgContext)
+        return ThumbnailGeometry(
+            fullFrame: fullFrame,
+            cropRect: CGRect(
+                x: (visibleFrame.minX - fullFrame.minX) / fullFrame.width,
+                y: (visibleFrame.minY - fullFrame.minY) / fullFrame.height,
+                width: visibleFrame.width / fullFrame.width,
+                height: visibleFrame.height / fullFrame.height
+            )
+        )
+    }
+    
+    var thumbnailCaptureGeometry: ThumbnailCaptureGeometry? {
+        guard let geometry = thumbnailGeometry(in: self) else {
+            return nil
         }
+        
+        let size = geometry.fullFrame.size
+        return ThumbnailCaptureGeometry(
+            size: size,
+            visibleRect: CGRect(
+                x: geometry.cropRect.minX * size.width,
+                y: geometry.cropRect.minY * size.height,
+                width: geometry.cropRect.width * size.width,
+                height: geometry.cropRect.height * size.height
+            )
+        )
+    }
+    
+    func makeWebThumbnail() -> UIImage? {
+        return webContentView.makeThumbnail()
     }
     
     // MARK: - Overlay Hosting
@@ -327,8 +1035,11 @@ final class ContentView: UIView {
         overlayContentView.setController(viewController, for: page, in: parentViewController)
     }
     
+    func layoutOverlayIfNeeded() {
+        overlayContentView.layoutIfNeeded()
+    }
+    
     func removeOverlayController(for page: OverlayContentView.Page) {
         overlayContentView.removeController(for: page)
     }
 }
-

@@ -1,0 +1,34 @@
+diff --git a/dom/base/Document.cpp b/dom/base/Document.cpp
+index 9602541b0cb1..e1edf0ddf45c 100644
+--- a/dom/base/Document.cpp
++++ b/dom/base/Document.cpp
+@@ -17273,9 +17273,29 @@ void Document::AddPendingFullscreenEvent(
+ // https://fullscreen.spec.whatwg.org/#run-the-fullscreen-steps
+ void Document::RunFullscreenSteps() {
+   auto events = std::move(mPendingFullscreenEvents);
++#ifdef MOZ_WIDGET_UIKIT
++  const bool hasFullscreenChange = std::any_of(
++      events.cbegin(), events.cend(), [](const auto& aEvent) {
++        return aEvent->Type() == FullscreenEventType::Change;
++      });
++#endif
+   for (auto& event : events) {
+     event->Dispatch(this);
+   }
++#ifdef MOZ_WIDGET_UIKIT
++  if (hasFullscreenChange) {
++    // UIKit resizes the viewport before fullscreenchange, while Android's
++    // immersive layout also produces a resize after the transition.
++    RefPtr<PresShell> presShell = GetPresShell();
++    NS_DispatchToCurrentThread(NS_NewRunnableFunction(
++        "Document::ScheduleUIKitFullscreenResizeEvent",
++        [presShell = std::move(presShell)]() {
++          if (presShell) {
++            presShell->ScheduleResizeEventIfNeeded();
++          }
++        }));
++  }
++#endif
+ }
+ 
+ bool Document::HasPendingFullscreenRequests() {

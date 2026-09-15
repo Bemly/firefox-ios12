@@ -11,6 +11,9 @@ struct PrivacySettingsSection {
     enum Row: CaseIterable {
         case sitePermissions
         case clearBrowsingData
+        case httpsOnlyMode
+        case dnsOverHTTPS
+        case trackingProtection
     }
     
     var rowCount: Int {
@@ -24,9 +27,15 @@ struct PrivacySettingsSection {
         
         switch Row.allCases[index] {
         case .sitePermissions:
-            return SettingsViewUtils.disclosureCell(title: "Site Permissions")
+            return SettingsViewUtils.disclosureCell(title: NSLocalizedString("Website Permissions", comment: ""))
         case .clearBrowsingData:
-            return SettingsViewUtils.disclosureCell(title: "Clear Browsing Data")
+            return SettingsViewUtils.disclosureCell(title: NSLocalizedString("Clear Browsing Data", comment: ""))
+        case .httpsOnlyMode:
+            return SettingsViewUtils.disclosureCell(title: NSLocalizedString("HTTPS-Only Mode", tableName: "SettingsLocalizable", comment: ""))
+        case .dnsOverHTTPS:
+            return SettingsViewUtils.disclosureCell(title: NSLocalizedString("DNS over HTTPS", tableName: "SettingsLocalizable", comment: ""))
+        case .trackingProtection:
+            return SettingsViewUtils.disclosureCell(title: NSLocalizedString("Tracking Protection", comment: ""))
         }
     }
     
@@ -41,6 +50,15 @@ struct PrivacySettingsSection {
             viewController.navigationController?.pushViewController(destination, animated: true)
         case .clearBrowsingData:
             let destination = ClearBrowsingDataViewController()
+            viewController.navigationController?.pushViewController(destination, animated: true)
+        case .httpsOnlyMode:
+            let destination = HTTPSOnlyModePreferencesViewController()
+            viewController.navigationController?.pushViewController(destination, animated: true)
+        case .dnsOverHTTPS:
+            let destination = DNSOverHTTPSPreferencesViewController()
+            viewController.navigationController?.pushViewController(destination, animated: true)
+        case .trackingProtection:
+            let destination = TrackingProtectionPreferencesViewController()
             viewController.navigationController?.pushViewController(destination, animated: true)
         }
     }

@@ -1,0 +1,73 @@
+diff --git a/layout/base/PresShell.cpp b/layout/base/PresShell.cpp
+index 0be20c4ea8b9..e872f22a8d49 100644
+--- a/layout/base/PresShell.cpp
++++ b/layout/base/PresShell.cpp
+@@ -47,6 +47,7 @@
+ #include "mozilla/IntegerRange.h"
+ #include "mozilla/Likely.h"
+ #include "mozilla/Logging.h"
++#include "mozilla/LookAndFeel.h"
+ #include "mozilla/MemoryReporting.h"
+ #include "mozilla/MouseEvents.h"
+ #include "mozilla/PerfStats.h"
+@@ -5757,7 +5758,32 @@ nscolor PresShell::GetDefaultBackgroundColorToDraw() const {
+ }
+ 
+ void PresShell::UpdateCanvasBackground() {
+-  mCanvasBackground = ComputeCanvasBackground();
++  CanvasBackground canvasBackground = ComputeCanvasBackground();
++
++#ifdef XP_IOS
++  const auto& oldViewportBackground = mCanvasBackground.mViewport;
++  const auto& newViewportBackground = canvasBackground.mViewport;
++  const bool backgroundChanged =
++      oldViewportBackground.mColor != newViewportBackground.mColor ||
++      oldViewportBackground.mCSSSpecified !=
++          newViewportBackground.mCSSSpecified;
++  if (backgroundChanged && this == GetRootPresShell() &&
++      mDocument->GetBrowsingContext() &&
++      mDocument->GetBrowsingContext()->IsTopContent()) {
++    nscolor backgroundColor = newViewportBackground.mColor;
++    if (!newViewportBackground.mCSSSpecified) {
++      backgroundColor = LookAndFeel::Color(
++          LookAndFeel::ColorID::Window, LookAndFeel::SystemColorScheme(),
++          LookAndFeel::UseStandins::No, NS_RGB(255, 255, 255));
++    }
++    if (BrowserChild* browserChild =
++            BrowserChild::GetFrom(mDocument->GetDocShell())) {
++      browserChild->UpdateBackgroundColor(backgroundColor);
++    }
++  }
++#endif
++
++  mCanvasBackground = canvasBackground;
+ }
+ 
+ static SingleCanvasBackground ComputeSingleCanvasBackground(nsIFrame* aCanvas) {
+@@ -12438,6 +12464,17 @@ nsPoint PresShell::GetVisualViewportOffsetRelativeToLayoutViewport() const {
+   return GetVisualViewportOffset() - GetLayoutViewportOffset();
+ }
+ 
++void PresShell::SetFixedPositionTopMargin(const Maybe<CSSCoord>& aMargin) {
++  if (mFixedPositionTopMargin == aMargin) {
++    return;
++  }
++  mFixedPositionTopMargin = aMargin;
++  if (nsIWidget* widget = GetOwnWidget();
++      widget && widget->GetInputContext().mIMEState.IsEditable()) {
++    IMEStateManager::NotifyIME(widget::NOTIFY_IME_OF_POSITION_CHANGE, widget);
++  }
++}
++
+ nsPoint PresShell::GetLayoutViewportOffset() const {
+   nsPoint result;
+   if (ScrollContainerFrame* sf = GetRootScrollContainerFrame()) {
+@@ -12483,7 +12520,7 @@ nsSize PresShell::GetFixedViewportSize() const {
+     return layoutViewportSize;
+   }
+   layoutViewportSize.height +=
+-      mPresContext->GetBimodalDynamicToolbarHeightForFixedPosInAppUnits();
++      mPresContext->GetHiddenDynamicToolbarHeightForFixedPosInAppUnits();
+   return layoutViewportSize;
+ }
+ 

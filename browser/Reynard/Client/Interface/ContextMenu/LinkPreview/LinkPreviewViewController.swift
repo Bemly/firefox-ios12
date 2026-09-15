@@ -15,17 +15,29 @@ final class LinkPreviewViewController: UIViewController {
     
     private(set) var pageURL: String
     private(set) var pageTitle: String?
+    let targetURL: URL
+    let navigationHistoryState: GeckoSessionState?
     private let sessionManager: SessionManager
     private var session: GeckoSession?
     private var hasClosedSession = false
+    private(set) var hasCommittedPage = false
     
     private let geckoView = GeckoView()
     
     // MARK: - Lifecycle
     
-    init(url: URL, isPrivate: Bool, sessionManager: SessionManager) {
+    init(
+        url: URL,
+        isPrivate: Bool,
+        sessionManager: SessionManager,
+        sourceSessionState: GeckoSessionState?
+    ) {
+        targetURL = url
         pageURL = url.absoluteString
         self.sessionManager = sessionManager
+        navigationHistoryState = sourceSessionState?.navigationHistoryState(
+            appending: url.absoluteString
+        )
         super.init(nibName: nil, bundle: nil)
         configurePreview(isPrivate: isPrivate)
     }
@@ -60,7 +72,11 @@ final class LinkPreviewViewController: UIViewController {
         )
         sessionManager.bindDelegates(
             to: session,
-            delegates: SessionDelegates(content: self, navigation: self)
+            delegates: SessionDelegates(
+                content: self,
+                navigation: self,
+                history: self
+            )
         )
         self.session = session
     }
@@ -73,9 +89,13 @@ final class LinkPreviewViewController: UIViewController {
     
     // MARK: - Session
     
-    func releaseSession() -> GeckoSession? {
+    func releaseSession(purgingHistory: Bool) -> GeckoSession? {
         hasClosedSession = true
         if let session {
+            if purgingHistory && navigationHistoryState != nil {
+                session.purgeHistory()
+            }
+            session.mediaSession.muteAudio(false)
             sessionManager.deactivate(session)
         }
         let committedSession = session
@@ -102,13 +122,22 @@ final class LinkPreviewViewController: UIViewController {
         }
         
         sessionManager.open(session)
+        session.mediaSession.muteAudio(true)
         geckoView.session = session
         sessionManager.activate(session)
-        session.load(pageURL)
+        if let navigationHistoryState {
+            session.restoreState(navigationHistoryState)
+        } else {
+            session.load(pageURL)
+        }
     }
 }
 
-extension LinkPreviewViewController: ContentDelegate, NavigationDelegate {
+extension LinkPreviewViewController: ContentDelegate, NavigationDelegate, HistoryDelegate {
+    func onPageBackgroundColorChange(session: GeckoSession, color: UIColor) {
+        sessionManager.setPageBackgroundColor(color, for: session)
+    }
+    
     func onTitleChange(session: GeckoSession, title: String) {
         pageTitle = title
     }
@@ -118,6 +147,28 @@ extension LinkPreviewViewController: ContentDelegate, NavigationDelegate {
               url.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("about:blank") == false else {
             return
         }
+        hasCommittedPage = true
         pageURL = url
+    }
+    
+    func onVisited(
+        session: GeckoSession,
+        url: String,
+        lastVisitedURL: String?,
+        flags: HistoryVisitFlags
+    ) async -> Bool {
+        guard !session.isPrivateMode else {
+            return false
+        }
+        
+        return await HistoryStore.shared.visitedStatuses(for: [url]).first ?? false
+    }
+    
+    func getVisited(session: GeckoSession, urls: [String]) async -> [Bool]? {
+        guard !session.isPrivateMode else {
+            return Array(repeating: false, count: urls.count)
+        }
+        
+        return await HistoryStore.shared.visitedStatuses(for: urls)
     }
 }

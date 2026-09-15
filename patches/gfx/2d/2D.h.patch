@@ -1,0 +1,39 @@
+diff --git a/gfx/2d/2D.h b/gfx/2d/2D.h
+index 9ea5cfe6a461..be08b42f24c9 100644
+--- a/gfx/2d/2D.h
++++ b/gfx/2d/2D.h
+@@ -1260,6 +1260,11 @@ class SharedFTFace : public external::AtomicRefCounted<SharedFTFace> {
+ 
+ class UnscaledFont : public SupportsThreadSafeWeakPtr<UnscaledFont> {
+  public:
++  enum class DescriptorProvenance : uint8_t {
++    NativeFace,
++    SystemUI,
++  };
++
+   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(UnscaledFont)
+ 
+   virtual ~UnscaledFont();
+@@ -1283,6 +1288,12 @@ class UnscaledFont : public SupportsThreadSafeWeakPtr<UnscaledFont> {
+ 
+   virtual bool GetFontDescriptor(FontDescriptorOutput, void*) { return false; }
+ 
++  virtual DescriptorProvenance GetDescriptorProvenance() const {
++    return DescriptorProvenance::NativeFace;
++  }
++
++  virtual uint32_t GetSystemFontTraits() const { return 0; }
++
+   virtual already_AddRefed<ScaledFont> CreateScaledFont(
+       Float aGlyphSize, const uint8_t* aInstanceData,
+       uint32_t aInstanceDataLength, const FontVariation* aVariations,
+@@ -2260,7 +2271,8 @@ class GFX2D_API Factory {
+    */
+   static already_AddRefed<UnscaledFont> CreateUnscaledFontFromFontDescriptor(
+       FontType aType, const uint8_t* aData, uint32_t aDataLength,
+-      uint32_t aIndex);
++      uint32_t aIndex, UnscaledFont::DescriptorProvenance aProvenance,
++      uint32_t aSystemFontTraits);
+ 
+   /**
+    * This creates a simple data source surface for a certain size. It allocates

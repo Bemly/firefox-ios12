@@ -1,5 +1,5 @@
 diff --git a/gfx/wgpu_bindings/cbindgen.toml b/gfx/wgpu_bindings/cbindgen.toml
-index 4b6b18157b9d..cef9bd74981e 100644
+index dce3c81ab16a..d09a9c8eb72b 100644
 --- a/gfx/wgpu_bindings/cbindgen.toml
 +++ b/gfx/wgpu_bindings/cbindgen.toml
 @@ -147,5 +147,6 @@ bitflags = true

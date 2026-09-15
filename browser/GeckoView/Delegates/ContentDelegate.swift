@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import UIKit
 
 // MARK: - Content Models
 
@@ -24,6 +25,7 @@ public struct ContextElement {
     public let type: ElementType
     public let srcUri: String?
     public let textContent: String?
+    public let isMouseInput: Bool
 }
 
 public enum SlowScriptResponse {
@@ -31,15 +33,72 @@ public enum SlowScriptResponse {
     case resume
 }
 
+// MARK: - External Response Models
+
+public struct ExternalResponseHeader {
+    public let name: String
+    public let value: String
+}
+
+private enum ExternalResponseCommand: String {
+    case cancel = "GeckoView:ExternalResponseCancel"
+    case pause = "GeckoView:ExternalResponsePause"
+    case resume = "GeckoView:ExternalResponseResume"
+}
+
 public struct ExternalResponseInfo {
     public let url: String
-    public let localFilePath: String?
+    public let localFilePath: String
     public let filename: String?
     public let mimeType: String?
     public let contentLength: Int64?
-    public let requestMethod: String?
-    public let requestHeaders: [String: String]
+    public let headers: [ExternalResponseHeader]
+    public let statusCode: Int
+    private let commandHandler: (ExternalResponseCommand) -> Void
+    
+    init?(session: GeckoSession, payload: [String: Any?]?) {
+        guard let url = payload?["url"] as? String,
+              let localFilePath = payload?["localFilePath"] as? String else {
+            return nil
+        }
+        
+        self.url = url
+        self.localFilePath = localFilePath
+        self.filename = payload?["filename"] as? String
+        self.mimeType = payload?["mimeType"] as? String
+        self.contentLength = PayloadValue.int64(payload?["contentLength"])
+        self.headers = (payload?["headers"] as? [[String: Any]])?.compactMap { header in
+            guard let name = PayloadValue.string(header["name"]),
+                  let value = PayloadValue.string(header["value"]) else {
+                return nil
+            }
+            return ExternalResponseHeader(name: name, value: value)
+        } ?? []
+        self.statusCode = PayloadValue.int(payload?["statusCode"]) ?? 0
+        self.commandHandler = { [weak session] command in
+            DispatchQueue.main.async { [weak session] in
+                session?.dispatcher.dispatch(
+                    type: command.rawValue,
+                    message: ["localFilePath": localFilePath]
+                )
+            }
+        }
+    }
+    
+    public func pause() {
+        commandHandler(.pause)
+    }
+    
+    public func resume() {
+        commandHandler(.resume)
+    }
+    
+    public func cancel() {
+        commandHandler(.cancel)
+    }
 }
+
+// MARK: - PDF Models
 
 public struct SavePdfInfo {
     public let url: String
@@ -63,12 +122,15 @@ public protocol ContentDelegate {
     func onFirstComposite(session: GeckoSession)
     func onFirstContentfulPaint(session: GeckoSession)
     func onPaintStatusReset(session: GeckoSession)
+    func onPageBackgroundColorChange(session: GeckoSession, color: UIColor)
     func onWebAppManifest(session: GeckoSession, manifest: Any)
     func onSlowScript(session: GeckoSession, scriptFileName: String, completion: @escaping (SlowScriptResponse) -> Void)
     func onShowDynamicToolbar(session: GeckoSession)
     func onCookieBannerDetected(session: GeckoSession)
     func onCookieBannerHandled(session: GeckoSession)
-    func onExternalResponse(session: GeckoSession, response: ExternalResponseInfo)
+    func onExternalResponse(session: GeckoSession, response: ExternalResponseInfo, completion: @escaping (Bool) -> Void)
+    func onExternalResponseProgress(session: GeckoSession, localFilePath: String, bytesReceived: Int64) -> Bool
+    func onExternalResponseComplete(session: GeckoSession, localFilePath: String, succeeded: Bool)
     func onSavePdf(session: GeckoSession, request: SavePdfInfo)
 }
 
@@ -86,12 +148,15 @@ extension ContentDelegate {
     public func onFirstComposite(session: GeckoSession) {}
     public func onFirstContentfulPaint(session: GeckoSession) {}
     public func onPaintStatusReset(session: GeckoSession) {}
+    public func onPageBackgroundColorChange(session: GeckoSession, color: UIColor) {}
     public func onWebAppManifest(session: GeckoSession, manifest: Any) {}
     public func onSlowScript(session: GeckoSession, scriptFileName: String, completion: @escaping (SlowScriptResponse) -> Void) { completion(.halt) }
     public func onShowDynamicToolbar(session: GeckoSession) {}
     public func onCookieBannerDetected(session: GeckoSession) {}
     public func onCookieBannerHandled(session: GeckoSession) {}
-    public func onExternalResponse(session: GeckoSession, response: ExternalResponseInfo) {}
+    public func onExternalResponse(session: GeckoSession, response: ExternalResponseInfo, completion: @escaping (Bool) -> Void) { completion(false) }
+    public func onExternalResponseProgress(session: GeckoSession, localFilePath: String, bytesReceived: Int64) -> Bool { false }
+    public func onExternalResponseComplete(session: GeckoSession, localFilePath: String, succeeded: Bool) {}
     public func onSavePdf(session: GeckoSession, request: SavePdfInfo) {}
 }
 
@@ -105,12 +170,15 @@ enum ContentEvents: String, CaseIterable {
     case pageTitleChanged = "GeckoView:PageTitleChanged"
     case domWindowClose = "GeckoView:DOMWindowClose"
     case externalResponse = "GeckoView:ExternalResponse"
+    case externalResponseProgress = "GeckoView:ExternalResponseProgress"
+    case externalResponseComplete = "GeckoView:ExternalResponseComplete"
     case focusRequest = "GeckoView:FocusRequest"
     case fullscreenEnter = "GeckoView:FullScreenEnter"
     case fullscreenExit = "GeckoView:FullScreenExit"
     case webAppManifest = "GeckoView:WebAppManifest"
     case firstContentfulPaint = "GeckoView:FirstContentfulPaint"
     case paintStatusReset = "GeckoView:PaintStatusReset"
+    case backgroundColor = "GeckoView:BackgroundColor"
     case previewImage = "GeckoView:PreviewImage"
     case cookieBannerEventDetected = "GeckoView:CookieBannerEvent:Detected"
     case cookieBannerEventHandled = "GeckoView:CookieBannerEvent:Handled"
@@ -178,7 +246,8 @@ func newContentHandler(_ session: GeckoSession) -> GeckoSessionHandler {
                 altText: message?["alt"] as? String,
                 type: parseElementType(message?["elementType"] as? String ?? ""),
                 srcUri: message?["elementSrc"] as? String,
-                textContent: message?["textContent"] as? String
+                textContent: message?["textContent"] as? String,
+                isMouseInput: message?["isMouseInput"] as? Bool ?? false
             )
             
             delegate?.onContextMenu(
@@ -209,17 +278,38 @@ func newContentHandler(_ session: GeckoSession) -> GeckoSessionHandler {
             return
             
         case .externalResponse:
-            delegate?.onExternalResponse(
+            guard let response = ExternalResponseInfo(session: session, payload: message) else {
+                completion(.success(false))
+                return
+            }
+            delegate?.onExternalResponse(session: session, response: response) { allowed in
+                completion(.success(allowed))
+            }
+            return
+            
+        case .externalResponseProgress:
+            guard let localFilePath = message?["localFilePath"] as? String else {
+                completion(.success(false))
+                return
+            }
+            completion(.success(
+                delegate?.onExternalResponseProgress(
+                    session: session,
+                    localFilePath: localFilePath,
+                    bytesReceived: PayloadValue.int64(message?["bytesReceived"]) ?? 0
+                ) ?? false
+            ))
+            return
+            
+        case .externalResponseComplete:
+            guard let localFilePath = message?["localFilePath"] as? String else {
+                completion(.success(nil))
+                return
+            }
+            delegate?.onExternalResponseComplete(
                 session: session,
-                response: ExternalResponseInfo(
-                    url: message?["url"] as? String ?? "",
-                    localFilePath: message?["localFilePath"] as? String,
-                    filename: message?["filename"] as? String,
-                    mimeType: message?["mimeType"] as? String,
-                    contentLength: PayloadValue.int64(message?["contentLength"]),
-                    requestMethod: message?["requestMethod"] as? String,
-                    requestHeaders: parseStringDictionary(message?["requestHeaders"])
-                )
+                localFilePath: localFilePath,
+                succeeded: message?["succeeded"] as? Bool ?? false
             )
             completion(.success(nil))
             return
@@ -253,6 +343,29 @@ func newContentHandler(_ session: GeckoSession) -> GeckoSessionHandler {
             
         case .paintStatusReset:
             delegate?.onPaintStatusReset(session: session)
+            completion(.success(nil))
+            return
+            
+        case .backgroundColor:
+            guard let red = PayloadValue.int(message?["red"]),
+                  let green = PayloadValue.int(message?["green"]),
+                  let blue = PayloadValue.int(message?["blue"]),
+                  let alpha = PayloadValue.int(message?["alpha"]),
+                  (0...255).contains(red),
+                  (0...255).contains(green),
+                  (0...255).contains(blue),
+                  (0...255).contains(alpha) else {
+                completion(.success(nil))
+                return
+            }
+            
+            let color = UIColor(
+                red: CGFloat(red) / 255,
+                green: CGFloat(green) / 255,
+                blue: CGFloat(blue) / 255,
+                alpha: CGFloat(alpha) / 255
+            )
+            delegate?.onPageBackgroundColorChange(session: session, color: color)
             completion(.success(nil))
             return
             

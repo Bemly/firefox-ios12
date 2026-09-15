@@ -1,8 +1,8 @@
 diff --git a/toolkit/components/extensions/Extension.sys.mjs b/toolkit/components/extensions/Extension.sys.mjs
-index c8cb26a405d1..a090ab07b5cd 100644
+index d67edb4ec1fe..b6efc29bd279 100644
 --- a/toolkit/components/extensions/Extension.sys.mjs
 +++ b/toolkit/components/extensions/Extension.sys.mjs
-@@ -198,7 +198,7 @@ const PRIVILEGED_PERMS_ANDROID_ONLY = new Set([
+@@ -203,7 +203,7 @@ const PRIVILEGED_PERMS_ANDROID_ONLY = new Set([
  
  const PRIVILEGED_PERMS_DESKTOP_ONLY = new Set(["normandyAddonStudy"]);
  
@@ -11,7 +11,7 @@ index c8cb26a405d1..a090ab07b5cd 100644
    for (const perm of PRIVILEGED_PERMS_ANDROID_ONLY) {
      PRIVILEGED_PERMS.add(perm);
    }
-@@ -206,7 +206,7 @@ if (AppConstants.platform == "android") {
+@@ -211,7 +211,7 @@ if (AppConstants.platform == "android") {
  
  if (
    AppConstants.MOZ_APP_NAME != "firefox" ||
@@ -20,7 +20,7 @@ index c8cb26a405d1..a090ab07b5cd 100644
  ) {
    for (const perm of PRIVILEGED_PERMS_DESKTOP_ONLY) {
      PRIVILEGED_PERMS.delete(perm);
-@@ -706,8 +706,8 @@ export var ExtensionProcessCrashObserver = {
+@@ -711,8 +711,8 @@ export var ExtensionProcessCrashObserver = {
    // foreground for the first time then onPause/onResumed LifecycleListener
    // are called, the application-foreground/-background topics will be
    // notified to Gecko and this flag will be updated accordingly.

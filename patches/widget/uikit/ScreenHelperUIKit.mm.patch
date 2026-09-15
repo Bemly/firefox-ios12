@@ -1,0 +1,102 @@
+diff --git a/widget/uikit/ScreenHelperUIKit.mm b/widget/uikit/ScreenHelperUIKit.mm
+index b800da5aaa15..b773928af3f8 100644
+--- a/widget/uikit/ScreenHelperUIKit.mm
++++ b/widget/uikit/ScreenHelperUIKit.mm
+@@ -4,8 +4,9 @@
+ 
+ #include "ScreenHelperUIKit.h"
+ 
+-#import <UIKit/UIScreen.h>
++#import <UIKit/UIKit.h>
+ 
++#include "mozilla/HalScreenConfiguration.h"
+ #include "mozilla/Logging.h"
+ #include "nsObjCExceptions.h"
+ 
+@@ -21,17 +22,45 @@
+ 
+   MOZ_LOG(sScreenLog, LogLevel::Debug, ("ScreenHelperUIKit created"));
+ 
+-  RefreshScreens();
++  RefreshScreens([UIScreen mainScreen], UIInterfaceOrientationUnknown);
+ 
+   NS_OBJC_END_TRY_IGNORE_BLOCK;
+ }
+ 
+-static already_AddRefed<Screen> MakeScreen(UIScreen* aScreen) {
++static void GetOrientationDetails(int32_t aInterfaceOrientation,
++                                  hal::ScreenOrientation& aOrientation,
++                                  Screen::OrientationAngle& aAngle) {
++  switch (static_cast<UIInterfaceOrientation>(aInterfaceOrientation)) {
++    case UIInterfaceOrientationPortrait:
++      aOrientation = hal::ScreenOrientation::PortraitPrimary;
++      aAngle = 0;
++      break;
++    case UIInterfaceOrientationPortraitUpsideDown:
++      aOrientation = hal::ScreenOrientation::PortraitSecondary;
++      aAngle = 180;
++      break;
++    case UIInterfaceOrientationLandscapeRight:
++      aOrientation = hal::ScreenOrientation::LandscapePrimary;
++      aAngle = 90;
++      break;
++    case UIInterfaceOrientationLandscapeLeft:
++      aOrientation = hal::ScreenOrientation::LandscapeSecondary;
++      aAngle = 270;
++      break;
++    default:
++      aOrientation = hal::ScreenOrientation::PortraitPrimary;
++      aAngle = 0;
++      break;
++  }
++}
++
++static already_AddRefed<Screen> MakeScreen(UIScreen* aScreen,
++                                           int32_t aInterfaceOrientation) {
+   NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
+ 
+   DesktopToLayoutDeviceScale contentsScaleFactor([aScreen scale]);
+   CSSToLayoutDeviceScale defaultCssScaleFactor(contentsScaleFactor.scale);
+-  CGRect bounds = [[aScreen fixedCoordinateSpace] bounds];
++  CGRect bounds = [[aScreen coordinateSpace] bounds];
+   LayoutDeviceIntRect rect;
+   rect.x = NSToIntRound(bounds.origin.x * contentsScaleFactor.scale);
+   rect.y = NSToIntRound(bounds.origin.y * contentsScaleFactor.scale);
+@@ -58,29 +87,33 @@
+   // values and pretend the SDR content brightness is 100 which is mentioned in
+   // Apple docs as typical.
+   float displayHDRHeadroom = 1.0f;
+-  if (@available(iOS 16.0, *)) {
++  if ([aScreen respondsToSelector:@selector(potentialEDRHeadroom)]) {
+     displayHDRHeadroom = [aScreen potentialEDRHeadroom];
+   }
+   float sdrContentBrightness = 100.0f;
+   float hdrPeakBrightness = displayHDRHeadroom * sdrContentBrightness;
+   bool isHDR = displayHDRHeadroom > 1.0f;
++  hal::ScreenOrientation orientation = hal::ScreenOrientation::None;
++  Screen::OrientationAngle angle = 0;
++  GetOrientationDetails(aInterfaceOrientation, orientation, angle);
+   auto screen = MakeRefPtr<Screen>(
+       rect, rect, pixelDepth, pixelDepth, fps, contentsScaleFactor,
+       defaultCssScaleFactor, dpi, Screen::IsPseudoDisplay::No,
+       isHDR ? Screen::IsHDR::Yes : Screen::IsHDR::No, sdrContentBrightness,
+-      hdrPeakBrightness);
++      hdrPeakBrightness, orientation, angle);
+   return screen.forget();
+ 
+   NS_OBJC_END_TRY_BLOCK_RETURN(nullptr);
+ }
+ 
+-void ScreenHelperUIKit::RefreshScreens() {
++void ScreenHelperUIKit::RefreshScreens(UIScreen* aScreen,
++                                       int32_t aInterfaceOrientation) {
+   NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
+ 
+   MOZ_LOG(sScreenLog, LogLevel::Debug, ("Refreshing screens"));
+ 
+   AutoTArray<RefPtr<Screen>, 1> screens;
+-  screens.AppendElement(MakeScreen([UIScreen mainScreen]));
++  screens.AppendElement(MakeScreen(aScreen, aInterfaceOrientation));
+ 
+   ScreenManager::Refresh(std::move(screens));
+ 

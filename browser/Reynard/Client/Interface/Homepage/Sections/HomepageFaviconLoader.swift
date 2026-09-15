@@ -11,11 +11,11 @@ final class HomepageFaviconLoader {
     private static let faviconStore = FaviconStore.shared
     private static let fallbackIconName = "reynard.globe"
     
-    private let updateIcon: (UIImage?, UIColor?) -> Void
+    private let updateIcon: (UIImage?, UIColor?, Bool) -> Void
     private var representedURL: URL?
     private var loadToken: UUID?
 
-    init(_ updateIcon: @escaping (UIImage?, UIColor?) -> Void) {
+    init(_ updateIcon: @escaping (UIImage?, UIColor?, Bool) -> Void) {
         self.updateIcon = updateIcon
     }
 
@@ -28,12 +28,12 @@ final class HomepageFaviconLoader {
         loadToken = nil
 
         if let bundledImage = UIImage(named: Self.bundledIconName(for: url)) {
-            updateIcon(bundledImage, nil)
+            updateIcon(bundledImage, nil, false)
             return
         }
         
-        if let cachedImage = Self.faviconStore.cachedFavicon(for: url) {
-            updateIcon(cachedImage, nil)
+        if let cachedPresentation = Self.faviconStore.cachedFaviconPresentation(for: url) {
+            updateIcon(cachedPresentation.image, nil, cachedPresentation.shouldInset)
             return
         }
         
@@ -50,14 +50,19 @@ final class HomepageFaviconLoader {
                 return
             }
 
-            guard self.representedURL == loadingURL else {
-                return
-            }
+            DispatchQueue.main.async {
+                guard self.representedURL == loadingURL else {
+                    return
+                }
 
-            self.updateIcon(
-                loadedImage ?? UIImage(named: Self.fallbackIconName),
-                loadedImage == nil ? .appSecondaryLabel : nil
-            )
+                guard let loadedImage else {
+                    self.applyFallbackIcon()
+                    return
+                }
+
+                let presentation = Self.faviconStore.faviconPresentation(for: loadedImage)
+                self.updateIcon(presentation.image, nil, presentation.shouldInset)
+            }
         }
     }
 
@@ -68,7 +73,7 @@ final class HomepageFaviconLoader {
     }
     
     private func applyFallbackIcon() {
-        updateIcon(UIImage(named: Self.fallbackIconName), .appSecondaryLabel)
+        updateIcon(UIImage(named: Self.fallbackIconName), .secondaryLabel, false)
     }
     
     private static func bundledIconName(for url: URL) -> String {

@@ -5,6 +5,7 @@
 //  Created by Minh Ton on 22/5/26.
 //
 
+import GeckoView
 import UIKit
 
 final class ClearHistoryViewController: UITableViewController {
@@ -14,17 +15,11 @@ final class ClearHistoryViewController: UITableViewController {
     
     private let closeAllTabsSwitch = UISwitch()
     
-    private lazy var clearFooterView = ClearDataFooterView(
-        title: "Clear History",
-        target: self,
-        action: #selector(confirmClearHistory)
-    )
-    
     init(tabCount: Int, onClear: @escaping (Date?, Bool) -> Void) {
         self.tabCount = tabCount
         self.onClear = onClear
-        super.init(style: .appGrouped)
-        title = "Clear History"
+        super.init(style: .insetGrouped)
+        title = NSLocalizedString("Clear History", comment: "")
     }
     
     required init?(coder: NSCoder) {
@@ -34,28 +29,25 @@ final class ClearHistoryViewController: UITableViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        view.backgroundColor = .appSystemGroupedBackground
+        view.backgroundColor = .systemGroupedBackground
         navigationItem.largeTitleDisplayMode = .never
         navigationItem.rightBarButtonItem = LibraryActionButton.makeSheetCloseButton(target: self, action: #selector(dismissSheet))
-        tableView.tableFooterView = clearFooterView
-    }
-    
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        
-        clearFooterView.alignClearButton(to: tableView.rectForRow(at: IndexPath(row: 0, section: 1)), tableViewWidth: tableView.bounds.width)
     }
     
     override func numberOfSections(in tableView: UITableView) -> Int {
-        2
+        return 3
     }
     
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        section == 0 ? ClearDataTimeframe.allCases.count : 1
+        return section == 0 ? ClearDataTimeframe.allCases.count : 1
     }
     
     override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        section == 0 ? "Clear Timeframe" : "Additional Options"
+        if section == 0 {
+            return NSLocalizedString("Clear Timeframe", comment: "")
+        }
+        
+        return section == 1 ? NSLocalizedString("Additional Options", comment: "") : nil
     }
     
     override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
@@ -63,19 +55,32 @@ final class ClearHistoryViewController: UITableViewController {
             return nil
         }
         
-        return "This will close your \(tabCount) \(tabCount == 1 ? "tab" : "tabs")."
+        return String.localizedStringWithFormat(
+            NSLocalizedString("This will close your %d tabs.", comment: "Tab count"),
+            tabCount
+        )
     }
     
     override func tableView(
         _ tableView: UITableView,
         cellForRowAt indexPath: IndexPath
     ) -> UITableViewCell {
+        if indexPath.section == 2 {
+            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = NSLocalizedString("Clear History", comment: "")
+            cell.textLabel?.textColor = .systemRed
+            cell.textLabel?.textAlignment = .center
+            cell.accessoryType = .none
+            return cell
+        }
+        
         let cell = tableView.dequeueReusableCell(withIdentifier: "Cell") ?? UITableViewCell(style: .default, reuseIdentifier: "Cell")
         
         if indexPath.section == 0 {
             ClearDataTimeframe.configureCell(cell, at: indexPath, selectedTimeframe: selectedTimeframe)
         } else {
-            cell.textLabel?.text = "Close All Tabs"
+            cell.textLabel?.text = NSLocalizedString("Close All Tabs", comment: "")
+            cell.textLabel?.textColor = .label
             cell.accessoryView = closeAllTabsSwitch
             cell.accessoryType = .none
             cell.selectionStyle = .none
@@ -85,13 +90,19 @@ final class ClearHistoryViewController: UITableViewController {
     }
     
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        defer {
+            tableView.deselectRow(at: indexPath, animated: true)
+        }
+        
         guard indexPath.section == 0 else {
+            if indexPath.section == 2 {
+                confirmClearHistory()
+            }
             return
         }
         
         selectedTimeframe = ClearDataTimeframe.allCases[indexPath.row]
         tableView.reloadSections(IndexSet(integer: 0), with: .none)
-        tableView.deselectRow(at: indexPath, animated: true)
     }
     
     @objc private func dismissSheet() {
@@ -99,7 +110,15 @@ final class ClearHistoryViewController: UITableViewController {
     }
     
     @objc private func confirmClearHistory() {
-        onClear(selectedTimeframe.cutoffDate(), closeAllTabsSwitch.isOn)
+        let startDate = selectedTimeframe.cutoffDate()
+        onClear(startDate, closeAllTabsSwitch.isOn)
+        Task {
+            do {
+                try await GeckoStorageController.clearHistory(since: startDate)
+            } catch {
+                AlertPresenter.show(title: NSLocalizedString("Couldn’t Clear History", comment: ""), message: "\(error)")
+            }
+        }
         dismiss(animated: true)
     }
 }

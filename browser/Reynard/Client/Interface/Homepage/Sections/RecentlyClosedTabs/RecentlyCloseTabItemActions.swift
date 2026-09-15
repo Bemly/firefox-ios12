@@ -21,10 +21,10 @@ struct RecentlyCloseTabItemActions {
             if let url {
                 children.append(
                     UIMenu(title: "", options: .displayInline, children: [
-                        UIAction(title: "Copy Link", image: UIImage(named: "reynard.document.on.document")) { _ in
+                        UIAction(title: NSLocalizedString("Copy Link", comment: ""), image: UIImage(named: "reynard.document.on.document")) { _ in
                             UIPasteboard.general.string = url.absoluteString
                         },
-                        UIAction(title: "Share Link", image: UIImage(named: "reynard.square.and.arrow.up")) { _ in
+                        UIAction(title: NSLocalizedString("Share Link", comment: ""), image: UIImage(named: "reynard.square.and.arrow.up")) { _ in
                             shareLink(url)
                         },
                     ])
@@ -34,7 +34,7 @@ struct RecentlyCloseTabItemActions {
             children.append(
                 UIMenu(title: "", options: .displayInline, children: [
                     UIAction(
-                        title: "Remove Recently Closed Tab",
+                        title: NSLocalizedString("Remove Recently Closed Tab", comment: ""),
                         image: UIImage(named: "reynard.minus.circle"),
                         attributes: .destructive
                     ) { _ in
@@ -63,12 +63,17 @@ extension RecentlyClosedTabsSectionViewController: UIContextMenuInteractionDeleg
         return RecentlyCloseTabItemActions.configuration(
             for: tab,
             url: url,
-            shareLink: { [weak self] url in
-                guard let self else {
+            shareLink: { [weak self, weak cell] url in
+                guard let self,
+                      let cell else {
                     return
                 }
                 
-                self.delegate?.homepageSection(self, didRequestShareURL: url)
+                self.delegate?.homepageSection(
+                    self,
+                    didRequestShareURL: url,
+                    sourceView: cell
+                )
             },
             removeTab: { [weak self] in
                 guard let self else {

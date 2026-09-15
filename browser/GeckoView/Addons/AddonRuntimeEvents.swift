@@ -106,6 +106,10 @@ extension AddonRuntime {
             handleOpenOptionsPage(message: message) { completion($0.map { _ in nil }) }
         case .newTab:
             handleNewTab(message: message) { completion($0.map { $0 as Any? }) }
+        case .download:
+            handleDownload(message: message) { completion($0.map { $0 as Any? }) }
+        case .downloadComplete:
+            handleDownloadComplete(message: message) { completion($0) }
         case .installPrompt:
             installPromptResponse(message: message) { completion($0.map { $0 as Any? }) }
         case .optionalPrompt:
@@ -153,6 +157,42 @@ extension AddonRuntime {
                 completion(.success(()))
             }
         }
+    }
+
+    private func handleDownload(message: [String: Any?]?, completion: @escaping (Result<Any?, Error>) -> Void) {
+        guard let extensionID = message?["extensionId"] as? String,
+              let options = message?["options"] as? [String: Any?] else {
+            completion(.failure(GeckoHandlerError("downloads.download is not supported")))
+            return
+        }
+        addon(byID: extensionID) { [weak self] result in
+            switch result {
+            case .success(let addon):
+                guard let self, let addon else {
+                    completion(.failure(GeckoHandlerError("downloads.download is not supported")))
+                    return
+                }
+                self.delegate?.addonController(self, didRequestDownload: options, for: addon) { response in
+                    guard let response else {
+                        completion(.failure(GeckoHandlerError("downloads.download is not supported")))
+                        return
+                    }
+                    completion(.success(response))
+                }
+            case .failure:
+                completion(.failure(GeckoHandlerError("downloads.download is not supported")))
+            }
+        }
+    }
+
+    private func handleDownloadComplete(message: [String: Any?]?, completion: @escaping (Result<Any?, Error>) -> Void) {
+        guard let localFilePath = message?["localFilePath"] as? String else {
+            completion(.failure(GeckoHandlerError("Invalid WebExtension download completion")))
+            return
+        }
+        let succeeded = message?["succeeded"] as? Bool ?? false
+        delegate?.addonController(self, didCompleteDownloadAt: localFilePath, succeeded: succeeded)
+        completion(.success(nil))
     }
 
     private func handleNewTab(message: [String: Any?]?, completion: @escaping (Result<Bool, Error>) -> Void) {

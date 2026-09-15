@@ -1,0 +1,74 @@
+diff --git a/gfx/layers/apz/src/Axis.cpp b/gfx/layers/apz/src/Axis.cpp
+index e32c7724062f..bc1d7c5834ae 100644
+--- a/gfx/layers/apz/src/Axis.cpp
++++ b/gfx/layers/apz/src/Axis.cpp
+@@ -405,33 +405,17 @@ ParentLayerCoord Axis::DisplacementWillOverscrollAmount(
+ }
+ 
+ CSSCoord Axis::ScaleWillOverscrollAmount(float aScale, CSSCoord aFocus) const {
+-  // Internally, do computations in ParentLayer coordinates *before* the scale
+-  // is applied.
+-  CSSToParentLayerScale zoom = GetFrameMetrics().GetZoom();
+-  ParentLayerCoord focus = aFocus * zoom;
+-  ParentLayerCoord originAfterScale = (GetOrigin() + focus) - (focus / aScale);
+-
+-  bool both = ScaleWillOverscrollBothSides(aScale);
+-  bool minus = GetPageStart() - originAfterScale > COORDINATE_EPSILON;
+-  bool plus =
+-      (originAfterScale + (GetCompositionLength() / aScale)) - GetPageEnd() >
+-      COORDINATE_EPSILON;
+-
+-  if ((minus && plus) || both) {
+-    // If we ever reach here it's a bug in the client code.
+-    MOZ_ASSERT(false,
+-               "In an OVERSCROLL_BOTH condition in ScaleWillOverscrollAmount");
+-    return 0;
+-  }
+-  if (minus && zoom != CSSToParentLayerScale(0)) {
+-    return (originAfterScale - GetPageStart()) / zoom;
+-  }
+-  if (plus && zoom != CSSToParentLayerScale(0)) {
+-    return (originAfterScale + (GetCompositionLength() / aScale) -
+-            GetPageEnd()) /
+-           zoom;
+-  }
+-  return 0;
++  const FrameMetrics& metrics = GetFrameMetrics();
++  const CSSToParentLayerScale zoom(metrics.GetZoom().scale * aScale);
++  const CSSRect scrollRange = FrameMetrics::CalculateScrollRange(
++      metrics.GetScrollableRectWithContentInsets(zoom),
++      metrics.GetCompositionBounds(), zoom);
++  const CSSCoord originAfterScale =
++      GetPointOffset(metrics.GetVisualScrollOffset()) + aFocus -
++      aFocus / aScale;
++  const CSSCoord start = GetRectOffset(scrollRange);
++  return originAfterScale - std::clamp(originAfterScale, start,
++                                       start + GetRectLength(scrollRange));
+ }
+ 
+ bool Axis::IsAxisLocked() const {
+@@ -486,14 +470,6 @@ ParentLayerCoord Axis::GetPageLength() const {
+   return GetRectLength(pageRect);
+ }
+ 
+-bool Axis::ScaleWillOverscrollBothSides(float aScale) const {
+-  const FrameMetrics& metrics = GetFrameMetrics();
+-  ParentLayerRect screenCompositionBounds =
+-      metrics.GetCompositionBounds() / ParentLayerToParentLayerScale(aScale);
+-  return GetRectLength(screenCompositionBounds) - GetPageLength() >
+-         COORDINATE_EPSILON;
+-}
+-
+ float Axis::DoGetVelocity() const {
+   auto velocity = mVelocity.Lock();
+   return velocity.ref();
+@@ -714,7 +690,8 @@ SideBits AxisY::ScrollableDirectionsWithDynamicToolbar(
+     ParentLayerMargin fixedLayerMargins = ViewAs<ParentLayerPixel>(
+         aFixedLayerMargins, PixelCastJustification::ScreenIsParentLayerForRoot);
+ 
+-    if (!mAsyncPanZoomController->IsZero(fixedLayerMargins.bottom)) {
++    if (!mAsyncPanZoomController->IsZero(fixedLayerMargins.top +
++                                         fixedLayerMargins.bottom)) {
+       directions |= SideBits::eTop;
+     }
+     if (mAsyncPanZoomController->FuzzyGreater(

@@ -103,8 +103,13 @@ final class FavoriteFolderCollectionViewCell: UICollectionViewCell {
         updateFolderSize()
     }
     
-    func configure(folder: BookmarkFolderSnapshot, previewBookmarks: [BookmarkSnapshot]) {
+    func configure(
+        folder: BookmarkFolderSnapshot,
+        previewBookmarks: [BookmarkSnapshot],
+        titleColor: UIColor
+    ) {
         titleLabel.text = folder.title
+        titleLabel.textColor = titleColor
         configurePreview(bookmarks: Array(previewBookmarks.prefix(4)))
     }
     

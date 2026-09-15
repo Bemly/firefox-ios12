@@ -28,12 +28,22 @@ final class FrequentlyVisitedSiteCardView: UIControl {
         for: .systemFont(ofSize: UX.titleFontSize, weight: .regular)
     )
     
+    private let backgroundView: UIVisualEffectView = {
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isUserInteractionEnabled = false
+        view.layer.cornerCurve = .continuous
+        view.layer.cornerRadius = UX.previewCornerRadius
+        view.clipsToBounds = true
+        return view
+    }()
+    
     private let previewView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isUserInteractionEnabled = false
-        view.backgroundColor = .appSystemGray6
-        view.layer.applyContinuousCornerCurve()
+        view.backgroundColor = .clear
+        view.layer.cornerCurve = .continuous
         view.layer.cornerRadius = UX.previewCornerRadius - UX.previewImageViewPadding
         view.clipsToBounds = true
         return view
@@ -125,6 +135,7 @@ final class FrequentlyVisitedSiteCardView: UIControl {
     }
     
     private func configureHierarchy() {
+        addSubview(backgroundView)
         addSubview(previewView)
         previewView.addSubview(previewImageView)
         previewView.addSubview(iconView)
@@ -133,6 +144,11 @@ final class FrequentlyVisitedSiteCardView: UIControl {
     
     private func configureConstraints() {
         NSLayoutConstraint.activate([
+            backgroundView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            backgroundView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            backgroundView.topAnchor.constraint(equalTo: topAnchor),
+            backgroundView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            
             previewView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: UX.previewImageViewPadding),
             previewView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -UX.previewImageViewPadding),
             previewView.topAnchor.constraint(equalTo: topAnchor, constant: UX.previewImageViewPadding),
@@ -168,12 +184,10 @@ final class FrequentlyVisitedSiteCardView: UIControl {
     // MARK: - Appearance
     
     private func updateAppearance() {
-        backgroundColor = traitCollection.userInterfaceStyle == .dark ? .appSystemGray5 : .appSystemBackground
-        previewView.backgroundColor = .appSystemGray6
-        titleLabel.textColor = .appLabel
-        layer.shadowColor = traitCollection.userInterfaceStyle == .dark
-        ? UIColor.white.cgColor
-        : UIColor.black.cgColor
+        backgroundColor = .clear
+        previewView.backgroundColor = .systemGray6
+        titleLabel.textColor = .label
+        layer.shadowColor = UIColor.black.cgColor
     }
 }
 

@@ -13,20 +13,23 @@ final class SettingsViewController: SettingsTableViewController {
         case jit
         case general
         case privacy
+        case advanced
         case about
         
         var text: SettingsSectionText {
             switch self {
             case .updates:
-                return SettingsSectionText(headerTitle: "Update Available")
+                return SettingsSectionText(headerTitle: NSLocalizedString("Update Available", comment: ""))
             case .jit:
-                return SettingsSectionText(headerTitle: "JIT")
+                return SettingsSectionText(headerTitle: NSLocalizedString("JIT", comment: ""))
             case .general:
-                return SettingsSectionText(headerTitle: "General")
+                return SettingsSectionText(headerTitle: NSLocalizedString("General", comment: ""))
             case .privacy:
-                return SettingsSectionText(headerTitle: "Privacy")
+                return SettingsSectionText(headerTitle: NSLocalizedString("Privacy", comment: ""))
+            case .advanced:
+                return SettingsSectionText(headerTitle: NSLocalizedString("Advanced", comment: ""))
             case .about:
-                return SettingsSectionText(headerTitle: "About")
+                return SettingsSectionText(headerTitle: NSLocalizedString("About", comment: ""))
             }
         }
     }
@@ -35,6 +38,7 @@ final class SettingsViewController: SettingsTableViewController {
     private let jitSection = JITSettingsSection()
     private let generalSection = GeneralSettingsSection()
     private let privacySection = PrivacySettingsSection()
+    private let advancedSection = AdvancedSettingsSection()
     private let aboutSection = AboutSettingsSection()
     
     private var allowUpdate: Bool {
@@ -100,6 +104,8 @@ final class SettingsViewController: SettingsTableViewController {
             return generalSection.rowCount
         case .privacy:
             return privacySection.rowCount
+        case .advanced:
+            return advancedSection.rowCount
         case .about:
             return aboutSection.rowCount
         }
@@ -123,8 +129,19 @@ final class SettingsViewController: SettingsTableViewController {
             return generalSection.cell(at: indexPath.row)
         case .privacy:
             return privacySection.cell(at: indexPath.row)
+        case .advanced:
+            return advancedSection.cell(at: indexPath.row)
         case .about:
-            return aboutSection.cell(at: indexPath.row)
+            let cell = aboutSection.cell(at: indexPath.row)
+            if aboutSection.isAppVersionRow(at: indexPath.row) {
+                let gestureRecognizer = UITapGestureRecognizer(
+                    target: self,
+                    action: #selector(revealExperimentalFeatures(_:))
+                )
+                gestureRecognizer.numberOfTapsRequired = 10
+                cell.addGestureRecognizer(gestureRecognizer)
+            }
+            return cell
         }
     }
     
@@ -145,8 +162,10 @@ final class SettingsViewController: SettingsTableViewController {
             generalSection.selectRow(at: indexPath.row, from: self)
         case .privacy:
             privacySection.selectRow(at: indexPath.row, from: self)
+        case .advanced:
+            advancedSection.selectRow(at: indexPath.row, from: self)
         case .about:
-            aboutSection.selectRow(at: indexPath.row)
+            aboutSection.selectRow(at: indexPath.row, from: self)
         }
     }
     
@@ -186,7 +205,7 @@ final class SettingsViewController: SettingsTableViewController {
     // MARK: - View Setup
     
     private func configureViewController() {
-        title = "Settings"
+        title = NSLocalizedString("Settings", comment: "")
         jitSection.attach(to: self)
     }
     
@@ -202,6 +221,19 @@ final class SettingsViewController: SettingsTableViewController {
     @objc private func syncJITModeBanner(_ notification: Notification) {
         jitSection.refreshDisplayedState()
         tableView.reloadData()
+    }
+    
+    @objc private func revealExperimentalFeatures(_ gestureRecognizer: UITapGestureRecognizer) {
+        guard gestureRecognizer.state == .ended,
+              aboutSection.revealExperimentalFeatures(),
+              let section = displayedSections.firstIndex(of: .about) else {
+            return
+        }
+        
+        tableView.insertRows(
+            at: [IndexPath(row: 0, section: section)],
+            with: .automatic
+        )
     }
     
 }

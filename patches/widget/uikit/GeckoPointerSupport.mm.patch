@@ -1,0 +1,795 @@
+diff --git a/widget/uikit/GeckoPointerSupport.mm b/widget/uikit/GeckoPointerSupport.mm
+new file mode 100644
+index 000000000000..e2eb2b66a809
+--- /dev/null
++++ b/widget/uikit/GeckoPointerSupport.mm
+@@ -0,0 +1,789 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#import "GeckoPointerSupport.h"
++
++#include <cmath>
++
++#include "GeckoEditableSupport.h"
++#include "GeckoKeyboardSupport.h"
++#include "InputData.h"
++#include "TextInputHandler.h"
++#include "nsGkAtoms.h"
++#include "nsWindow.h"
++
++#include "mozilla/MiscEvents.h"
++#include "mozilla/MouseEvents.h"
++#include "mozilla/Preferences.h"
++#include "mozilla/StaticPrefs_ui.h"
++#include "mozilla/TouchEvents.h"
++#include "mozilla/dom/SimpleGestureEventBinding.h"
++
++using namespace mozilla;
++using namespace mozilla::widget;
++namespace SimpleGestureEventBinding = mozilla::dom::SimpleGestureEvent_Binding;
++
++@interface ChildView : UIView
++- (void)showEditMenuForSecondaryClick;
++@end
++
++@interface UIPanGestureRecognizer (Private)
++- (void)_scrollingChangedWithEvent:(UIEvent*)event;
++- (void)_setiOSMacUseNonacceleratedDelta:(BOOL)useNonacceleratedDelta;
++@end
++
++@interface UIEvent (Private)
++- (UIScrollType)_scrollType API_AVAILABLE(ios(13.4));
++@end
++
++@interface GeckoScrollGestureRecognizer : UIPanGestureRecognizer
++- (NSTimeInterval)scrollTimestamp;
++- (BOOL)isContinuousScroll API_AVAILABLE(ios(13.4));
++@end
++
++@implementation GeckoScrollGestureRecognizer {
++  NSTimeInterval mScrollTimestamp;
++  BOOL mIsContinuousScroll;
++}
++
++- (void)_scrollingChangedWithEvent:(UIEvent*)event API_AVAILABLE(ios(13.4)) {
++  mScrollTimestamp = event.timestamp;
++  mIsContinuousScroll = [event _scrollType] == UIScrollTypeContinuous;
++  [self _setiOSMacUseNonacceleratedDelta:[event _scrollType] ==
++                                         UIScrollTypeContinuous];
++  [super _scrollingChangedWithEvent:event];
++}
++
++- (NSTimeInterval)scrollTimestamp {
++  return mScrollTimestamp;
++}
++
++- (BOOL)isContinuousScroll {
++  return mIsContinuousScroll;
++}
++
++@end
++
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wunguarded-availability-new"
++
++static bool SupportsPointerInput() {
++  NSOperatingSystemVersion version = {13, 4, 0};
++  return [NSProcessInfo.processInfo isOperatingSystemAtLeastVersion:version];
++}
++
++static TimeStamp GeckoTimeStampForUIKitTimestamp(NSTimeInterval aTimestamp) {
++  NSTimeInterval age = NSProcessInfo.processInfo.systemUptime - aTimestamp;
++  return TimeStamp::Now() - TimeDuration::FromSeconds(age);
++}
++
++static TimeStamp GeckoTimeStampForUIKitEvent(UIEvent* aEvent) {
++  return GeckoTimeStampForUIKitTimestamp(aEvent.timestamp);
++}
++
++static MouseButton GeckoMouseButtonForUIKitButton(NSInteger aButtonNumber) {
++  switch (aButtonNumber) {
++    case 1:
++      return MouseButton::ePrimary;
++    case 2:
++      return MouseButton::eSecondary;
++    case 3:
++      return MouseButton::eMiddle;
++    case 4:
++      return MouseButton::eX1;
++    case 5:
++      return MouseButton::eX2;
++    default:
++      return MouseButton::eNotPressed;
++  }
++}
++
++static int16_t GeckoButtonsForUIKitButtons(UIEventButtonMask aButtons)
++    API_AVAILABLE(ios(13.4)) {
++  int16_t buttons = MouseButtonsFlag::eNoButtons;
++  for (NSInteger buttonNumber = 1; buttonNumber <= 5; buttonNumber++) {
++    if (aButtons & UIEventButtonMaskForButtonNumber(buttonNumber)) {
++      buttons |= MouseButtonsFlagToChange(
++          GeckoMouseButtonForUIKitButton(buttonNumber));
++    }
++  }
++  return buttons;
++}
++
++static LayoutDeviceIntPoint GeckoPointForUIKitPoint(CGPoint aPoint,
++                                                    UIView* aView) {
++  return UIKitPointsToDevPixels(aPoint, aView.contentScaleFactor);
++}
++
++@implementation GeckoPointerSupport {
++  ChildView* mView;
++  nsWindow* mGeckoChild;
++  id<GeckoViewInteractionDelegate> mInteractionDelegate;
++  UIHoverGestureRecognizer* mHoverRecognizer;
++  UIPanGestureRecognizer* mScrollRecognizer;
++  UIPinchGestureRecognizer* mPinchRecognizer;
++  UITapGestureRecognizer* mSecondaryClickRecognizer;
++  UIPointerInteraction* mPointerInteraction;
++  NSMapTable<UITouch*, NSNumber*>* mPointerTouches;
++  UIEventButtonMask mPointerButtons;
++  CGPoint mLastPointerLocation;
++  CGPoint mScrollLocation;
++  CGFloat mLastPinchSpan;
++  BOOL mPointerInside;
++  GeckoEdgeSwipeDirections mEdgeSwipeDirection;
++}
++
++- (instancetype)initWithView:(ChildView*)view geckoChild:(nsWindow*)geckoChild {
++  self = [super init];
++  if (!self) {
++    return nil;
++  }
++
++  mView = view;
++  mGeckoChild = geckoChild;
++  if (!SupportsPointerInput()) {
++    return self;
++  }
++
++  mHoverRecognizer =
++      [[UIHoverGestureRecognizer alloc] initWithTarget:self
++                                                action:@selector(handleHover:)];
++  [mView addGestureRecognizer:mHoverRecognizer];
++
++  mScrollRecognizer = [[GeckoScrollGestureRecognizer alloc]
++      initWithTarget:self
++              action:@selector(handleScroll:)];
++  mScrollRecognizer.allowedScrollTypesMask = UIScrollTypeMaskAll;
++  mScrollRecognizer.minimumNumberOfTouches = 0;
++  mScrollRecognizer.maximumNumberOfTouches = 0;
++  mScrollRecognizer.allowedTouchTypes = @[];
++  mScrollRecognizer.delegate = self;
++  [mView addGestureRecognizer:mScrollRecognizer];
++
++  mPinchRecognizer =
++      [[UIPinchGestureRecognizer alloc] initWithTarget:self
++                                                action:@selector(handlePinch:)];
++  mPinchRecognizer.delegate = self;
++  [mView addGestureRecognizer:mPinchRecognizer];
++
++  mSecondaryClickRecognizer = [[UITapGestureRecognizer alloc]
++      initWithTarget:self
++              action:@selector(handleSecondaryClick:)];
++  mSecondaryClickRecognizer.buttonMaskRequired = UIEventButtonMaskSecondary;
++  mSecondaryClickRecognizer.allowedTouchTypes =
++      @[ @(UITouchTypeIndirectPointer) ];
++  mSecondaryClickRecognizer.delegate = self;
++  mSecondaryClickRecognizer.delaysTouchesBegan = YES;
++  [mView addGestureRecognizer:mSecondaryClickRecognizer];
++
++  mPointerInteraction = [[UIPointerInteraction alloc] initWithDelegate:self];
++  [mView addInteraction:mPointerInteraction];
++  mPointerTouches = [[NSMapTable alloc] init];
++
++  return self;
++}
++
++- (void)requireTextInteractionsToFail:
++    (NSArray<UITextInteraction*>*)textInteractions {
++  if (!SupportsPointerInput()) {
++    return;
++  }
++
++  [self excludeIndirectPointerFromSystemSecondaryClickDriver];
++  for (UITextInteraction* interaction in textInteractions) {
++    for (UIGestureRecognizer* gesture in interaction
++             .gesturesForFailureRequirements) {
++      [gesture requireGestureRecognizerToFail:mSecondaryClickRecognizer];
++    }
++  }
++}
++
++- (void)excludeIndirectPointerFromSystemSecondaryClickDriver {
++  for (UIGestureRecognizer* gesture in mView.gestureRecognizers) {
++    if ([NSStringFromClass(gesture.class)
++            isEqualToString:@"_UISecondaryClickDriverGestureRecognizer"]) {
++      gesture.allowedTouchTypes =
++          @[ @(UITouchTypeDirect), @(UITouchTypePencil) ];
++    }
++  }
++}
++
++- (void)setInteractionDelegate:
++    (id<GeckoViewInteractionDelegate>)interactionDelegate {
++  mInteractionDelegate = interactionDelegate;
++}
++
++- (void)dispatchMouseEvent:(EventMessage)message
++                  location:(CGPoint)location
++                    button:(MouseButton)button
++                   buttons:(UIEventButtonMask)buttons
++                clickCount:(NSInteger)clickCount
++                 modifiers:(Modifiers)modifiers
++                 timestamp:(TimeStamp)timestamp
++                allowClick:(BOOL)allowClick API_AVAILABLE(ios(13.4)) {
++  if (!mGeckoChild) {
++    return;
++  }
++
++  bool dispatchBack = button == MouseButton::eX1 &&
++                      Preferences::GetBool("mousebutton.4th.enabled", true);
++  bool dispatchForward = button == MouseButton::eX2 &&
++                         Preferences::GetBool("mousebutton.5th.enabled", true);
++  if (dispatchBack || dispatchForward) {
++    if (message == eMouseDown) {
++      WidgetCommandEvent commandEvent(
++          true, dispatchBack ? nsGkAtoms::Back : nsGkAtoms::Forward,
++          mGeckoChild);
++      commandEvent.mTimeStamp = timestamp;
++      mGeckoChild->DispatchWindowEvent(commandEvent);
++    }
++    return;
++  }
++
++  WidgetMouseEvent mouseEvent(true, message, mGeckoChild,
++                              WidgetMouseEvent::eReal);
++  mouseEvent.mRefPoint = GeckoPointForUIKitPoint(location, mView);
++  mouseEvent.mButton = button;
++  mouseEvent.mButtons = GeckoButtonsForUIKitButtons(buttons);
++  mouseEvent.mClickCount = clickCount;
++  mouseEvent.mModifiers = modifiers;
++  mouseEvent.mTimeStamp = timestamp;
++  mouseEvent.mClickEventPrevented = !allowClick;
++
++  nsIWidget::ContentAndAPZEventStatus status =
++      mGeckoChild->DispatchInputEvent(&mouseEvent);
++  bool dispatchContextMenu =
++      allowClick && button == MouseButton::eSecondary &&
++      ((message == eMouseDown &&
++        !StaticPrefs::ui_context_menus_after_mouseup()) ||
++       (message == eMouseUp && StaticPrefs::ui_context_menus_after_mouseup()));
++  if (!dispatchContextMenu || !mGeckoChild ||
++      status.mApzStatus == nsEventStatus_eConsumeNoDefault) {
++    return;
++  }
++
++  WidgetPointerEvent contextMenuEvent(true, eContextMenu, mGeckoChild);
++  contextMenuEvent.mRefPoint = GeckoPointForUIKitPoint(location, mView);
++  contextMenuEvent.mButton = MouseButton::eSecondary;
++  contextMenuEvent.mButtons = GeckoButtonsForUIKitButtons(buttons);
++  contextMenuEvent.mClickCount = clickCount;
++  contextMenuEvent.mModifiers = modifiers;
++  contextMenuEvent.mTimeStamp = timestamp;
++
++  // Prioritize page's contextmenu -> UIMenuController
++  nsIWidget::ContentAndAPZEventStatus contextMenuStatus =
++      mGeckoChild->DispatchInputEvent(&contextMenuEvent);
++  BOOL insideFocusedEditor = [self isPointInsideFocusedEditor:location];
++  if (contextMenuStatus.mApzStatus != nsEventStatus_eConsumeNoDefault &&
++      contextMenuStatus.mContentStatus != nsEventStatus_eConsumeNoDefault &&
++      insideFocusedEditor) {
++    [mView showEditMenuForSecondaryClick];
++  }
++}
++
++- (void)synchronizePointerButtons:(UIEventButtonMask)buttons
++                         location:(CGPoint)location
++                       clickCount:(NSInteger)clickCount
++                        modifiers:(Modifiers)modifiers
++                        timestamp:(TimeStamp)timestamp
++                       allowClick:(BOOL)allowClick API_AVAILABLE(ios(13.4)) {
++  UIEventButtonMask changedButtons = mPointerButtons ^ buttons;
++  mLastPointerLocation = location;
++
++  for (NSInteger buttonNumber = 1; buttonNumber <= 5; buttonNumber++) {
++    UIEventButtonMask buttonMask =
++        UIEventButtonMaskForButtonNumber(buttonNumber);
++    if (!(changedButtons & buttonMask)) {
++      continue;
++    }
++
++    MouseButton button = GeckoMouseButtonForUIKitButton(buttonNumber);
++    bool pressed = buttons & buttonMask;
++    if (pressed) {
++      mPointerButtons |= buttonMask;
++    } else {
++      mPointerButtons &= ~buttonMask;
++    }
++    EventMessage message = pressed ? eMouseDown : eMouseUp;
++    [self dispatchMouseEvent:message
++                    location:location
++                      button:button
++                     buttons:mPointerButtons
++                  clickCount:clickCount
++                   modifiers:modifiers
++                   timestamp:timestamp
++                  allowClick:allowClick];
++    if (!mGeckoChild) {
++      return;
++    }
++  }
++}
++
++- (BOOL)isPointInsideFocusedEditor:(CGPoint)point {
++  if (![mView isFirstResponder] || !mGeckoChild ||
++      mGeckoChild->IsVirtualKeyboardDisabled()) {
++    return NO;
++  }
++
++  TextInputHandler* handler = mGeckoChild->GetTextInputHandler();
++  LayoutDeviceIntRect editorDevRect;
++  if (!handler || !handler->EditorRect(editorDevRect)) {
++    return NO;
++  }
++
++  CGRect editorRect =
++      DevPixelsToUIKitPoints(editorDevRect, mView.contentScaleFactor);
++  return ClipCGRectToBounds(editorRect, mView.bounds) &&
++         CGRectContainsPoint(CGRectStandardize(editorRect), point);
++}
++
++- (void)releasePointerButtons {
++  if (!SupportsPointerInput()) {
++    return;
++  }
++
++  [mPointerTouches removeAllObjects];
++  [self synchronizePointerButtons:0
++                         location:mLastPointerLocation
++                       clickCount:0
++                        modifiers:MODIFIER_NONE
++                        timestamp:TimeStamp::Now()
++                       allowClick:NO];
++}
++
++- (void)handlePointerInputBegan:(NSSet<UITouch*>*)pointerTouches
++                      withEvent:(UIEvent*)event {
++  if (!SupportsPointerInput()) {
++    return;
++  }
++
++  for (UITouch* touch in pointerTouches) {
++    CGPoint location = [touch locationInView:mView];
++    UIEventButtonMask pressedButtons = event.buttonMask & ~mPointerButtons;
++    [mPointerTouches setObject:[NSNumber numberWithInteger:pressedButtons]
++                        forKey:touch];
++    [self synchronizePointerButtons:event.buttonMask
++                           location:location
++                         clickCount:touch.tapCount
++                          modifiers:GeckoModifiersForUIKitModifiers(
++                                        event.modifierFlags)
++                          timestamp:GeckoTimeStampForUIKitEvent(event)
++                         allowClick:YES];
++  }
++}
++
++- (void)handlePointerInputCancelled:(NSSet<UITouch*>*)pointerTouches {
++  if (!SupportsPointerInput()) {
++    return;
++  }
++
++  if (pointerTouches.count > 0) {
++    [self releasePointerButtons];
++  }
++}
++
++- (void)handlePointerInputEnded:(NSSet<UITouch*>*)pointerTouches
++                      withEvent:(UIEvent*)event {
++  if (!SupportsPointerInput()) {
++    return;
++  }
++
++  for (UITouch* touch in pointerTouches) {
++    NSNumber* pressedButtons = [mPointerTouches objectForKey:touch];
++    if (!pressedButtons) {
++      continue;
++    }
++    UIEventButtonMask releasedButtons =
++        static_cast<UIEventButtonMask>(pressedButtons.integerValue);
++    [mPointerTouches removeObjectForKey:touch];
++    [self synchronizePointerButtons:mPointerButtons & ~releasedButtons
++                           location:[touch locationInView:mView]
++                         clickCount:touch.tapCount
++                          modifiers:GeckoModifiersForUIKitModifiers(
++                                        event.modifierFlags)
++                          timestamp:GeckoTimeStampForUIKitEvent(event)
++                         allowClick:YES];
++  }
++}
++
++- (void)handlePointerInputMoved:(NSSet<UITouch*>*)pointerTouches
++                      withEvent:(UIEvent*)event {
++  if (!SupportsPointerInput()) {
++    return;
++  }
++
++  for (UITouch* touch in pointerTouches) {
++    CGPoint location = [touch locationInView:mView];
++    Modifiers modifiers = GeckoModifiersForUIKitModifiers(event.modifierFlags);
++    TimeStamp timestamp = GeckoTimeStampForUIKitEvent(event);
++    [self synchronizePointerButtons:event.buttonMask
++                           location:location
++                         clickCount:touch.tapCount
++                          modifiers:modifiers
++                          timestamp:timestamp
++                         allowClick:YES];
++    if (mGeckoChild) {
++      [self dispatchMouseEvent:eMouseMove
++                      location:location
++                        button:MouseButton::eNotPressed
++                       buttons:mPointerButtons
++                    clickCount:0
++                     modifiers:modifiers
++                     timestamp:timestamp
++                    allowClick:YES];
++    }
++    return;
++  }
++}
++
++- (void)handleHover:(UIHoverGestureRecognizer*)sender API_AVAILABLE(ios(13.4)) {
++  if (!mGeckoChild) {
++    return;
++  }
++
++  CGPoint location = [sender locationInView:mView];
++  mLastPointerLocation = location;
++  Modifiers modifiers = GeckoModifiersForUIKitModifiers(sender.modifierFlags);
++  TimeStamp timestamp = TimeStamp::Now();
++
++  if (sender.state == UIGestureRecognizerStateBegan && !mPointerInside) {
++    mPointerInside = YES;
++    [self dispatchMouseEvent:eMouseEnterIntoWidget
++                    location:location
++                      button:MouseButton::eNotPressed
++                     buttons:mPointerButtons
++                  clickCount:0
++                   modifiers:modifiers
++                   timestamp:timestamp
++                  allowClick:YES];
++    if (!mGeckoChild) {
++      return;
++    }
++  }
++
++  if (sender.state == UIGestureRecognizerStateBegan ||
++      sender.state == UIGestureRecognizerStateChanged) {
++    [self dispatchMouseEvent:eMouseMove
++                    location:location
++                      button:MouseButton::eNotPressed
++                     buttons:mPointerButtons
++                  clickCount:0
++                   modifiers:modifiers
++                   timestamp:timestamp
++                  allowClick:YES];
++    return;
++  }
++
++  if ((sender.state == UIGestureRecognizerStateEnded ||
++       sender.state == UIGestureRecognizerStateCancelled) &&
++      mPointerInside) {
++    WidgetMouseEvent mouseEvent(true, eMouseExitFromWidget, mGeckoChild,
++                                WidgetMouseEvent::eReal);
++    mouseEvent.mRefPoint = GeckoPointForUIKitPoint(location, mView);
++    mouseEvent.mButton = MouseButton::eNotPressed;
++    mouseEvent.mButtons = GeckoButtonsForUIKitButtons(mPointerButtons);
++    mouseEvent.mModifiers = modifiers;
++    mouseEvent.mTimeStamp = timestamp;
++    mouseEvent.mExitFrom = Some(WidgetMouseEvent::ePlatformTopLevel);
++    mPointerInside = NO;
++    mGeckoChild->DispatchInputEvent(&mouseEvent);
++  }
++}
++
++- (void)handleScroll:(UIPanGestureRecognizer*)sender API_AVAILABLE(ios(13.4)) {
++  if (!mGeckoChild) {
++    return;
++  }
++
++  PanGestureInput::PanGestureType type;
++  CGPoint displacement = [sender translationInView:mView];
++
++  switch (sender.state) {
++    case UIGestureRecognizerStateBegan:
++      type = PanGestureInput::PANGESTURE_START;
++      mScrollLocation = [sender locationInView:mView];
++      mScrollLocation.x -= displacement.x;
++      mScrollLocation.y -= displacement.y;
++      break;
++    case UIGestureRecognizerStateChanged:
++      type = PanGestureInput::PANGESTURE_PAN;
++      break;
++    case UIGestureRecognizerStateEnded:
++      type = PanGestureInput::PANGESTURE_END;
++      break;
++    case UIGestureRecognizerStateCancelled:
++      type = PanGestureInput::PANGESTURE_CANCELLED;
++      displacement = CGPointZero;
++      break;
++    default:
++      return;
++  }
++
++  LayoutDeviceIntPoint point = GeckoPointForUIKitPoint(mScrollLocation, mView);
++  CGFloat scale = mView.contentScaleFactor;
++  NSTimeInterval timestamp =
++      [(GeckoScrollGestureRecognizer*)sender scrollTimestamp];
++  PanGestureInput panEvent(
++      type, GeckoTimeStampForUIKitTimestamp(timestamp),
++      ScreenPoint(point.x, point.y),
++      ScreenPoint(-displacement.x * scale, -displacement.y * scale),
++      GeckoModifiersForUIKitModifiers(sender.modifierFlags));
++  panEvent.mDeltaType = PanGestureInput::PANDELTA_PIXEL;
++  panEvent.mSimulateMomentum = true;
++  panEvent.mAllowFlingAcceleration = false;
++  mGeckoChild->DispatchPanGestureInput(panEvent);
++
++  if ([(GeckoScrollGestureRecognizer*)sender isContinuousScroll]) {
++    switch (sender.state) {
++      case UIGestureRecognizerStateBegan:
++        [mInteractionDelegate trackpadScrollDidBegin:displacement];
++        break;
++      case UIGestureRecognizerStateChanged:
++        [mInteractionDelegate trackpadScrollDidUpdate:displacement];
++        break;
++      case UIGestureRecognizerStateEnded:
++        if (!CGPointEqualToPoint(displacement, CGPointZero)) {
++          [mInteractionDelegate trackpadScrollDidUpdate:displacement];
++        }
++        [mInteractionDelegate trackpadScrollDidEnd];
++        break;
++      case UIGestureRecognizerStateCancelled:
++        [mInteractionDelegate trackpadScrollDidCancel];
++        break;
++      default:
++        break;
++    }
++  }
++
++  [sender setTranslation:CGPointZero inView:mView];
++}
++
++- (void)handlePinch:(UIPinchGestureRecognizer*)sender API_AVAILABLE(ios(13.4)) {
++  if (!mGeckoChild) {
++    return;
++  }
++
++  PinchGestureInput::PinchGestureType type;
++  ScreenCoord currentSpan;
++  ScreenCoord previousSpan;
++
++  switch (sender.state) {
++    case UIGestureRecognizerStateBegan:
++      type = PinchGestureInput::PINCHGESTURE_START;
++      currentSpan = sender.scale;
++      previousSpan = 0.999;
++      break;
++    case UIGestureRecognizerStateChanged:
++      if (sender.scale == mLastPinchSpan) {
++        return;
++      }
++      type = PinchGestureInput::PINCHGESTURE_SCALE;
++      currentSpan = sender.scale;
++      previousSpan = mLastPinchSpan;
++      break;
++    case UIGestureRecognizerStateEnded:
++    case UIGestureRecognizerStateCancelled:
++      type = PinchGestureInput::PINCHGESTURE_END;
++      currentSpan = 1.0;
++      previousSpan = 1.0;
++      break;
++    default:
++      return;
++  }
++
++  CGPoint location = [sender locationInView:mView];
++  LayoutDeviceIntPoint point = GeckoPointForUIKitPoint(location, mView);
++  PinchGestureInput pinchEvent(
++      type, PinchGestureInput::TRACKPAD, TimeStamp::Now(), ExternalPoint(0, 0),
++      ScreenPoint(point.x, point.y), 100.0 * currentSpan, 100.0 * previousSpan,
++      GeckoModifiersForUIKitModifiers(sender.modifierFlags));
++  if (pinchEvent.SetLineOrPageDeltaY(mGeckoChild)) {
++    mGeckoChild->DispatchPinchGestureInput(pinchEvent);
++  }
++
++  mLastPinchSpan = sender.scale;
++  if (sender.state == UIGestureRecognizerStateEnded ||
++      sender.state == UIGestureRecognizerStateCancelled) {
++    mLastPinchSpan = 0;
++  }
++}
++
++- (void)handleSecondaryClick:(UITapGestureRecognizer*)sender
++    API_AVAILABLE(ios(13.4)) {
++  if (sender.state != UIGestureRecognizerStateEnded || !mGeckoChild) {
++    return;
++  }
++
++  CGPoint location = [sender locationInView:mView];
++  Modifiers modifiers = GeckoModifiersForUIKitModifiers(sender.modifierFlags);
++  TimeStamp timestamp = TimeStamp::Now();
++  UIEventButtonMask previousButtons = mPointerButtons;
++  [self synchronizePointerButtons:previousButtons | UIEventButtonMaskSecondary
++                         location:location
++                       clickCount:1
++                        modifiers:modifiers
++                        timestamp:timestamp
++                       allowClick:YES];
++  if (!mGeckoChild) {
++    return;
++  }
++  [self synchronizePointerButtons:previousButtons
++                         location:location
++                       clickCount:1
++                        modifiers:modifiers
++                        timestamp:timestamp
++                       allowClick:YES];
++}
++
++- (BOOL)handleEdgeSwipeEvent:(WidgetSimpleGestureEvent&)event {
++  switch (event.mMessage) {
++    case eSwipeGestureMayStart: {
++      GeckoEdgeSwipeDirections allowedDirections =
++          [mInteractionDelegate allowedEdgeSwipeDirections];
++      if (allowedDirections & GeckoEdgeSwipeDirectionLeft) {
++        event.mAllowedDirections |= SimpleGestureEventBinding::DIRECTION_LEFT;
++      }
++      if (allowedDirections & GeckoEdgeSwipeDirectionRight) {
++        event.mAllowedDirections |= SimpleGestureEventBinding::DIRECTION_RIGHT;
++      }
++
++      if (event.mDirection == SimpleGestureEventBinding::DIRECTION_LEFT) {
++        mEdgeSwipeDirection = GeckoEdgeSwipeDirectionLeft;
++      } else if (event.mDirection ==
++                 SimpleGestureEventBinding::DIRECTION_RIGHT) {
++        mEdgeSwipeDirection = GeckoEdgeSwipeDirectionRight;
++      } else {
++        mEdgeSwipeDirection = 0;
++      }
++      return mEdgeSwipeDirection != 0 &&
++             (allowedDirections & mEdgeSwipeDirection) != 0;
++    }
++    case eSwipeGestureStart:
++      [mInteractionDelegate edgeSwipeDidStart:mEdgeSwipeDirection];
++      return YES;
++    case eSwipeGestureUpdate:
++      [mInteractionDelegate edgeSwipeDidUpdate:std::abs(event.mDelta)];
++      return YES;
++    case eSwipeGesture:
++      if (event.mDirection == SimpleGestureEventBinding::DIRECTION_LEFT) {
++        [mInteractionDelegate edgeSwipeDidComplete:GeckoEdgeSwipeDirectionLeft];
++      } else if (event.mDirection ==
++                 SimpleGestureEventBinding::DIRECTION_RIGHT) {
++        [mInteractionDelegate
++            edgeSwipeDidComplete:GeckoEdgeSwipeDirectionRight];
++      }
++      return YES;
++    case eSwipeGestureEnd:
++      [mInteractionDelegate edgeSwipeDidEnd];
++      mEdgeSwipeDirection = 0;
++      return YES;
++    default:
++      return NO;
++  }
++}
++
++- (BOOL)gestureRecognizer:(UIGestureRecognizer*)gestureRecognizer
++       shouldReceiveEvent:(UIEvent*)event API_AVAILABLE(ios(13.4)) {
++  if (gestureRecognizer == mSecondaryClickRecognizer) {
++    if (event.buttonMask & UIEventButtonMaskSecondary) {
++      [self excludeIndirectPointerFromSystemSecondaryClickDriver];
++    }
++  }
++  if (mGeckoChild && gestureRecognizer == mScrollRecognizer &&
++      event.type == UIEventTypeScroll) {
++    LayoutDeviceIntPoint point =
++        GeckoPointForUIKitPoint(mLastPointerLocation, mView);
++    PanGestureInput panEvent(
++        PanGestureInput::PANGESTURE_MAYSTART,
++        GeckoTimeStampForUIKitEvent(event), ScreenPoint(point.x, point.y),
++        ScreenPoint(), GeckoModifiersForUIKitModifiers(event.modifierFlags));
++    mGeckoChild->DispatchPanGestureInput(panEvent);
++  }
++  if (gestureRecognizer == mPinchRecognizer) {
++    return event.type == UIEventTypeTransform;
++  }
++  return YES;
++}
++
++- (UIPointerRegion*)pointerInteraction:(UIPointerInteraction*)interaction
++                      regionForRequest:(UIPointerRegionRequest*)request
++                         defaultRegion:(UIPointerRegion*)defaultRegion
++    API_AVAILABLE(ios(13.4)) {
++  return [UIPointerRegion regionWithRect:mView.bounds identifier:nil];
++}
++
++- (UIPointerStyle*)pointerInteraction:(UIPointerInteraction*)interaction
++                       styleForRegion:(UIPointerRegion*)region
++    API_AVAILABLE(ios(13.4)) {
++  if (!mGeckoChild) {
++    return nil;
++  }
++
++  switch (mGeckoChild->GetCursorType()) {
++    case eCursor_select:
++      return [UIPointerStyle
++           styleWithShape:[UIPointerShape
++                              beamWithPreferredLength:24
++                                                 axis:UIAxisVertical]
++          constrainedAxes:(UIAxis)0];
++    case eCursor_vertical_text:
++      return [UIPointerStyle
++           styleWithShape:[UIPointerShape
++                              beamWithPreferredLength:24
++                                                 axis:UIAxisHorizontal]
++          constrainedAxes:(UIAxis)0];
++    case eCursor_none:
++      return [UIPointerStyle hiddenPointerStyle];
++    default:
++      return nil;
++  }
++}
++
++- (void)invalidatePointerInteraction {
++  if (SupportsPointerInput()) {
++    [mPointerInteraction invalidate];
++  }
++}
++
++- (void)widgetDestroyed {
++  [self releasePointerButtons];
++  mGeckoChild = nullptr;
++  mInteractionDelegate = nil;
++  [self tearDownPointerInput];
++}
++
++- (void)tearDownPointerInput {
++  if (SupportsPointerInput() && mPointerInteraction) {
++    [mView removeGestureRecognizer:mHoverRecognizer];
++    [mView removeGestureRecognizer:mScrollRecognizer];
++    [mView removeGestureRecognizer:mPinchRecognizer];
++    [mView removeGestureRecognizer:mSecondaryClickRecognizer];
++    [mView removeInteraction:mPointerInteraction];
++  }
++  [mHoverRecognizer release];
++  [mScrollRecognizer release];
++  [mPinchRecognizer release];
++  [mSecondaryClickRecognizer release];
++  [mPointerInteraction release];
++  [mPointerTouches release];
++  mHoverRecognizer = nil;
++  mScrollRecognizer = nil;
++  mPinchRecognizer = nil;
++  mSecondaryClickRecognizer = nil;
++  mPointerInteraction = nil;
++  mPointerTouches = nil;
++}
++
++- (void)dealloc {
++  [self tearDownPointerInput];
++  mView = nil;
++  [super dealloc];
++}
++
++@end
++
++#pragma clang diagnostic pop

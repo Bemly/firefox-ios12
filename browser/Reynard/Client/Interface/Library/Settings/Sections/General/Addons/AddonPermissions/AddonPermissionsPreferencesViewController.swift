@@ -82,7 +82,7 @@ final class AddonPermissionsPreferencesViewController: SettingsTableViewControll
         if !requiredPermissions.isEmpty {
             sections.append(
                 SectionModel(
-                    headerTitle: "Required Permissions",
+                    headerTitle: NSLocalizedString("Required Permissions", comment: ""),
                     displayedRows: requiredPermissions.map(Row.message)
                 )
             )
@@ -130,13 +130,13 @@ final class AddonPermissionsPreferencesViewController: SettingsTableViewControll
         }
         
         if !optionalRows.isEmpty {
-            sections.append(SectionModel(headerTitle: "Optional Permissions", displayedRows: optionalRows))
+            sections.append(SectionModel(headerTitle: NSLocalizedString("Optional Permissions", comment: ""), displayedRows: optionalRows))
         }
         
         if let requiredDataCollectionDescription = AddonPermissionSupport.requiredDataCollectionDescription(for: metaData.requiredDataCollectionPermissions) {
             sections.append(
                 SectionModel(
-                    headerTitle: "Required Data Collection",
+                    headerTitle: NSLocalizedString("Required Data Collection", comment: ""),
                     displayedRows: [.message(requiredDataCollectionDescription)]
                 )
             )
@@ -145,7 +145,7 @@ final class AddonPermissionsPreferencesViewController: SettingsTableViewControll
         if !optionalDataCollectionPermissions.isEmpty {
             sections.append(
                 SectionModel(
-                    headerTitle: "Optional Data Collection",
+                    headerTitle: NSLocalizedString("Optional Data Collection", comment: ""),
                     displayedRows: optionalDataCollectionPermissions.map {
                         .toggle(
                             title: $0.localizedName,
@@ -167,7 +167,7 @@ final class AddonPermissionsPreferencesViewController: SettingsTableViewControll
     init(addonID: String) {
         self.addonID = addonID
         super.init(style: .appGrouped)
-        title = "Permissions"
+        title = NSLocalizedString("Permissions", comment: "")
     }
     
     required init?(coder: NSCoder) {
@@ -210,13 +210,13 @@ final class AddonPermissionsPreferencesViewController: SettingsTableViewControll
         
         switch permissionSections[indexPath.section].displayedRows[indexPath.row] {
         case .message(let text):
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
             cell.selectionStyle = .none
             cell.textLabel?.text = text
             cell.textLabel?.numberOfLines = 0
             return cell
         case .toggle(let title, let subtitle, let isOn, let isEnabled, _):
-            let cell = UITableViewCell(style: subtitle == nil ? .default : .subtitle, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: subtitle == nil ? .default : .subtitle, reuseIdentifier: nil)
             let toggle = UISwitch()
             toggle.isOn = isOn
             toggle.isEnabled = isEnabled
@@ -231,7 +231,7 @@ final class AddonPermissionsPreferencesViewController: SettingsTableViewControll
             cell.accessoryView = toggle
             return cell
         case .warning(let text):
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
             cell.selectionStyle = .none
             cell.textLabel?.text = text
             cell.textLabel?.numberOfLines = 0
@@ -287,7 +287,7 @@ final class AddonPermissionsPreferencesViewController: SettingsTableViewControll
                 case .failure(let error):
                     self.addon = addon
                     self.tableView.reloadData()
-                    AlertPresenter.show(title: "Failed to update permissions", message: "\(error)")
+                    AlertPresenter.show(title: NSLocalizedString("Couldn’t Update Permissions", comment: ""), message: "\(error)")
                 }
             }
         }
@@ -317,7 +317,7 @@ final class AddonPermissionsPreferencesViewController: SettingsTableViewControll
                     self.title = refreshedAddon.metaData.name ?? refreshedAddon.id
                     self.tableView.reloadData()
                 case .failure(let error):
-                    AlertPresenter.show(title: "Failed to reload add-on", message: "\(error)")
+                    AlertPresenter.show(title: NSLocalizedString("Couldn’t Reload Add-on", comment: ""), message: "\(error)")
                 }
             }
         }

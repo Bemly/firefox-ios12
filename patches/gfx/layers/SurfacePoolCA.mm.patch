@@ -1,0 +1,26 @@
+diff --git a/gfx/layers/SurfacePoolCA.mm b/gfx/layers/SurfacePoolCA.mm
+index b7f824686b4d..f48737454fe5 100644
+--- a/gfx/layers/SurfacePoolCA.mm
++++ b/gfx/layers/SurfacePoolCA.mm
+@@ -250,6 +250,13 @@
+       // mCheckCount.
+       pendingSurf.mPreviousCheckGeneration = mCollectionGeneration;
+       pendingSurf.mCheckCount++;
++
++      // On iOS, this collection path keeps the surface in mPendingEntries while
++      // IOSurfaceIsInUse() returns true, regardless of mCheckCount.
++      // After the entry moves to mAvailableEntries, ObtainSurfaceFromPool()
++      // can return it for a compatible request instead of calling
++      // IOSurfaceCreate().
++#ifndef XP_IOS
+       if (pendingSurf.mCheckCount >= 30) {
+         // The window server has been holding on to this surface for an
+         // unreasonably long time. This is known to happen sometimes, for
+@@ -259,6 +266,7 @@
+         MutateEntryStorage("Eject", IntSize(pendingSurf.mEntry.mSize),
+                            [&]() { mPendingEntries.RemoveElementAt(i); });
+       }
++#endif
+     } else {
+       // The surface has become unused!
+       // Move the entry from mPendingEntries to mAvailableEntries.

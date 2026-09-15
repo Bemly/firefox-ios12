@@ -8,65 +8,54 @@
 import UIKit
 
 final class AppearancePreferencesViewController: SettingsTableViewController {
-    private enum Section: CaseIterable {
+    private enum Section: CaseIterable, Equatable {
         case appAppearance
         case addressBar
+        case gestures
         case tabs
-        case pageZoom
         
         var text: SettingsSectionText {
             switch self {
             case .appAppearance:
                 return SettingsSectionText()
             case .addressBar:
-                return SettingsSectionText(headerTitle: "Address Bar")
+                return SettingsSectionText(headerTitle: NSLocalizedString("Address Bar", comment: ""))
+            case .gestures:
+                return SettingsSectionText(headerTitle: NSLocalizedString("Gestures", comment: ""))
             case .tabs:
-                return SettingsSectionText(headerTitle: "Tabs")
-            case .pageZoom:
-                return SettingsSectionText(headerTitle: "Page Zoom")
-            }
-        }
-        
-        var rows: [Row] {
-            switch self {
-            case .appAppearance:
-                return [.appAppearance]
-            case .addressBar:
-                if UIDevice.current.userInterfaceIdiom == .pad {
-                    return [.showFullWebsiteAddress]
-                }
-                return [.BrowserChromePosition, .showFullWebsiteAddress]
-            case .tabs:
-                if UIDevice.current.userInterfaceIdiom == .pad {
-                    return []
-                }
-                return [.landscapeTabBar]
-            case .pageZoom:
-                return [.pageZoom]
+                return SettingsSectionText(headerTitle: NSLocalizedString("Tabs", comment: ""))
             }
         }
     }
     
-    private enum Row {
+    private enum Row: Equatable {
         case appAppearance
         case BrowserChromePosition
         case showFullWebsiteAddress
+        case pullToRefresh
+        case scrollToHideToolbar
+        case swipeAddressBarSideways
+        case swipeAddressBarUp
         case landscapeTabBar
-        case pageZoom
     }
     
     private let showFullWebsiteAddressSwitch = UISwitch()
+    private let pullToRefreshSwitch = UISwitch()
+    private let scrollToHideToolbarSwitch = UISwitch()
+    private let swipeAddressBarSidewaysSwitch = UISwitch()
+    private let swipeAddressBarUpSwitch = UISwitch()
     private let landscapeTabBarSwitch = UISwitch()
+    private var displayedAddressBarPosition = Prefs.AppearanceSettings.addressBarPosition
     
     private var displayedSections: [Section] {
         return Section.allCases.filter { section in
-            !section.rows.isEmpty
+            !rows(for: section).isEmpty
         }
     }
     
     init() {
-        super.init(style: .appGrouped)
-        title = "Appearance"
+        super.init(style: .insetGrouped)
+        title = NSLocalizedString("Appearance", comment: "")
     }
     
     required init?(coder: NSCoder) {
@@ -76,11 +65,18 @@ final class AppearancePreferencesViewController: SettingsTableViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         configureSwitch()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(addressBarPositionDidChange),
+            name: .addressBarPositionDidChange,
+            object: nil
+        )
         refreshDisplayedState()
     }
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        displayedAddressBarPosition = Prefs.AppearanceSettings.addressBarPosition
         refreshDisplayedState()
         tableView.reloadData()
     }
@@ -93,7 +89,7 @@ final class AppearancePreferencesViewController: SettingsTableViewController {
         guard displayedSections.indices.contains(section) else {
             return 0
         }
-        return displayedSections[section].rows.count
+        return rows(for: displayedSections[section]).count
     }
     
     override func sectionText(for section: Int) -> SettingsSectionText {
@@ -105,11 +101,11 @@ final class AppearancePreferencesViewController: SettingsTableViewController {
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         guard displayedSections.indices.contains(indexPath.section),
-              displayedSections[indexPath.section].rows.indices.contains(indexPath.row) else {
+              rows(for: displayedSections[indexPath.section]).indices.contains(indexPath.row) else {
             return UITableViewCell()
         }
         
-        switch displayedSections[indexPath.section].rows[indexPath.row] {
+        switch rows(for: displayedSections[indexPath.section])[indexPath.row] {
         case .appAppearance:
             let cell = AppAppearancePickerCell(style: .default, reuseIdentifier: nil)
             cell.display(selectedAppearance: Prefs.AppearanceSettings.appAppearance)
@@ -126,21 +122,40 @@ final class AppearancePreferencesViewController: SettingsTableViewController {
             }
             return cell
         case .showFullWebsiteAddress:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-            cell.textLabel?.text = "Show Full Website Address"
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = NSLocalizedString("Show Full Website Address", comment: "")
             cell.selectionStyle = .none
             cell.accessoryView = showFullWebsiteAddressSwitch
             return cell
+        case .pullToRefresh:
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = NSLocalizedString("Pull to Refresh", comment: "")
+            cell.selectionStyle = .none
+            cell.accessoryView = pullToRefreshSwitch
+            return cell
+        case .scrollToHideToolbar:
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = NSLocalizedString("Scroll to Hide Toolbar", comment: "")
+            cell.selectionStyle = .none
+            cell.accessoryView = scrollToHideToolbarSwitch
+            return cell
+        case .swipeAddressBarSideways:
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = NSLocalizedString("Swipe Address Bar Sideways to Switch Tabs", comment: "")
+            cell.selectionStyle = .none
+            cell.accessoryView = swipeAddressBarSidewaysSwitch
+            return cell
+        case .swipeAddressBarUp:
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = NSLocalizedString("Swipe Address Bar Up to See Open Tabs", comment: "")
+            cell.selectionStyle = .none
+            cell.accessoryView = swipeAddressBarUpSwitch
+            return cell
         case .landscapeTabBar:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-            cell.textLabel?.text = "Landscape Tab Bar"
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = NSLocalizedString("Show Tab Bar in Landscape", comment: "")
             cell.selectionStyle = .none
             cell.accessoryView = landscapeTabBarSwitch
-            return cell
-        case .pageZoom:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-            cell.textLabel?.text = "Zoom Settings"
-            cell.accessoryType = .disclosureIndicator
             return cell
         }
     }
@@ -148,22 +163,26 @@ final class AppearancePreferencesViewController: SettingsTableViewController {
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         defer { tableView.deselectRow(at: indexPath, animated: true) }
         guard displayedSections.indices.contains(indexPath.section),
-              displayedSections[indexPath.section].rows.indices.contains(indexPath.row) else {
+              rows(for: displayedSections[indexPath.section]).indices.contains(indexPath.row) else {
             return
-        }
-        
-        if displayedSections[indexPath.section].rows[indexPath.row] == .pageZoom {
-            navigationController?.pushViewController(PageZoomPreferencesViewController(), animated: true)
         }
     }
     
     private func configureSwitch() {
         showFullWebsiteAddressSwitch.addTarget(self, action: #selector(showFullWebsiteAddressSwitchDidChange), for: .valueChanged)
+        pullToRefreshSwitch.addTarget(self, action: #selector(pullToRefreshSwitchDidChange), for: .valueChanged)
+        scrollToHideToolbarSwitch.addTarget(self, action: #selector(scrollToHideToolbarSwitchDidChange), for: .valueChanged)
+        swipeAddressBarSidewaysSwitch.addTarget(self, action: #selector(swipeAddressBarSidewaysSwitchDidChange), for: .valueChanged)
+        swipeAddressBarUpSwitch.addTarget(self, action: #selector(swipeAddressBarUpSwitchDidChange), for: .valueChanged)
         landscapeTabBarSwitch.addTarget(self, action: #selector(landscapeTabBarSwitchDidChange), for: .valueChanged)
     }
     
     private func refreshDisplayedState() {
         showFullWebsiteAddressSwitch.isOn = Prefs.AppearanceSettings.showsFullWebsiteAddress
+        pullToRefreshSwitch.isOn = Prefs.AppearanceSettings.pullToRefreshEnabled
+        scrollToHideToolbarSwitch.isOn = Prefs.AppearanceSettings.scrollToHideToolbarEnabled
+        swipeAddressBarSidewaysSwitch.isOn = Prefs.AppearanceSettings.swipeAddressBarSidewaysEnabled
+        swipeAddressBarUpSwitch.isOn = Prefs.AppearanceSettings.swipeAddressBarUpEnabled
         landscapeTabBarSwitch.isOn = Prefs.AppearanceSettings.showsLandscapeTabBar
     }
     
@@ -171,7 +190,82 @@ final class AppearancePreferencesViewController: SettingsTableViewController {
         Prefs.AppearanceSettings.showsFullWebsiteAddress = showFullWebsiteAddressSwitch.isOn
     }
     
+    @objc private func pullToRefreshSwitchDidChange() {
+        Prefs.AppearanceSettings.pullToRefreshEnabled = pullToRefreshSwitch.isOn
+    }
+    
+    @objc private func scrollToHideToolbarSwitchDidChange() {
+        Prefs.AppearanceSettings.scrollToHideToolbarEnabled = scrollToHideToolbarSwitch.isOn
+        LibrarySharedUtils.resolvedBrowserViewController(from: self)?.toolbarController.reset(animated: true)
+    }
+    
+    @objc private func swipeAddressBarSidewaysSwitchDidChange() {
+        Prefs.AppearanceSettings.swipeAddressBarSidewaysEnabled = swipeAddressBarSidewaysSwitch.isOn
+    }
+    
+    @objc private func swipeAddressBarUpSwitchDidChange() {
+        Prefs.AppearanceSettings.swipeAddressBarUpEnabled = swipeAddressBarUpSwitch.isOn
+    }
+    
     @objc private func landscapeTabBarSwitchDidChange() {
         Prefs.AppearanceSettings.showsLandscapeTabBar = landscapeTabBarSwitch.isOn
+    }
+    
+    @objc private func addressBarPositionDidChange() {
+        let previousRows = rows(for: .gestures)
+        let updatedPosition = Prefs.AppearanceSettings.addressBarPosition
+        let updatedRows = rows(for: .gestures, addressBarPosition: updatedPosition)
+        guard previousRows != updatedRows,
+              let section = displayedSections.firstIndex(of: .gestures) else {
+            displayedAddressBarPosition = updatedPosition
+            return
+        }
+        
+        let deletedIndexPaths = previousRows.enumerated().compactMap { index, row in
+            updatedRows.contains(row) ? nil : IndexPath(row: index, section: section)
+        }
+        let insertedIndexPaths = updatedRows.enumerated().compactMap { index, row in
+            previousRows.contains(row) ? nil : IndexPath(row: index, section: section)
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else {
+                return
+            }
+            self.tableView.performBatchUpdates {
+                self.displayedAddressBarPosition = updatedPosition
+                self.tableView.deleteRows(at: deletedIndexPaths, with: .automatic)
+                self.tableView.insertRows(at: insertedIndexPaths, with: .automatic)
+            }
+        }
+    }
+    
+    private func rows(
+        for section: Section,
+        addressBarPosition: BrowserChromePosition? = nil
+    ) -> [Row] {
+        let position = addressBarPosition ?? displayedAddressBarPosition
+        switch section {
+        case .appAppearance:
+            return [.appAppearance]
+        case .addressBar:
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                return [.showFullWebsiteAddress]
+            }
+            return [.BrowserChromePosition, .showFullWebsiteAddress]
+        case .gestures:
+            var rows: [Row] = [.pullToRefresh, .scrollToHideToolbar]
+            guard position == .bottom,
+                  UIDevice.current.userInterfaceIdiom == .phone else {
+                return rows
+            }
+            rows.append(.swipeAddressBarSideways)
+            rows.append(.swipeAddressBarUp)
+            return rows
+        case .tabs:
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                return []
+            }
+            return [.landscapeTabBar]
+        }
     }
 }

@@ -22,13 +22,16 @@ protocol PermissionPromptPresenting {
 final class PermissionCoordinator: NSObject, PermissionEmbedderDelegate {
     private let permissionStore: SitePermissionStore
     private let promptPresenter: PermissionPromptPresenting
+    private let onPromptFinished: ((GeckoSession) -> Void)?
     
     init(
         permissionStore: SitePermissionStore = .shared,
-        promptPresenter: PermissionPromptPresenting
+        promptPresenter: PermissionPromptPresenting,
+        onPromptFinished: ((GeckoSession) -> Void)? = nil
     ) {
         self.permissionStore = permissionStore
         self.promptPresenter = promptPresenter
+        self.onPromptFinished = onPromptFinished
     }
     
     // MARK: - Permission Restoration
@@ -72,16 +75,16 @@ final class PermissionCoordinator: NSObject, PermissionEmbedderDelegate {
     
     // MARK: - PermissionEmbedderDelegate
     
-    
     func permissionDelegate(decideContentPermission permission: ContentPermission, session: GeckoSession, completion: @escaping (ContentPermission.Value) -> Void) {
         if permission.permission == .deviceSensors,
            let title = permission.alertTitle {
             promptPresenter.request(
                 title: title,
                 message: permission.alertMessage,
-                cancelTitle: "Don't Allow",
+                cancelTitle: NSLocalizedString("Don’t Allow", comment: ""),
                 for: session
-            ) { allowed in
+            ) { [weak self] allowed in
+                self?.onPromptFinished?(session)
                 completion(allowed ? .allow : .deny)
             }
             return
@@ -114,13 +117,14 @@ final class PermissionCoordinator: NSObject, PermissionEmbedderDelegate {
             promptPresenter.request(
                 title: title,
                 message: permission.alertMessage,
-                cancelTitle: "Don't Allow",
+                cancelTitle: NSLocalizedString("Don’t Allow", comment: ""),
                 for: session
             ) { [weak self] allowed in
                 guard let self else {
                     completion(allowed ? .allow : .deny)
                     return
                 }
+                self.onPromptFinished?(session)
                 let action: SitePermissionAction = allowed ? .allowed : .blocked
                 self.permissionStore.scheduleActionUpdate(action, for: sitePermission, host: host, session: session)
                 self.applyPermission(action, to: sitePermission, permission: permission)
@@ -154,13 +158,14 @@ final class PermissionCoordinator: NSObject, PermissionEmbedderDelegate {
                 audioRequested: request.audioRequested
             ),
             message: nil,
-            cancelTitle: "Cancel",
+            cancelTitle: NSLocalizedString("Cancel", comment: ""),
             for: session
         ) { [weak self] allowed in
             guard let self else {
                 completion(allowed)
                 return
             }
+            self.onPromptFinished?(session)
             let action: SitePermissionAction = allowed ? .allowed : .blocked
             for permission in requestedPermissions {
                 self.permissionStore.scheduleActionUpdate(action, for: permission, host: request.host, session: session)

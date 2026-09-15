@@ -1,41 +1,24 @@
 diff --git a/modules/libpref/init/all.js b/modules/libpref/init/all.js
-index d186a3c7056d..7aa7f6488697 100644
+index 29ff922cb70d..c22ee4ddab81 100644
 --- a/modules/libpref/init/all.js
 +++ b/modules/libpref/init/all.js
 @@ -66,6 +66,10 @@ pref("security.crash_tracking.js_load_1.maxCrashes", 1);
  
  pref("general.useragent.compatMode.firefox", false);
  
-+// REYNARD: Reduce GeckoView logging noise because the default "Debug" level
++// Reduce GeckoView logging noise because the default "Debug" level
 +// just makes debugging near to impossible.
 +pref("geckoview.logging", "Warn");
 +
  pref("general.config.obscure_value", 13); // for MCD .cfg files
  
  // Whether middle button click with a modifier key starts to autoscroll or
-@@ -2525,6 +2529,11 @@ pref("font.size.monospace.x-math", 13);
-   // For non-Latin/Greek/Cyrillic scripts, there may not be any serif/sans-serif
-   // distinction available, so both generics resolve to the same font.
+@@ -1898,7 +1902,7 @@ pref("dom.ipc.processCount.privilegedabout", 1);
+ pref("dom.ipc.processCount.privilegedmozilla", 1);
  
-+  // REYNARD: default to sans-serif on iOS so generic resolution uses
-+  // -apple-system first for SF-based text rendering.
-+  pref("font.default.x-unicode", "sans-serif");
-+  pref("font.default.x-western", "sans-serif");
-+
-   pref("font.name-list.emoji", "Apple Color Emoji");
- 
-   pref("font.name-list.serif.ar", "Al Nile");
-@@ -2623,11 +2632,11 @@ pref("font.size.monospace.x-math", 13);
-   pref("font.name-list.monospace.x-tibt", "Menlo, Kailasa");
- 
-   pref("font.name-list.serif.x-unicode", "Times New Roman");
--  pref("font.name-list.sans-serif.x-unicode", "Arial");
-+  pref("font.name-list.sans-serif.x-unicode", "-apple-system, Arial");
-   pref("font.name-list.monospace.x-unicode", "Menlo");
- 
-   pref("font.name-list.serif.x-western", "Times New Roman");
--  pref("font.name-list.sans-serif.x-western", "Arial");
-+  pref("font.name-list.sans-serif.x-western", "-apple-system, Arial");
-   pref("font.name-list.monospace.x-western", "Menlo");
- 
-   // XXX Is there an alternative that would be better for 'serif'?
+ // Maximum number of isolated content processes per-origin.
+-#ifdef ANDROID
++#if defined(ANDROID) || defined(XP_IOS)
+ pref("dom.ipc.processCount.webIsolated", 1);
+ #else
+ pref("dom.ipc.processCount.webIsolated", 4);

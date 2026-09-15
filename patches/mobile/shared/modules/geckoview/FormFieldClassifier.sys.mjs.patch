@@ -1,0 +1,1323 @@
+diff --git a/mobile/shared/modules/geckoview/FormFieldClassifier.sys.mjs b/mobile/shared/modules/geckoview/FormFieldClassifier.sys.mjs
+new file mode 100644
+index 000000000000..a23b41fc1128
+--- /dev/null
++++ b/mobile/shared/modules/geckoview/FormFieldClassifier.sys.mjs
+@@ -0,0 +1,1317 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++* https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++import {
++  formAutoFillKeywords,
++  safariAddressBookFieldLabelGroups,
++} from "resource://gre/modules/FormAutoFillKeywords.sys.mjs";
++
++// This module ports the relevant portions of SafariShared's form classifier.
++// Relevant functions from the framework used in here are:
++//  - _collectFormMetadata(), which constructs a logical form, classifies every
++//    control, assigns the username/password fields, and contains the standalone
++//    username/email branch used when no password form was found.
++//  - _looksLikeOneTimeCodeField(), which applies the ordered OTP rules and its
++//    address-book, ignored-data, search, password, and credit-card exclusions.
++//  - _bestMatchForElement() and its label helpers, which define normalization,
++//    longest-match behavior, reverse label scans, shadow/flat-tree traversal,
++//    and the DOM evidence sources considered for a control.
++//  - and autoFillOneTimeCodeFieldsWithValue()
++// An LLM was used to help with the porting from the minified JS from the framework,
++// and clearly, this isn't a 1:1 replicate of Safari's logic at all.
++
++// Why am I doing this?
++//
++// Safari can recognize unmarked OTP and standalone fields that public UITextContentType
++// traits (which depends on Gecko's classifier), cannot classify by themselves. Those
++// includes several OTP fields, and standalone username/email fields, which makes
++// Safari's integration with the keyboard password autofill & OTP so nice. Gecko on the
++// other hand, can only recognize OTP fields that are marked with the "one-time-code" trait,
++// and clearly can only detect a full form containing both username and password fields.
++//
++// So see for yourself, open the ChatGPT/Claude/Vercel login page (which shows only the email
++// field but no password field), and you'll see that Reynard can recognize the email field and
++// show the password autofill chip! Same for GitHub's OTP field, which is not marked with the 
++// "one-time-code" trait, but Reynard can still recognize it and show the chip!
++
++const lazy = {};
++
++ChromeUtils.defineESModuleGetters(lazy, {
++  FormLikeFactory: "resource://gre/modules/FormLikeFactory.sys.mjs",
++});
++
++const TEXT_INPUT_TYPES = new Set([
++  "date",
++  "datetime-local",
++  "email",
++  "isindex",
++  "month",
++  "number",
++  "password",
++  "search",
++  "tel",
++  "telephone",
++  "text",
++  "time",
++  "url",
++  "week",
++]);
++
++const ADDRESS_AUTOCOMPLETE_TOKENS = new Set([
++  "name",
++  "honorific-prefix",
++  "given-name",
++  "additional-name",
++  "family-name",
++  "honorific-suffix",
++  "nickname",
++  "organization-title",
++  "organization",
++  "street-address",
++  "address-line1",
++  "address-line2",
++  "address-line3",
++  "address-level4",
++  "address-level3",
++  "address-level2",
++  "address-level1",
++  "country",
++  "country-name",
++  "postal-code",
++  "bday",
++  "bday-day",
++  "bday-month",
++  "bday-year",
++  "sex",
++  "url",
++  "photo",
++  "tel",
++  "tel-country-code",
++  "tel-national",
++  "tel-area-code",
++  "tel-local",
++  "tel-local-prefix",
++  "tel-local-suffix",
++  "tel-extension",
++  "email",
++]);
++
++const CHASE_HOST = /^(.+\.)?chase\.com\.?$/;
++const AMAZON_HOST =
++  /^(.+\.)?amazon\.(com|ae|com\.au|com\.br|ca|fr|de|in|it|com\.mx|nl|es|com\.tr|co\.uk|sa|sg|se|pl)\.?$/;
++
++const PAGE_SCAN_TARGET = 500;
++const PAGE_SCAN_LIMIT = 600;
++
++const addressBookLabels = safariAddressBookFieldLabelGroups[0];
++// newEmailFieldLabelPatternMatchers() reverses this address-book property range.
++const emailLabels = addressBookLabels
++  .slice(
++    addressBookLabels.indexOf("電郵"),
++    addressBookLabels.indexOf("详细地址")
++  )
++  .toReversed();
++
++/*
++ * Safari treats keyword entries as regex fragments. Its element matcher
++ * normalizes separators, digits, and camelCase, prefers the longest field-name
++ * match, and preserves source ordering when scanning labels in reverse. Keep
++ * those two searches separate: collapsing them changes ambiguous localized
++ * matches and therefore changes classifier decisions.
++ */
++class FieldPatternMatcher {
++  constructor(entries) {
++    const fragments = Array.isArray(entries) ? entries : Object.keys(entries);
++    const longestFirst = fragments.toSorted(
++      (first, second) => second.length - first.length
++    );
++    this.longestMatchExpression = new RegExp(
++      `\\b(?:${longestFirst.join("|")})\\b`,
++      "i"
++    );
++    this.reverseSearchExpression = new RegExp(
++      `\\b(?:${fragments.join("|")})\\b`,
++      "gi"
++    );
++  }
++
++  longestMatch(value) {
++    if (!value) {
++      return null;
++    }
++    const normalized = value
++      .replace(/[\d_.-]/g, " ")
++      .replace(/[a-z][A-Z]/g, match => `${match[0]} ${match[1]}`);
++    return this.longestMatchExpression.exec(normalized);
++  }
++
++  reverseSearch(value) {
++    if (!value) {
++      return null;
++    }
++    const matches = value.match(this.reverseSearchExpression);
++    return matches?.at(-1) ?? null;
++  }
++}
++
++const matchers = {
++  addressBook: safariAddressBookFieldLabelGroups.map(
++    group => new FieldPatternMatcher(group)
++  ),
++  cardholder: [
++    new FieldPatternMatcher(
++      formAutoFillKeywords.creditCardAutoFill.cardholderLabels
++    ),
++  ],
++  cardNumber: [
++    new FieldPatternMatcher(
++      formAutoFillKeywords.creditCardAutoFill.numberFieldLabels
++    ),
++  ],
++  cardSecurityCode: [
++    new FieldPatternMatcher(
++      formAutoFillKeywords.creditCardAutoFill.securityCodeFieldLabels
++    ),
++  ],
++  cardType: [
++    new FieldPatternMatcher(
++      formAutoFillKeywords.creditCardAutoFill.cardTypeLabels
++    ),
++  ],
++  codeButNotOneTimeCode: [
++    new FieldPatternMatcher(
++      formAutoFillKeywords.CodeButNotOneTimeCodeFieldLabels
++    ),
++  ],
++  compositeExpiration: [
++    new FieldPatternMatcher(
++      formAutoFillKeywords.creditCardAutoFill.compositeExpirationDateLabels
++    ),
++  ],
++  email: [new FieldPatternMatcher(emailLabels)],
++  ignoredData: [
++    new FieldPatternMatcher(formAutoFillKeywords.IgnoredDataTypeFieldLabels),
++  ],
++  login: [new FieldPatternMatcher(formAutoFillKeywords.LoginFormTypeKeywords)],
++  newAccount: [
++    new FieldPatternMatcher(formAutoFillKeywords.NewAccountFormTypeKeywords),
++  ],
++  nonAccountPassword: [
++    new FieldPatternMatcher(
++      formAutoFillKeywords.NonAccountPasswordSecureTextEntryFieldLabels
++    ),
++  ],
++  nonCardNumber: [
++    new FieldPatternMatcher(
++      formAutoFillKeywords.creditCardAutoFill.nonCreditCardNumberLabels
++    ),
++  ],
++  oneTimeCode: [
++    new FieldPatternMatcher(formAutoFillKeywords.OneTimeCodeFieldLabels),
++  ],
++  nonUsername: [
++    new FieldPatternMatcher(formAutoFillKeywords.NonUsernameFieldLabels),
++  ],
++  password: [new FieldPatternMatcher(formAutoFillKeywords.PasswordFieldLabels)],
++  search: [new FieldPatternMatcher(formAutoFillKeywords.SearchFieldLabels)],
++  username: [new FieldPatternMatcher(formAutoFillKeywords.UsernameFieldLabels)],
++  weakOneTimeCode: [
++    new FieldPatternMatcher(formAutoFillKeywords.WeakOneTimeCodeFieldLabels),
++  ],
++};
++
++function parentElementIncludingShadowHost(element) {
++  if (element.parentElement) {
++    return element.parentElement;
++  }
++  const root = element.getRootNode();
++  return root?.host ?? null;
++}
++
++function queryAllIncludingShadowRoots(root, selector) {
++  const results = [];
++  for (const element of root.querySelectorAll("*")) {
++    if (element.matches(selector)) {
++      results.push(element);
++    }
++    if (element.shadowRoot) {
++      results.push(
++        ...queryAllIncludingShadowRoots(element.shadowRoot, selector)
++      );
++    }
++  }
++  return results;
++}
++
++function isInput(element) {
++  return !!element?.documentGlobal?.HTMLInputElement.isInstance(element);
++}
++
++function isTextArea(element) {
++  return !!element?.documentGlobal?.HTMLTextAreaElement.isInstance(element);
++}
++
++function isSelect(element) {
++  return !!element?.documentGlobal?.HTMLSelectElement.isInstance(element);
++}
++
++export function isSafariTextControl(element) {
++  return (
++    isTextArea(element) ||
++    (isInput(element) && (!element.type || TEXT_INPUT_TYPES.has(element.type)))
++  );
++}
++
++function isAutoFillableTextControl(element) {
++  return isSafariTextControl(element) && !element.disabled && !element.readOnly;
++}
++
++function isAutoFillableSelect(element) {
++  return isSelect(element) && !element.disabled && !element.readOnly;
++}
++
++function isSafariVisible(node) {
++  const element =
++    node.nodeType == 3 ? parentElementIncludingShadowHost(node) : node;
++  if (!element) {
++    return false;
++  }
++  const style = element.documentGlobal.getComputedStyle(element);
++  if (style.display == "none" || style.visibility != "visible") {
++    return false;
++  }
++  const minimumDimension = parseFloat(style.opacity) === 0 ? 6 : 2;
++  return (
++    element.offsetWidth >= minimumDimension &&
++    element.offsetHeight >= minimumDimension
++  );
++}
++
++function isEffectivelyInvisible(element) {
++  if (!element?.getBoundingClientRect) {
++    return false;
++  }
++  let isFixed = false;
++  for (let ancestor = element; ancestor;) {
++    if (
++      ancestor.documentGlobal.getComputedStyle(ancestor).position == "fixed"
++    ) {
++      isFixed = true;
++      break;
++    }
++    ancestor = parentElementIncludingShadowHost(ancestor);
++  }
++
++  const rect = element.getBoundingClientRect();
++  if (isFixed) {
++    return (
++      rect.top >= element.documentGlobal.innerHeight ||
++      rect.right <= 0 ||
++      rect.bottom <= 0 ||
++      rect.left >= element.documentGlobal.innerWidth
++    );
++  }
++
++  const documentElement = element.ownerDocument.documentElement;
++  const top = rect.top + element.documentGlobal.scrollY;
++  const right = rect.right + element.documentGlobal.scrollX;
++  const bottom = rect.bottom + element.documentGlobal.scrollY;
++  const left = rect.left + element.documentGlobal.scrollX;
++  const width = documentElement.scrollWidth;
++  const height = Math.max(
++    documentElement.scrollHeight,
++    element.documentGlobal.innerHeight
++  );
++  return top >= height || right <= 0 || bottom <= 0 || left >= width;
++}
++
++function autocompleteTokens(element) {
++  const values = [];
++  for (const attribute of [
++    "autocomplete",
++    "autocompletetype",
++    "x-autocompletetype",
++  ]) {
++    if (element.hasAttribute(attribute)) {
++      values.push(element.getAttribute(attribute).trim().toLowerCase());
++    }
++  }
++  if (!values.length) {
++    return null;
++  }
++  const tokens = values
++    .join(" ")
++    .split(/\s+/)
++    .filter(token => token && token != "on" && token != "off");
++  return tokens.length ? tokens : null;
++}
++
++function hasToken(element, tokens, token) {
++  return (
++    element.id?.toLowerCase().includes(token) ||
++    tokens?.includes(token) ||
++    false
++  );
++}
++
++function logicalFormForControl(element) {
++  const form = lazy.FormLikeFactory.createFromField(element);
++  const elements = form.elements.includes(element)
++    ? [...form.elements]
++    : [...form.elements, element];
++  return {
++    action: form.action,
++    backingElement: form.rootElement,
++    elements,
++  };
++}
++
++function sharedPrefixLength(first, second) {
++  const length = Math.min(first?.length ?? 0, second?.length ?? 0);
++  let index = 0;
++  while (index < length && first[index] == second[index]) {
++    index++;
++  }
++  return index;
++}
++
++function adjacentSuffix(element, adjacent, property) {
++  if (!adjacent) {
++    return null;
++  }
++  const value = element[property];
++  const commonLength = sharedPrefixLength(value, adjacent[property]);
++  return commonLength ? value.substring(commonLength) : null;
++}
++
++function surroundingControls(element, logicalForm) {
++  const controls = logicalForm.elements.filter(
++    candidate =>
++      isAutoFillableTextControl(candidate) || isAutoFillableSelect(candidate)
++  );
++  const index = controls.indexOf(element);
++  return {
++    previous: index > 0 ? controls[index - 1] : null,
++    next:
++      index >= 0 && index + 1 < controls.length ? controls[index + 1] : null,
++  };
++}
++
++function directElementStrings(element, logicalForm) {
++  const strings = [];
++  const { previous, next } = surroundingControls(element, logicalForm);
++  for (const property of ["name", "id"]) {
++    strings.push(
++      adjacentSuffix(element, previous, property),
++      adjacentSuffix(element, next, property),
++      element[property]
++    );
++  }
++
++  if (isSelect(element)) {
++    const defaultOption =
++      [...element.options].find(option => option.defaultSelected) ??
++      element.options[0];
++    const firstOption = element.options[0];
++    for (const option of [defaultOption, firstOption]) {
++      if (!option) {
++        continue;
++      }
++      if (/^-.+-$/.test(option.text)) {
++        strings.push(option.text);
++      } else if (!option.value && option.text) {
++        const isUniqueEmptyValue = [...element.options].every(
++          other => other === option || other.value
++        );
++        if (isUniqueEmptyValue) {
++          strings.push(option.text);
++        }
++      }
++    }
++  }
++  return strings.filter(Boolean);
++}
++
++function labelsForElement(element, logicalForm) {
++  const labels = [];
++  const labelledBy = element.getAttribute("aria-labelledby");
++  if (labelledBy) {
++    const ids = labelledBy.split(/\s+/);
++    for (const candidate of queryAllIncludingShadowRoots(
++      element.ownerDocument,
++      "[id]"
++    )) {
++      if (ids.includes(candidate.id)) {
++        labels.push(candidate);
++      }
++    }
++    if (labels.length) {
++      return labels;
++    }
++  }
++
++  const simplify = value => value?.replace(/[^a-zA-Z0-9]+/g, "") ?? "";
++  const allLabels = queryAllIncludingShadowRoots(
++    element.ownerDocument,
++    "label"
++  );
++  for (const value of [element.id, element.name]) {
++    if (!value) {
++      continue;
++    }
++    const fuzzy = [];
++    for (const label of allLabels) {
++      if (label.closest("form") !== element.form) {
++        continue;
++      }
++      const labelFor = label.getAttribute("for");
++      if (labelFor == value) {
++        labels.push(label);
++      } else if (
++        labelFor &&
++        simplify(labelFor) &&
++        simplify(labelFor) == simplify(value)
++      ) {
++        fuzzy.push(label);
++      }
++    }
++    if (!labels.length && fuzzy.length == 1) {
++      labels.push(fuzzy[0]);
++    }
++    if (labels.length) {
++      return labels;
++    }
++  }
++
++  for (
++    let ancestor = parentElementIncludingShadowHost(element);
++    ancestor && ancestor !== logicalForm.backingElement;
++    ancestor = parentElementIncludingShadowHost(ancestor)
++  ) {
++    if (ancestor.documentGlobal.HTMLLabelElement.isInstance(ancestor)) {
++      labels.push(ancestor);
++      break;
++    }
++  }
++  return labels;
++}
++
++function uniqueSiblingLabel(element) {
++  const siblings = element.parentElement?.children;
++  if (!siblings) {
++    return null;
++  }
++  let label = null;
++  for (const sibling of siblings) {
++    if (sibling === element) {
++      continue;
++    }
++    if (sibling.tagName == element.tagName) {
++      return null;
++    }
++    if (sibling.documentGlobal.HTMLLabelElement.isInstance(sibling)) {
++      if (label) {
++        return null;
++      }
++      label = sibling;
++    }
++  }
++  return label;
++}
++
++function ariaLabel(element) {
++  let candidate = element;
++  for (let level = 0; level <= 3 && candidate; level++) {
++    const label = candidate.getAttribute("aria-label");
++    if (label && candidate.getAttribute("aria-hidden") != "true") {
++      return label;
++    }
++    candidate = parentElementIncludingShadowHost(candidate);
++  }
++  return null;
++}
++
++function previousNode(node) {
++  let candidate = node.previousSibling;
++  if (candidate) {
++    while (candidate.lastChild) {
++      candidate = candidate.lastChild;
++    }
++    return candidate;
++  }
++  return node.parentNode;
++}
++
++function isRenderedFormControl(node) {
++  if (node.nodeType != 1) {
++    return false;
++  }
++  if (
++    [
++      "button",
++      "fieldset",
++      "isindex",
++      "legend",
++      "meter",
++      "optgroup",
++      "option",
++      "progress",
++      "select",
++      "textarea",
++    ].includes(node.localName)
++  ) {
++    return true;
++  }
++  return isInput(node) && (!node.type || node.type != "hidden");
++}
++
++function precedingPageStrings(element, logicalForm) {
++  const strings = [];
++  const backingElementIsInvisible =
++    !isSafariVisible(logicalForm.backingElement) ||
++    isEffectivelyInvisible(logicalForm.backingElement);
++  let characters = 0;
++  let node = previousNode(element);
++  while (
++    node &&
++    node !== logicalForm.backingElement &&
++    characters < PAGE_SCAN_TARGET
++  ) {
++    if (node.nodeType == 1 && node.matches("nav")) {
++      break;
++    }
++    if (isRenderedFormControl(node)) {
++      if (isSafariVisible(node) || backingElementIsInvisible) {
++        break;
++      }
++    } else if (
++      node.nodeType == 1 &&
++      node.documentGlobal.HTMLLabelElement.isInstance(node) &&
++      isSafariVisible(node)
++    ) {
++      break;
++    } else if (
++      node.nodeType == 1 &&
++      ["tr", "ul", "ol", "dl"].includes(node.localName)
++    ) {
++      break;
++    } else if (node.nodeType == 3 && isSafariVisible(node)) {
++      let value = node.nodeValue;
++      if (characters + value.length > PAGE_SCAN_LIMIT) {
++        value = value.substring(value.length - (PAGE_SCAN_TARGET - characters));
++      }
++      characters += value.length;
++      value = value.trim();
++      if (value) {
++        strings.push(value);
++      }
++    }
++    node = previousNode(node);
++  }
++  return strings;
++}
++
++function matchesAny(matcherList, value) {
++  return matcherList.some(matcher => matcher.longestMatch(value));
++}
++
++function matchesElement(element, matcherList, logicalForm, directOnly = false) {
++  for (const value of directElementStrings(element, logicalForm)) {
++    if (matchesAny(matcherList, value)) {
++      return true;
++    }
++  }
++
++  const labels = labelsForElement(element, logicalForm);
++  for (const label of labels) {
++    if (matcherList.some(matcher => matcher.reverseSearch(label.innerText))) {
++      return true;
++    }
++  }
++
++  for (const value of [
++    element.getAttribute("placeholder"),
++    element.getAttribute("data-placeholder"),
++    element.getAttribute("title"),
++    uniqueSiblingLabel(element)?.innerText,
++    ariaLabel(element),
++    element.getAttribute("formcontrolname"),
++  ]) {
++    if (value && matcherList.some(matcher => matcher.reverseSearch(value))) {
++      return true;
++    }
++  }
++
++  if (!directOnly && !labels.length) {
++    for (const value of precedingPageStrings(element, logicalForm)) {
++      if (matcherList.some(matcher => matcher.reverseSearch(value))) {
++        return true;
++      }
++    }
++  }
++  return false;
++}
++
++function validPattern(pattern) {
++  if (!pattern) {
++    return null;
++  }
++  if (pattern.startsWith("/") && pattern.endsWith("/")) {
++    pattern = pattern.substring(1, pattern.length - 1);
++  }
++  if (!pattern) {
++    return null;
++  }
++  try {
++    return new RegExp(`^(?:${pattern})$`, "v");
++  } catch {
++    return null;
++  }
++}
++
++function looksLikeCardNumber(element, tokens, logicalForm) {
++  const pattern = validPattern(element.pattern);
++  if (pattern?.test("a") || pattern?.test("A")) {
++    return false;
++  }
++  if (
++    matchesElement(element, matchers.nonCardNumber, logicalForm) ||
++    matchesElement(element, matchers.compositeExpiration, logicalForm)
++  ) {
++    return false;
++  }
++  if (hasToken(element, tokens, "cc-number")) {
++    return true;
++  }
++  if (
++    /[0-9]{4}[ -][0-9]{4}[ -][0-9]{4}[ -][0-9]{4}/.test(element.placeholder)
++  ) {
++    return true;
++  }
++  const validationPattern = validPattern(
++    element.getAttribute("data-val-regex-pattern")
++  );
++  if (validationPattern && !validationPattern.test("12345")) {
++    return false;
++  }
++  return matchesElement(element, matchers.cardNumber, logicalForm);
++}
++
++function looksLikeCardSecurityCode(element, tokens, logicalForm) {
++  if (hasToken(element, tokens, "cc-csc")) {
++    return true;
++  }
++  const pattern = validPattern(element.pattern);
++  if (pattern && !pattern.test("123") && !pattern.test("1234")) {
++    return false;
++  }
++  return matchesElement(element, matchers.cardSecurityCode, logicalForm);
++}
++
++function exclusionMetadata(element, tokens, logicalForm) {
++  const ignoredData =
++    isAutoFillableTextControl(element) &&
++    !tokens?.length &&
++    matchesElement(element, matchers.ignoredData, logicalForm);
++  const plainText =
++    isInput(element) &&
++    !element.disabled &&
++    !element.readOnly &&
++    (!element.type || element.type == "text");
++  const cardholder =
++    plainText &&
++    (hasToken(element, tokens, "cc-name") ||
++      matchesElement(element, matchers.cardholder, logicalForm));
++  const cardNumber =
++    isAutoFillableTextControl(element) &&
++    looksLikeCardNumber(element, tokens, logicalForm);
++  const cardSecurityCode =
++    isAutoFillableTextControl(element) &&
++    looksLikeCardSecurityCode(element, tokens, logicalForm);
++  const cardType =
++    (isSelect(element) || (isInput(element) && element.type == "radio")) &&
++    (hasToken(element, tokens, "cc-type") ||
++      matchesElement(element, matchers.cardType, logicalForm));
++  const addressBook =
++    tokens?.some(token => ADDRESS_AUTOCOMPLETE_TOKENS.has(token)) ||
++    matchesElement(element, matchers.addressBook, logicalForm);
++  return {
++    addressBook,
++    cardholder,
++    cardNumber,
++    cardSecurityCode,
++    cardType,
++    ignoredData,
++  };
++}
++
++function documentTitleWithoutSiteName(document) {
++  const title = document.title;
++  const location = document.location;
++  const host = location.host.replace(/^(www|m|secure)\./, "");
++  const site = host.replace(/\.(com|info|net|org|edu|gov)$/, "").toLowerCase();
++  let best = null;
++  let bestSimilarity = 0;
++  for (const separator of [" - ", " – ", " — ", ": ", " | ", " » "]) {
++    const parts = title.split(separator);
++    if (parts.length != 2) {
++      continue;
++    }
++    const first = parts[0].trim();
++    const second = parts[1].trim();
++    const firstSimilarity = Math.max(
++      stringSimilarity(first.toLowerCase(), host),
++      stringSimilarity(first.toLowerCase(), site)
++    );
++    const secondSimilarity = Math.max(
++      stringSimilarity(second.toLowerCase(), host),
++      stringSimilarity(second.toLowerCase(), site)
++    );
++    const similarity = Math.max(firstSimilarity, secondSimilarity);
++    if (similarity > bestSimilarity) {
++      bestSimilarity = similarity;
++      best = firstSimilarity > secondSimilarity ? second : first;
++    }
++  }
++  return bestSimilarity >= 0.6 ? best : title;
++}
++
++function stringSimilarity(first, second) {
++  const maximum = Math.max(first.length, second.length);
++  if (!maximum) {
++    return 0;
++  }
++  const rows = Array.from({ length: first.length + 1 }, (_, index) => [index]);
++  for (let index = 0; index <= second.length; index++) {
++    rows[0][index] = index;
++  }
++  for (let row = 1; row <= first.length; row++) {
++    for (let column = 1; column <= second.length; column++) {
++      rows[row][column] =
++        first[row - 1] == second[column - 1]
++          ? rows[row - 1][column - 1]
++          : Math.min(
++            rows[row - 1][column] + 1,
++            rows[row][column - 1] + 1,
++            rows[row - 1][column - 1] + 1
++          );
++    }
++  }
++  return (maximum - rows[first.length][second.length]) / maximum;
++}
++
++function unmatchedActionPath(document, logicalForm) {
++  if (!logicalForm.action) {
++    return "";
++  }
++  let action;
++  try {
++    action = new URL(logicalForm.action, document.baseURI);
++  } catch {
++    return "";
++  }
++  const actionParts = action.pathname.split("/");
++  const documentParts = document.location.pathname.split("/");
++  let commonLength = 0;
++  while (
++    commonLength < actionParts.length &&
++    commonLength < documentParts.length &&
++    actionParts[commonLength] == documentParts[commonLength]
++  ) {
++    commonLength++;
++  }
++  return actionParts.slice(commonLength).join("/");
++}
++
++function logicalFormHasExactlyOneVisibleTextField(logicalForm) {
++  let foundOne = false;
++  for (const element of logicalForm.elements) {
++    if (!isAutoFillableTextControl(element) || !isSafariVisible(element)) {
++      continue;
++    }
++    if (foundOne) {
++      return false;
++    }
++    foundOne = true;
++  }
++  return foundOne;
++}
++
++function previousVisibleInput(element) {
++  let previous = element;
++  while ((previous = previousElement(previous))) {
++    if (isInput(previous) && isSafariVisible(previous)) {
++      return previous;
++    }
++  }
++  return null;
++}
++
++function previousElement(element) {
++  let previous = element.previousElementSibling;
++  while (previous?.lastElementChild) {
++    previous = previous.lastElementChild;
++  }
++  return previous ?? element.parentElement;
++}
++
++function inferredLength(element, explicitLength) {
++  if (Number.isFinite(explicitLength)) {
++    return explicitLength;
++  }
++  const placeholder = element.placeholder;
++  const length = placeholder?.length;
++  return length && length < 10 && placeholder == placeholder[0].repeat(length)
++    ? length
++    : undefined;
++}
++
++function pathLooksLikeOneTimeCode(path) {
++  return (
++    matchesAny(matchers.oneTimeCode, path) ||
++    matchesAny(matchers.oneTimeCode, path?.replaceAll("-", " "))
++  );
++}
++
++function formTypeStrings(element, logicalForm) {
++  const strings = [];
++  const backingElement = logicalForm.backingElement;
++  for (const attribute of ["id", "name"]) {
++    const value = backingElement.getAttribute?.(attribute);
++    if (value) {
++      strings.push(value);
++    }
++  }
++
++  const legends = queryAllIncludingShadowRoots(backingElement, "legend");
++  if (legends.length == 1) {
++    strings.push(legends[0].innerText);
++  }
++
++  const document = element.ownerDocument;
++  if (!document.defaultView.frameElement && isSafariVisible(backingElement)) {
++    strings.push(documentTitleWithoutSiteName(document));
++    const path = document.location.pathname.split("/").filter(Boolean).at(-1);
++    if (path) {
++      strings.push(path);
++    }
++  }
++
++  for (const candidate of queryAllIncludingShadowRoots(
++    backingElement,
++    'h1, h2, h3, [class*="header" i], [class*="heading" i], button, input[type="submit"], a[class~="button"]'
++  )) {
++    if (!isSafariVisible(candidate)) {
++      continue;
++    }
++    for (const value of [candidate.id, candidate.value, candidate.innerText]) {
++      if (value) {
++        strings.push(value);
++      }
++    }
++  }
++  return strings;
++}
++
++function formTypeScore(strings, action, keywords) {
++  let score = 0;
++  for (const value of strings) {
++    const normalized = value.toLowerCase();
++    if (
++      formAutoFillKeywords.NonAutoFillableFormTypeRegularExpressions.some(
++        pattern => new RegExp(pattern, "i").test(normalized)
++      )
++    ) {
++      return null;
++    }
++    for (const [keyword, weight] of Object.entries(keywords)) {
++      if (normalized.includes(keyword.toLowerCase())) {
++        score += weight;
++      }
++    }
++  }
++
++  if (action) {
++    try {
++      const url = new URL(action);
++      const value = `${url.pathname}${url.search}`.toLowerCase();
++      for (const [keyword, weight] of Object.entries(keywords)) {
++        if (value.includes(keyword.toLowerCase())) {
++          score += weight;
++        }
++      }
++    } catch { }
++  }
++  return score;
++}
++
++function standaloneFormLooksLikeLogin(element, logicalForm, defaultToLogin) {
++  const strings = formTypeStrings(element, logicalForm);
++  let loginScore = formTypeScore(
++    strings,
++    logicalForm.action,
++    formAutoFillKeywords.LoginFormTypeKeywords
++  );
++  const newAccountScore = formTypeScore(
++    strings,
++    logicalForm.action,
++    formAutoFillKeywords.NewAccountFormTypeKeywords
++  );
++  if (loginScore === null || newAccountScore === null) {
++    return false;
++  }
++
++  const forgotPatterns = [
++    ...formAutoFillKeywords.ForgotEmailAffordanceRegularExpressions,
++    ...formAutoFillKeywords.ForgotUserNameAffordanceRegularExpressions,
++  ].map(pattern => new RegExp(pattern, "i"));
++  for (const candidate of queryAllIncludingShadowRoots(
++    logicalForm.backingElement,
++    "a, button"
++  )) {
++    if (
++      element.compareDocumentPosition(candidate) &
++      element.documentGlobal.Node.DOCUMENT_POSITION_FOLLOWING &&
++      forgotPatterns.some(pattern =>
++        pattern.test(
++          candidate.innerText || candidate.getAttribute("href") || ""
++        )
++      )
++    ) {
++      loginScore += 2;
++      break;
++    }
++  }
++
++  if (loginScore == newAccountScore) {
++    return defaultToLogin;
++  }
++  return loginScore > newAccountScore;
++}
++
++function isSafariPasswordCredentialField(element, logicalForm) {
++  if (
++    !isInput(element) ||
++    element.type != "password" ||
++    !isAutoFillableTextControl(element)
++  ) {
++    return false;
++  }
++  const maxLength = element.getAttribute("maxlength");
++  return (
++    (!maxLength || parseInt(maxLength) >= 4) &&
++    !matchesElement(element, matchers.nonAccountPassword, logicalForm)
++  );
++}
++
++function isPhotoTaggingField(element) {
++  const pattern = /photo.*tag/i;
++  for (
++    let ancestor = parentElementIncludingShadowHost(element);
++    ancestor;
++    ancestor = parentElementIncludingShadowHost(ancestor)
++  ) {
++    if (pattern.test(ancestor.className)) {
++      return true;
++    }
++  }
++  return false;
++}
++
++
++// The standalone branch at the end of SafariShared's _collectFormMetadata().
++export function looksLikeSafariStandaloneLoginField(element) {
++  if (!isInput(element) || !isAutoFillableTextControl(element)) {
++    return false;
++  }
++
++  const logicalForm = logicalFormForControl(element);
++  const visible = isSafariVisible(element);
++  const inFooter = !!element.closest("footer");
++  const hasOneVisibleTextField =
++    logicalFormHasExactlyOneVisibleTextField(logicalForm);
++  const hasPassword = logicalForm.elements.some(candidate =>
++    isSafariPasswordCredentialField(candidate, logicalForm)
++  );
++  if (!visible || inFooter || !hasOneVisibleTextField || hasPassword) {
++    return false;
++  }
++
++  const tokens = autocompleteTokens(element);
++  const claimsUsername = tokens?.includes("username") ?? false;
++  const claimsEmail = tokens?.includes("email") ?? false;
++  const labeledUsername = matchesElement(
++    element,
++    matchers.username,
++    logicalForm
++  );
++  const labeledEmail =
++    element.type == "email" ||
++    matchesElement(element, matchers.email, logicalForm);
++  const labeledLogin = matchesElement(element, matchers.login, logicalForm);
++  const labeledNonUsername = matchesElement(
++    element,
++    matchers.nonUsername,
++    logicalForm
++  );
++  const labeledSearch = matchesElement(
++    element,
++    matchers.search,
++    logicalForm,
++    true
++  );
++  const labeledNewAccount = matchesElement(
++    element,
++    matchers.newAccount,
++    logicalForm
++  );
++  let isLoginField = false;
++
++  if (
++    (claimsUsername || labeledUsername || labeledEmail || labeledLogin) &&
++    !labeledNonUsername &&
++    !labeledSearch &&
++    !labeledNewAccount
++  ) {
++    isLoginField = standaloneFormLooksLikeLogin(
++      element,
++      logicalForm,
++      !labeledEmail
++    );
++  }
++
++  if (tokens?.includes("webauthn") && (claimsUsername || claimsEmail)) {
++    isLoginField = true;
++  } else if (claimsUsername && labeledEmail) {
++    isLoginField = standaloneFormLooksLikeLogin(element, logicalForm, true);
++  }
++
++  return isLoginField && !isPhotoTaggingField(element);
++}
++
++
++// SafariShared's _looksLikeOneTimeCodeField()
++// eslint-disable-next-line complexity
++export function looksLikeSafariOneTimeCodeField(element) {
++  if (!isAutoFillableTextControl(element) && !isAutoFillableSelect(element)) {
++    return false;
++  }
++
++  const tokens = autocompleteTokens(element);
++  if (hasToken(element, tokens, "one-time-code")) {
++    return true;
++  }
++
++  const document = element.ownerDocument;
++  const logicalForm = logicalFormForControl(element);
++  const type = element.type;
++  if (type == "password") {
++    if (CHASE_HOST.test(document.location.hostname)) {
++      return false;
++    }
++    if (matchesElement(element, matchers.password, logicalForm)) {
++      return false;
++    }
++  }
++  if (AMAZON_HOST.test(document.location.hostname)) {
++    const promotion = /claim|promo/i;
++    if (promotion.test(element.id) || promotion.test(element.name)) {
++      return false;
++    }
++  }
++  if (matchesElement(element, matchers.oneTimeCode, logicalForm)) {
++    return true;
++  }
++
++  const maxLengthAttribute = element.getAttribute("maxlength");
++  const maxLength = maxLengthAttribute
++    ? parseInt(maxLengthAttribute)
++    : undefined;
++  const isOnlyVisibleTextField =
++    logicalFormHasExactlyOneVisibleTextField(logicalForm);
++  if (Number.isFinite(maxLength) && maxLength > 10) {
++    if (!isOnlyVisibleTextField) {
++      return false;
++    }
++    const exclusions = exclusionMetadata(element, tokens, logicalForm);
++    if (Object.values(exclusions).some(Boolean)) {
++      return false;
++    }
++  }
++
++  const pattern = validPattern(element.pattern);
++  if (
++    pattern &&
++    (pattern.test("1234") ||
++      pattern.test("123456") ||
++      pattern.test("12345678")) &&
++    !pattern.test("a") &&
++    !pattern.test("A")
++  ) {
++    return true;
++  }
++
++  const title = documentTitleWithoutSiteName(document);
++  const titleLooksLikeOneTimeCode = matchesAny(matchers.oneTimeCode, title);
++  const titleLooksLikeLogin = matchesAny(matchers.login, title);
++  const actionLooksLikeOneTimeCode = matchesAny(
++    matchers.oneTimeCode,
++    unmatchedActionPath(document, logicalForm)
++  );
++  const isNumeric = type == "number" || type == "tel";
++  if (maxLength == 1) {
++    if (isNumeric || actionLooksLikeOneTimeCode || titleLooksLikeOneTimeCode) {
++      return true;
++    }
++    const fieldset = element.closest("fieldset");
++    const legend = fieldset?.querySelector("legend");
++    const fieldsetInputs = fieldset
++      ? queryAllIncludingShadowRoots(fieldset, "input")
++      : [];
++    if (
++      legend &&
++      element === fieldsetInputs[0] &&
++      matchesAny(matchers.oneTimeCode, legend.innerText)
++    ) {
++      return true;
++    }
++    for (const container of [
++      fieldset,
++      element.parentElement,
++      element.closest('*[role~="dialog"]'),
++    ]) {
++      if (!container) {
++        continue;
++      }
++      const inputs = queryAllIncludingShadowRoots(container, "input");
++      if (
++        inputs.length >= 5 &&
++        inputs.length <= 8 &&
++        element === inputs[0] &&
++        inputs.every(input => parseInt(input.maxLength) == 1)
++      ) {
++        return true;
++      }
++    }
++  }
++
++  const weakMatch = matchesElement(
++    element,
++    matchers.weakOneTimeCode,
++    logicalForm
++  );
++  if (isNumeric && weakMatch) {
++    return true;
++  }
++  const placeholder = element.placeholder;
++  if (
++    placeholder &&
++    weakMatch &&
++    /^[#]+$/.test(placeholder.replace(/ /g, ""))
++  ) {
++    return true;
++  }
++  const length = inferredLength(element, maxLength);
++  if ((length == 4 || length == 6) && weakMatch) {
++    return true;
++  }
++  if (maxLength == 7 && placeholder && /\d{3} \d{3}/.test(placeholder)) {
++    return true;
++  }
++  if (isSafariTextControl(element) && element.autofocus) {
++    if (weakMatch || (element.min == "0" && element.max == "9")) {
++      return true;
++    }
++  }
++
++  if (isOnlyVisibleTextField) {
++    if (
++      weakMatch &&
++      !matchesElement(element, matchers.codeButNotOneTimeCode, logicalForm) &&
++      !matchesElement(element, matchers.search, logicalForm, true) &&
++      !previousVisibleInput(element)
++    ) {
++      return true;
++    }
++
++    let score = 0;
++    if (weakMatch) {
++      score++;
++    }
++    if (actionLooksLikeOneTimeCode) {
++      score++;
++    }
++    if (titleLooksLikeOneTimeCode) {
++      score++;
++    }
++    if (titleLooksLikeLogin) {
++      score++;
++    }
++    if (length == 4 || length == 6) {
++      score++;
++    }
++
++    const heading = queryAllIncludingShadowRoots(
++      logicalForm.backingElement,
++      "h1, h2, h3"
++    ).find(candidate => candidate.innerText.trim());
++    let headingMatched = false;
++    if (heading && matchesAny(matchers.oneTimeCode, heading.innerText)) {
++      headingMatched = true;
++      score++;
++    }
++    if (!headingMatched) {
++      const sectionHeading = element
++        .closest("section")
++        ?.querySelector("h1, h2, h3");
++      if (
++        sectionHeading &&
++        matchesAny(matchers.oneTimeCode, sectionHeading.innerText)
++      ) {
++        score++;
++      }
++    }
++    if (
++      matchesAny(matchers.oneTimeCode, logicalForm.backingElement.id) ||
++      matchesAny(matchers.oneTimeCode, element.dataset.valRequired)
++    ) {
++      score++;
++    }
++    if (score >= 2) {
++      return true;
++    }
++
++    const currentPath = document.location.pathname
++      .split("/")
++      .filter(Boolean)
++      .at(-1);
++    if (currentPath && pathLooksLikeOneTimeCode(currentPath)) {
++      return true;
++    }
++    const canonical = document.querySelector('link[rel="canonical"]');
++    if (canonical) {
++      try {
++        const canonicalPath = new URL(canonical.href).pathname
++          .split("/")
++          .filter(Boolean)
++          .at(-1);
++        if (canonicalPath && pathLooksLikeOneTimeCode(canonicalPath)) {
++          return true;
++        }
++      } catch { }
++    }
++    if (
++      precedingPageStrings(element, logicalForm).some(value =>
++        matchers.oneTimeCode.some(matcher => matcher.reverseSearch(value))
++      )
++    ) {
++      return true;
++    }
++  }
++
++  return false;
++}

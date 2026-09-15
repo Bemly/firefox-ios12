@@ -1,14 +1,14 @@
 diff --git a/gfx/thebes/gfxCoreTextShaper.cpp b/gfx/thebes/gfxCoreTextShaper.cpp
-index 07ff05d9f14b..a3c2367e4322 100644
+index 9a0fbdf4aee6..1aa674bc738c 100644
 --- a/gfx/thebes/gfxCoreTextShaper.cpp
 +++ b/gfx/thebes/gfxCoreTextShaper.cpp
-@@ -632,8 +632,41 @@ CTFontRef gfxCoreTextShaper::CreateCTFontWithFeatures(
+@@ -633,8 +633,41 @@ CTFontRef gfxCoreTextShaper::CreateCTFontWithFeatures(
    const gfxFontEntry* fe = mFont->GetFontEntry();
    bool isInstalledFont = !fe->IsUserFont() || fe->IsLocalUserFont();
    CGFontRef cgFont = static_cast<gfxMacFont*>(mFont)->GetCGFontRef();
 -  return CreateCTFontFromCGFontWithVariations(cgFont, aSize, isInstalledFont,
 -                                              aDescriptor);
-+  // REYNARD: Merge feature attributes onto the preserved base descriptor so
++  // Merge feature attributes onto the preserved base descriptor so
 +  // shaping keeps the Apple system-font descriptor instead of rebuilding from
 +  // CGFont alone.
 +  auto* unscaledFont =

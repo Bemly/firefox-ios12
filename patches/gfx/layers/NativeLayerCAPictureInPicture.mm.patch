@@ -1,0 +1,127 @@
+diff --git a/gfx/layers/NativeLayerCAPictureInPicture.mm b/gfx/layers/NativeLayerCAPictureInPicture.mm
+new file mode 100644
+index 000000000000..a29cd27a2cc3
+--- /dev/null
++++ b/gfx/layers/NativeLayerCAPictureInPicture.mm
+@@ -0,0 +1,121 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#include "mozilla/layers/NativeLayerCA.h"
++
++#import <AVFoundation/AVFoundation.h>
++
++#include "nsThreadUtils.h"
++
++namespace mozilla::layers {
++
++static bool IsEligiblePictureInPictureSurface(IOSurfaceRef aSurface) {
++  static const bool supportsInlineVideoSpecialization =
++      NSProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 15;
++  if (!supportsInlineVideoSpecialization) {
++    return false;
++  }
++  OSType format = IOSurfaceGetPixelFormat(aSurface);
++  return format == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange ||
++         format == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange ||
++         format == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange ||
++         format == kCVPixelFormatType_420YpCbCr10BiPlanarFullRange;
++}
++
++CALayer* NativeLayerRootCA::CopyPictureInPictureSource() {
++  MutexAutoLock lock(mMutex);
++  return [mPictureInPictureSourceLayer retain];
++}
++
++void NativeLayerRootCA::SetPictureInPictureSourceChangedCallback(
++    std::function<void()>&& aCallback) {
++  MutexAutoLock lock(mMutex);
++  mPictureInPictureSourceChangedCallback = std::move(aCallback);
++}
++
++CALayer* NativeLayerRootCA::FindPictureInPictureSource(
++    const MutexAutoLock& aProofOfLock) {
++  if (!mWindowIsFullscreen) {
++    return nil;
++  }
++  CALayer* source = nil;
++  for (const auto& nativeLayer : mSublayers) {
++    if (CALayer* layer = nativeLayer->PictureInPictureSourceLayer()) {
++      if (source) {
++        return nil;
++      }
++      source = layer;
++    }
++  }
++  return source;
++}
++
++bool NativeLayerRootCA::UpdatePictureInPictureSource(
++    const MutexAutoLock& aProofOfLock) {
++  CALayer* sourceLayer = FindPictureInPictureSource(aProofOfLock);
++  if (sourceLayer == mPictureInPictureSourceLayer) {
++    return false;
++  }
++  [sourceLayer retain];
++  [mPictureInPictureSourceLayer release];
++  mPictureInPictureSourceLayer = sourceLayer;
++  if (mPictureInPictureNotificationPending) {
++    return false;
++  }
++  mPictureInPictureNotificationPending = true;
++  return true;
++}
++
++void NativeLayerRootCA::DispatchPictureInPictureSourceChanged() {
++  RefPtr<NativeLayerRootCA> self = this;
++  NS_DispatchToMainThread(NS_NewRunnableFunction(
++      "NativeLayerRootCA::DispatchPictureInPictureSourceChanged",
++      [self = std::move(self)]() {
++        std::function<void()> callback;
++        {
++          MutexAutoLock lock(self->mMutex);
++          self->mPictureInPictureNotificationPending = false;
++          callback = self->mPictureInPictureSourceChangedCallback;
++        }
++        if (callback) {
++          callback();
++        }
++      }));
++}
++
++bool NativeLayerCA::IsPictureInPictureEligibleSurface(
++    const MutexAutoLock& aProofOfLock) {
++  IOSurfaceRef surface = nullptr;
++  CFTypeRefPtr<IOSurfaceRef> retainedSurface;
++  if (mSurfaceToPresent) {
++    surface = mSurfaceToPresent.get();
++  } else if (mTextureHost) {
++    retainedSurface = mTextureHost->GetSurface()->GetIOSurfaceRef();
++    surface = retainedSurface.get();
++  }
++  return surface && IsEligiblePictureInPictureSurface(surface);
++}
++
++CALayer* NativeLayerCA::PictureInPictureSourceLayer() {
++  MutexAutoLock lock(mMutex);
++  if (!IsVideo(lock) ||
++      mOnscreenRepresentation.UnderlyingCALayer() == nullptr ||
++      !IsPictureInPictureEligibleSurface(lock)) {
++    return nil;
++  }
++  return mOnscreenRepresentation.PictureInPictureSourceLayer();
++}
++
++CALayer* NativeLayerCARepresentation::PictureInPictureSourceLayer() {
++  if (!mWrappingCALayerHasExtent || mPictureInPictureFailureLatched ||
++      ![mContentCALayer isKindOfClass:[AVSampleBufferDisplayLayer class]]) {
++    return nil;
++  }
++  return mContentCALayer;
++}
++
++}  // namespace mozilla::layers

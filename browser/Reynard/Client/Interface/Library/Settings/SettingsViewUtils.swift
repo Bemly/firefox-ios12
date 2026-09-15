@@ -27,14 +27,14 @@ enum SettingsViewUtils {
     // MARK: - Cells
     
     static func disclosureCell(title: String) -> UITableViewCell {
-        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
         cell.textLabel?.text = title
         cell.accessoryType = .disclosureIndicator
         return cell
     }
     
     static func actionCell(title: String, tintColor: UIColor?) -> UITableViewCell {
-        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
         cell.textLabel?.text = title
         cell.textLabel?.textColor = tintColor
         return cell
@@ -63,8 +63,8 @@ enum SettingsViewUtils {
         
         alert.view.addSubview(progressView)
         
-        let cancelAnchorView = alert.view.firstDescendantButton(withTitle: "Cancel") ??
-        alert.view.firstDescendantView(containingLabelText: "Cancel")
+        let cancelAnchorView = alert.view.firstDescendantButton(withTitle: NSLocalizedString("Cancel", comment: "")) ??
+        alert.view.firstDescendantView(containingLabelText: NSLocalizedString("Cancel", comment: ""))
         var constraints = [
             progressView.widthAnchor.constraint(equalTo: messageLabel.widthAnchor),
             progressView.centerXAnchor.constraint(equalTo: messageLabel.centerXAnchor),

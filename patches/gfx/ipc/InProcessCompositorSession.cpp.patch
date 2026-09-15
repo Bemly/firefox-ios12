@@ -1,0 +1,19 @@
+diff --git a/gfx/ipc/InProcessCompositorSession.cpp b/gfx/ipc/InProcessCompositorSession.cpp
+index 15a81dd75aff..cb51f0a614be 100644
+--- a/gfx/ipc/InProcessCompositorSession.cpp
++++ b/gfx/ipc/InProcessCompositorSession.cpp
+@@ -86,12 +86,12 @@ void InProcessCompositorSession::Shutdown() {
+   // at which point CBP will defer a Release on the compositor thread. We
+   // can safely release our reference now, and let the destructor run on either
+   // thread.
+-#if defined(MOZ_WIDGET_ANDROID)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
+   if (mUiCompositorControllerChild) {
+     mUiCompositorControllerChild->Destroy();
+     mUiCompositorControllerChild = nullptr;
+   }
+-#endif  // defined(MOZ_WIDGET_ANDROID)
++#endif
+   if (mCompositorBridgeChild) {
+     mCompositorBridgeChild->Destroy();
+     mCompositorBridgeChild = nullptr;

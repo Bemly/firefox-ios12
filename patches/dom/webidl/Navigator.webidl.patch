@@ -1,0 +1,31 @@
+diff --git a/dom/webidl/Navigator.webidl b/dom/webidl/Navigator.webidl
+index aee586a781a0..4fa3d8bf475e 100644
+--- a/dom/webidl/Navigator.webidl
++++ b/dom/webidl/Navigator.webidl
+@@ -48,7 +48,7 @@ interface mixin NavigatorID {
+   readonly attribute DOMString appCodeName; // constant "Mozilla"
+   [Constant, Cached]
+   readonly attribute DOMString appName; // constant "Netscape"
+-  [Constant, Cached, Throws, NeedsCallerType]
++  [Pure, Cached, Throws, NeedsCallerType]
+   readonly attribute DOMString appVersion;
+   [Pure, Cached, Throws, NeedsCallerType]
+   readonly attribute DOMString platform;
+@@ -175,7 +175,7 @@ partial interface Navigator {
+ };
+ 
+ partial interface Navigator {
+-  [Throws, Constant, Cached, NeedsCallerType]
++  [Throws, Pure, Cached, NeedsCallerType]
+   readonly attribute DOMString oscpu;
+   // WebKit/Blink support this; Trident/Presto do not.
+   readonly attribute DOMString vendor;
+@@ -185,7 +185,7 @@ partial interface Navigator {
+   readonly attribute DOMString productSub;
+   // WebKit/Blink/Trident/Presto support this.
+   readonly attribute boolean cookieEnabled;
+-  [Throws, Constant, Cached, NeedsCallerType]
++  [Throws, Pure, Cached, NeedsCallerType]
+   readonly attribute DOMString buildID;
+ 
+   // WebKit/Blink/Trident/Presto support this.

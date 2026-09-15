@@ -27,6 +27,11 @@ final class UpdatesSettingsSection {
         return access(trollStoreMarkerPath, F_OK) == 0
     }
     
+    var isJailbreakBuild: Bool {
+        let markerPath = Bundle.main.bundlePath + "/jb_ptrace_jit"
+        return access(markerPath, F_OK) == 0
+    }
+    
     private var activeUpdateTask: URLSessionDownloadTask?
     private var updateProgressObservation: NSKeyValueObservation?
     
@@ -57,19 +62,19 @@ final class UpdatesSettingsSection {
         case .releaseNotes:
             return UpdateReleaseNotesCell()
         case .updateNow:
-            let cell = SettingsViewUtils.actionCell(title: "Update Now", tintColor: tintColor)
+            let cell = SettingsViewUtils.actionCell(title: NSLocalizedString("Update Now", comment: ""), tintColor: tintColor)
             cell.textLabel?.textAlignment = .center
             return cell
         }
     }
     
     func trollStoreFooterView() -> UIView {
-        return footerView(text: "Make sure TrollStore's URL Scheme is enabled.")
+        return footerView(text: NSLocalizedString("Make sure TrollStore's URL Scheme is enabled.", comment: ""))
     }
     
     func unsupportedUpdatesFooterView() -> UIView {
         return footerView(
-            text: "This build does not support in-app updates. Visit the project's Releases page to download the latest version of the app."
+            text: NSLocalizedString("This build does not support in-app updates. Visit the project's Releases page to download the latest version of the app.", comment: "")
         )
     }
     
@@ -120,15 +125,16 @@ final class UpdatesSettingsSection {
               let latestEntry = versions.first,
               let packageURLString = latestEntry["downloadURL"] as? String,
               let packageURL = URL(string: packageURLString) else {
-            AlertPresenter.show(title: "Update Unavailable", message: "Could not retrieve the download URL.")
+            AlertPresenter.show(title: NSLocalizedString("Update Unavailable", comment: ""), message: NSLocalizedString("Could not retrieve the download URL.", comment: ""))
             return
         }
         
         let expectedSize = latestEntry["size"] as? Int
         if installedThroughTrollStore {
+            let packageFileName = isJailbreakBuild ? "Reynard-Jailbroken.ipa" : "Reynard-TrollStore.tipa"
             let trollStorePackageURLString = packageURLString.replacingOccurrences(
                 of: "Reynard.ipa",
-                with: "Reynard-TrollStore.tipa"
+                with: packageFileName
             )
             let encodedPackageURLString = trollStorePackageURLString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ??
             trollStorePackageURLString
@@ -143,7 +149,7 @@ final class UpdatesSettingsSection {
                 from: packageURL,
                 fileName: "Reynard.ipa",
                 expectedSize: expectedSize,
-                message: "When the download finishes, choose the app that you used to sideload Reynard in the share sheet to install the update.",
+                message: NSLocalizedString("When the download finishes, choose the app that you used to sideload Reynard in the share sheet to install the update.", comment: ""),
                 viewController: viewController
             )
         }
@@ -166,7 +172,7 @@ final class UpdatesSettingsSection {
             return
         }
         
-        let alert = UIAlertController(title: "Downloading Update", message: message, preferredStyle: .alert)
+        let alert = UIAlertController(title: NSLocalizedString("Downloading Update", comment: ""), message: message, preferredStyle: .alert)
         let progressView = UIProgressView(progressViewStyle: .default)
         progressView.translatesAutoresizingMaskIntoConstraints = false
         progressView.progress = 0
@@ -190,7 +196,7 @@ final class UpdatesSettingsSection {
                     }
                     
                     SettingsViewUtils.dismissPresentedAlert(alert, from: viewController) {
-                        AlertPresenter.show(title: "Download Failed", message: error.localizedDescription)
+                        AlertPresenter.show(title: NSLocalizedString("Download Failed", comment: ""), message: error.localizedDescription)
                     }
                     return
                 }
@@ -208,7 +214,7 @@ final class UpdatesSettingsSection {
         }
         activeUpdateTask = task
         
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel) { [weak self] _ in
             self?.activeUpdateTask?.cancel()
             self?.activeUpdateTask = nil
             self?.updateProgressObservation = nil

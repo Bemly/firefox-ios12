@@ -24,12 +24,11 @@ final class RecentlyClosedTabCollectionViewCell: UICollectionViewCell {
         for: .systemFont(ofSize: UX.titleFontSize, weight: .regular)
     )
     
-    private let pillView: UIView = {
-        let view = UIView()
+    private let pillView: UIVisualEffectView = {
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isUserInteractionEnabled = false
-        view.backgroundColor = .appSystemGray5
-        view.layer.applyContinuousCornerCurve()
+        view.layer.cornerCurve = .continuous
         view.layer.cornerRadius = UX.pillCornerRadius
         view.clipsToBounds = true
         return view
@@ -80,7 +79,7 @@ final class RecentlyClosedTabCollectionViewCell: UICollectionViewCell {
     
     func configure(tab: TabManagementStore.RecentlyClosedTabSnapshot) {
         let title = tab.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        titleLabel.text = title.isEmpty ? "Untitled" : title
+        titleLabel.text = title.isEmpty ? NSLocalizedString("Untitled", comment: "") : title
     }
     
     // MARK: - Configuration
@@ -106,7 +105,7 @@ final class RecentlyClosedTabCollectionViewCell: UICollectionViewCell {
     
     private func configureHierarchy() {
         contentView.addSubview(pillView)
-        pillView.addSubview(titleLabel)
+        pillView.contentView.addSubview(titleLabel)
     }
     
     private func configureConstraints() {
@@ -116,9 +115,9 @@ final class RecentlyClosedTabCollectionViewCell: UICollectionViewCell {
             pillView.topAnchor.constraint(equalTo: contentView.topAnchor),
             pillView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             
-            titleLabel.leadingAnchor.constraint(equalTo: pillView.leadingAnchor, constant: UX.horizontalInset),
-            titleLabel.trailingAnchor.constraint(equalTo: pillView.trailingAnchor, constant: -UX.horizontalInset),
-            titleLabel.centerYAnchor.constraint(equalTo: pillView.centerYAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: pillView.contentView.leadingAnchor, constant: UX.horizontalInset),
+            titleLabel.trailingAnchor.constraint(equalTo: pillView.contentView.trailingAnchor, constant: -UX.horizontalInset),
+            titleLabel.centerYAnchor.constraint(equalTo: pillView.contentView.centerYAnchor),
         ])
     }
     
@@ -141,12 +140,7 @@ final class RecentlyClosedTabCollectionViewCell: UICollectionViewCell {
     // MARK: - Appearance
     
     private func updateAppearance() {
-        pillView.backgroundColor = traitCollection.userInterfaceStyle == .dark
-        ? .appSystemGray5
-        : .appSystemBackground
-        titleLabel.textColor = .appLabel
-        layer.shadowColor = traitCollection.userInterfaceStyle == .dark
-        ? UIColor.white.cgColor
-        : UIColor.black.cgColor
+        titleLabel.textColor = .label
+        layer.shadowColor = UIColor.black.cgColor
     }
 }

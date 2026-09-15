@@ -1,0 +1,61 @@
+diff --git a/gfx/2d/RecordedEventImpl.h b/gfx/2d/RecordedEventImpl.h
+index c8187d52ffcf..38abe6aa42ce 100644
+--- a/gfx/2d/RecordedEventImpl.h
++++ b/gfx/2d/RecordedEventImpl.h
+@@ -1521,6 +1521,9 @@ class RecordedFontDescriptor
+       : RecordedEventDerived(FONTDESC),
+         mType(aUnscaledFont->GetType()),
+         mIndex(0),
++        mProvenance(
++            static_cast<uint8_t>(aUnscaledFont->GetDescriptorProvenance())),
++        mSystemFontTraits(aUnscaledFont->GetSystemFontTraits()),
+         mRefPtr(aUnscaledFont) {
+     mHasDesc = aUnscaledFont->GetFontDescriptor(FontDescCb, this);
+   }
+@@ -1547,6 +1550,9 @@ class RecordedFontDescriptor
+   FontType mType = FontType::UNKNOWN;
+   RecordedEventArray<uint8_t> mData;
+   uint32_t mIndex = 0;
++  uint8_t mProvenance =
++      static_cast<uint8_t>(UnscaledFont::DescriptorProvenance::NativeFace);
++  uint32_t mSystemFontTraits = 0;
+   ReferencePtr mRefPtr;
+ 
+   template <class S>
+@@ -4221,8 +4227,17 @@ RecordedFontData::RecordedFontData(S& aStream)
+ inline RecordedFontDescriptor::~RecordedFontDescriptor() = default;
+ 
+ inline bool RecordedFontDescriptor::PlayEvent(Translator* aTranslator) const {
++  if (mProvenance >
++      static_cast<uint8_t>(UnscaledFont::DescriptorProvenance::SystemUI)) {
++    gfxDevCrash(LogReason::InvalidFont)
++        << "Invalid font descriptor provenance " << uint32_t(mProvenance);
++    return false;
++  }
++
++  auto provenance =
++      static_cast<UnscaledFont::DescriptorProvenance>(mProvenance);
+   RefPtr<UnscaledFont> font = Factory::CreateUnscaledFontFromFontDescriptor(
+-      mType, mData.data(), mData.size(), mIndex);
++      mType, mData.data(), mData.size(), mIndex, provenance, mSystemFontTraits);
+   if (!font) {
+     gfxCriticalNote << "Failed creating UnscaledFont of type " << int(mType)
+                     << " from font descriptor";
+@@ -4239,6 +4254,8 @@ void RecordedFontDescriptor::Record(S& aStream) const {
+   WriteElement(aStream, mType);
+   WriteElement(aStream, mRefPtr);
+   WriteElement(aStream, mIndex);
++  WriteElement(aStream, mProvenance);
++  WriteElement(aStream, mSystemFontTraits);
+   WriteElement(aStream, mData.size());
+   mData.Write(aStream);
+ }
+@@ -4261,6 +4278,8 @@ RecordedFontDescriptor::RecordedFontDescriptor(S& aStream)
+   ReadElementConstrained(aStream, mType, FontType::DWRITE, FontType::UNKNOWN);
+   ReadElement(aStream, mRefPtr);
+   ReadElement(aStream, mIndex);
++  ReadElement(aStream, mProvenance);
++  ReadElement(aStream, mSystemFontTraits);
+ 
+   size_t size;
+   ReadElement(aStream, size);

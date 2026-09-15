@@ -12,10 +12,14 @@ struct ImagePreviewMenu {
     static func configuration(
         for context: ContextMenuContext,
         showsPreview: Bool,
-        presentingController: UIViewController,
-        sourceView: UIView
+        isPrivate: Bool,
+        sourceView: UIView,
+        shareImage: @escaping (UIImage, UIView, CGRect) -> Void,
+        openLinkInNewTab: @escaping (URL) -> Void,
+        openLinkInNewPrivateTab: @escaping (URL) -> Void,
+        openImageInNewTab: @escaping () -> Void
     ) -> UIContextMenuConfiguration? {
-        guard case .image(let url) = context.target else {
+        guard case let .image(url, linkURL) = context.target else {
             return nil
         }
         
@@ -24,23 +28,56 @@ struct ImagePreviewMenu {
         } : nil
         
         return UIContextMenuConfiguration(identifier: UUID().uuidString as NSString, previewProvider: previewProvider) { _ in
-            UIMenu(title: "", children: [
-                UIAction(title: "Share Image", image: UIImage(named: "reynard.square.and.arrow.up")) { _ in
-                    loadImage(from: url) { image in
-                        presentShareSheet(image: image, from: presentingController, sourceView: sourceView)
-                    }
-                },
-                UIAction(title: "Save to Photos", image: UIImage(named: "reynard.square.and.arrow.down")) { _ in
-                    loadImage(from: url) { image in
-                        UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-                    }
-                },
-                UIAction(title: "Copy", image: UIImage(named: "reynard.document.on.document")) { _ in
-                    loadImage(from: url) { image in
-                        UIPasteboard.general.image = image
-                    }
-                },
-            ])
+            var children: [UIMenuElement] = []
+            if let linkURL {
+                var linkActions: [UIMenuElement] = [
+                    UIAction(title: NSLocalizedString("Open Link in New Tab", comment: ""), image: UIImage(named: "reynard.plus.square.on.square")) { _ in
+                        openLinkInNewTab(linkURL)
+                    },
+                ]
+                if !isPrivate {
+                    linkActions.append(
+                        UIAction(title: NSLocalizedString("Open Link in New Private Tab", comment: ""), image: UIImage(named: "reynard.plus.square.fill.on.square.fill")) { _ in
+                            openLinkInNewPrivateTab(linkURL)
+                        }
+                    )
+                }
+                children.append(
+                    UIMenu(title: "", options: .displayInline, children: linkActions)
+                )
+            }
+            
+            children.append(
+                UIMenu(title: "", options: .displayInline, children: [
+                    UIAction(title: NSLocalizedString("Open Image in New Tab", comment: ""), image: UIImage(named: "reynard.plus.square.on.square")) { _ in
+                        openImageInNewTab()
+                    },
+                    UIAction(title: NSLocalizedString("Share Image", comment: ""), image: UIImage(named: "reynard.square.and.arrow.up")) { _ in
+                        loadImage(from: url) { image in
+                            shareImage(
+                                image,
+                                sourceView,
+                                CGRect(origin: context.point, size: .zero)
+                            )
+                        }
+                    },
+                    UIAction(title: NSLocalizedString("Save to Photos", comment: ""), image: UIImage(named: "reynard.square.and.arrow.down")) { _ in
+                        loadImage(from: url) { image in
+                            UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
+                        }
+                    },
+                    UIAction(title: NSLocalizedString("Copy Image", comment: ""), image: UIImage(named: "reynard.document.on.document")) { _ in
+                        loadImage(from: url) { image in
+                            UIPasteboard.general.image = image
+                        }
+                    },
+                    UIAction(title: NSLocalizedString("Copy Image Address", comment: ""), image: UIImage(named: "reynard.document.on.document")) { _ in
+                        UIPasteboard.general.string = url.absoluteString
+                    },
+                ])
+            )
+            
+            return UIMenu(title: "", children: children)
         }
     }
     
@@ -53,12 +90,4 @@ struct ImagePreviewMenu {
         }
     }
     
-    private static func presentShareSheet(image: UIImage, from controller: UIViewController, sourceView: UIView) {
-        let sheet = UIActivityViewController(activityItems: [image], applicationActivities: nil)
-        if let popover = sheet.popoverPresentationController {
-            popover.sourceView = sourceView
-            popover.sourceRect = sourceView.bounds
-        }
-        controller.present(sheet, animated: true)
-    }
 }

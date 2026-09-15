@@ -1,5 +1,5 @@
 diff --git a/mobile/shared/actors/SelectionActionDelegateChild.sys.mjs b/mobile/shared/actors/SelectionActionDelegateChild.sys.mjs
-index f3569758ce71..4e433830c20b 100644
+index 6d21d73630db..95d4f534aae7 100644
 --- a/mobile/shared/actors/SelectionActionDelegateChild.sys.mjs
 +++ b/mobile/shared/actors/SelectionActionDelegateChild.sys.mjs
 @@ -2,6 +2,7 @@
@@ -9,8 +9,8 @@ index f3569758ce71..4e433830c20b 100644
 +import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
  import { GeckoViewActorChild } from "resource://gre/modules/GeckoViewActorChild.sys.mjs";
  
- const lazy = {};
-@@ -315,6 +316,17 @@ export class SelectionActionDelegateChild extends GeckoViewActorChild {
+ const MAGNIFIER_PREF = "layout.accessiblecaret.magnifier.enabled";
+@@ -309,6 +310,17 @@ export class SelectionActionDelegateChild extends GeckoViewActorChild {
  
      debug`handleEvent: ${reason}`;
  
@@ -28,3 +28,54 @@ index f3569758ce71..4e433830c20b 100644
      if (this._magnifierEnabled) {
        this._handleMagnifier(aEvent);
      }
+@@ -325,10 +337,10 @@ export class SelectionActionDelegateChild extends GeckoViewActorChild {
+         action.predicate.call(this, aEvent)
+       );
+ 
+-      const screenRect = (() => {
++      const { screenRect, clientRect } = (() => {
+         const boundingRect = aEvent.boundingClientRect;
+         if (!boundingRect) {
+-          return null;
++          return { screenRect: null, clientRect: null };
+         }
+         const win = aEvent.target.documentGlobal || aEvent.target;
+         const rect = win.windowUtils.toScreenRect(
+@@ -337,11 +349,25 @@ export class SelectionActionDelegateChild extends GeckoViewActorChild {
+           boundingRect.width,
+           boundingRect.height
+         );
++        const widgetRect = win.windowUtils.toTopLevelWidgetRect(
++          boundingRect.left,
++          boundingRect.top,
++          boundingRect.width,
++          boundingRect.height
++        );
+         return {
+-          left: rect.left,
+-          top: rect.top,
+-          right: rect.right,
+-          bottom: rect.bottom + this._accessiblecaretHeight,
++          screenRect: {
++            left: rect.left,
++            top: rect.top,
++            right: rect.right,
++            bottom: rect.bottom + this._accessiblecaretHeight,
++          },
++          clientRect: {
++            left: widgetRect.left,
++            top: widgetRect.top,
++            right: widgetRect.right,
++            bottom: widgetRect.bottom,
++          },
+         };
+       })();
+ 
+@@ -353,6 +379,7 @@ export class SelectionActionDelegateChild extends GeckoViewActorChild {
+         password,
+         selection: password ? "" : aEvent.selectedTextContent,
+         screenRect,
++        clientRect,
+         actions: actions.map(action => action.id),
+       };
+ 

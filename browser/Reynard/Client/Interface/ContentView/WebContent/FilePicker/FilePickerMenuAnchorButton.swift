@@ -17,6 +17,13 @@ final class FilePickerMenuAnchorButton: UIButton {
         animator: UIContextMenuInteractionAnimating?
     ) {
         super.contextMenuInteraction(interaction, willEndFor: configuration, animator: animator)
-        onMenuDismissed?()
+        let handler = onMenuDismissed
+        if let animator {
+            animator.addCompletion {
+                handler?()
+            }
+        } else {
+            handler?()
+        }
     }
 }

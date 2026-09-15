@@ -103,8 +103,9 @@ final class FavoriteSiteCollectionViewCell: UICollectionViewCell {
         updateShadowColor()
     }
     
-    func configure(favorite: BookmarkSnapshot) {
+    func configure(favorite: BookmarkSnapshot, titleColor: UIColor) {
         titleLabel.text = favorite.title
+        titleLabel.textColor = titleColor
         iconView.configure(bookmark: favorite)
     }
     
@@ -180,9 +181,7 @@ final class FavoriteSiteCollectionViewCell: UICollectionViewCell {
     
     private func updateShadowColor() {
         let iconSize = currentIconSize()
-        shadowView.layer.shadowColor = traitCollection.userInterfaceStyle == .dark
-        ? UIColor.white.cgColor
-        : UIColor.black.cgColor
+        shadowView.layer.shadowColor = UIColor.black.cgColor
         shadowView.layer.shadowPath = UIBezierPath(
             roundedRect: CGRect(origin: .zero, size: CGSize(width: iconSize, height: iconSize)),
             cornerRadius: cornerRadius(for: iconSize)

@@ -1,0 +1,61 @@
+diff --git a/mobile/shared/actors/LoadURIDelegateChild.sys.mjs b/mobile/shared/actors/LoadURIDelegateChild.sys.mjs
+index 8a22300f297c..5042a0a50098 100644
+--- a/mobile/shared/actors/LoadURIDelegateChild.sys.mjs
++++ b/mobile/shared/actors/LoadURIDelegateChild.sys.mjs
+@@ -12,6 +12,47 @@ ChromeUtils.defineESModuleGetters(lazy, {
+ 
+ // Implements nsILoadURIDelegate.
+ export class LoadURIDelegateChild extends GeckoViewActorChild {
++  // nsILoadURIDelegate.
++  preNavigation(
++    aUri,
++    aLoadFlags,
++    aTriggeringPrincipal,
++    aHasValidUserGestureActivation,
++    aIsUserInitiatedNavigation
++  ) {
++    if (!this.contentWindow) {
++      return false;
++    }
++
++    const triggerUri =
++      aTriggeringPrincipal &&
++      (aTriggeringPrincipal.isNullPrincipal ? null : aTriggeringPrincipal.URI);
++    const message = {
++      uri: aUri ? aUri.displaySpec : "",
++      where: Ci.nsIBrowserDOMWindow.OPEN_CURRENTWINDOW,
++      flags: aLoadFlags,
++      triggerUri: triggerUri && triggerUri.displaySpec,
++      hasUserGesture: aHasValidUserGestureActivation,
++      isUserInitiatedNavigation: aIsUserInitiatedNavigation,
++    };
++
++    let handled;
++    this.sendQuery("GeckoView:OnPreNavigation", message).then(
++      result => {
++        handled = result === true;
++      },
++      () => {
++        handled = false;
++      }
++    );
++
++    Services.tm.spinEventLoopUntil(
++      "LoadURIDelegateChild.sys.mjs:preNavigation",
++      () => this.contentWindow.closed || handled !== undefined
++    );
++    return handled === true;
++  }
++
+   // nsILoadURIDelegate.
+   handleLoadError(aUri, aError, aErrorModule) {
+     debug`handleLoadError: uri=${aUri && aUri.spec}
+@@ -23,7 +64,7 @@ export class LoadURIDelegateChild extends GeckoViewActorChild {
+         "@mozilla.org/nss_errors_service;1"
+       ].getService(Ci.nsINSSErrorsService);
+       errorClass = nssErrorsService.getErrorClass(aError);
+-    } catch (e) {}
++    } catch (e) { }
+ 
+     const msg = {
+       uri: aUri && aUri.spec,

@@ -1,29 +1,11 @@
 diff --git a/mobile/shared/actors/GeckoViewContentChild.sys.mjs b/mobile/shared/actors/GeckoViewContentChild.sys.mjs
-index 9ca6e15bed3e..53549f22f8d5 100644
+index 9ca6e15bed3e..bae638b3b3c4 100644
 --- a/mobile/shared/actors/GeckoViewContentChild.sys.mjs
 +++ b/mobile/shared/actors/GeckoViewContentChild.sys.mjs
-@@ -67,6 +67,107 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
+@@ -67,6 +67,113 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
      return windowUtils.SCROLL_MODE_SMOOTH;
    }
  
-+  isFocusedEditableElement(element) {
-+    if (!element) {
-+      return false;
-+    }
-+
-+    const win = element.ownerGlobal || element.documentGlobal;
-+    if (!win) {
-+      return false;
-+    }
-+
-+    return (
-+      (win.HTMLInputElement?.isInstance(element) &&
-+        element.mozIsTextField(false)) ||
-+      win.HTMLTextAreaElement?.isInstance(element) ||
-+      element.isContentEditable
-+    );
-+  }
-+
 +  getFocusedInputBounds(focusedElement, viewportHeight) {
 +    let bounds = focusedElement.getBoundingClientRect();
 +    let ancestor = focusedElement.parentElement;
@@ -55,25 +37,49 @@ index 9ca6e15bed3e..53549f22f8d5 100644
 +    }
 +
 +    const focusedElement = Services.focus.focusedElement || contentWindow?.document?.activeElement;
-+    if (!this.isFocusedEditableElement(focusedElement)) {
++    const win = focusedElement?.ownerGlobal || focusedElement?.documentGlobal;
++    if (
++      !win ||
++      !(
++        (win.HTMLInputElement?.isInstance(focusedElement) &&
++          focusedElement.mozIsTextField(false)) ||
++        win.HTMLTextAreaElement?.isInstance(focusedElement) ||
++        focusedElement.isContentEditable
++      )
++    ) {
 +      return null;
 +    }
 +
-+    const win = focusedElement.ownerGlobal || focusedElement.documentGlobal;
-+    if (!win) {
-+      return null;
-+    }
-+
-+    const viewportHeight =
-+      win.visualViewport?.height || win.innerHeight;
++    const viewportHeight = win.visualViewport?.height || win.innerHeight;
 +    if (!viewportHeight || viewportHeight <= 0) {
 +      return null;
 +    }
 +
 +    const bounds = this.getFocusedInputBounds(focusedElement, viewportHeight);
-+    return {
++    const { windowUtils } = win;
++    const metrics = {
 +      bottomRatio: Math.max(0, Math.min(2, bounds.bottom / viewportHeight)),
++      caretTop: null,
 +    };
++    const selection = windowUtils.sendQueryContentEvent(
++      windowUtils.QUERY_SELECTED_TEXT, 0, 0, 0, 0
++    );
++
++    if (!selection.succeeded || selection.notFound) {
++      return metrics;
++    }
++
++    const caret = windowUtils.sendQueryContentEvent(
++      windowUtils.QUERY_CARET_RECT,
++      selection.offset + selection.text.length,
++      0, 0, 0
++    );
++
++    if (caret.succeeded) {
++      metrics.caretTop = caret.top;
++    }
++
++    return metrics;
 +  }
 +
 +  collectSessionState() {
@@ -110,7 +116,7 @@ index 9ca6e15bed3e..53549f22f8d5 100644
    orientation() {
      const currentOrientationType = this.contentWindow?.screen.orientation.type;
      if (!currentOrientationType) {
-@@ -184,6 +285,9 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
+@@ -184,6 +291,9 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
        case "ContainsFormData": {
          return this.containsFormData();
        }

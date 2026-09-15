@@ -1,0 +1,39 @@
+diff --git a/mobile/shared/modules/geckoview/GeckoViewAutofill.sys.mjs b/mobile/shared/modules/geckoview/GeckoViewAutofill.sys.mjs
+index 28dcccc3d01b..e4869d1ef43b 100644
+--- a/mobile/shared/modules/geckoview/GeckoViewAutofill.sys.mjs
++++ b/mobile/shared/modules/geckoview/GeckoViewAutofill.sys.mjs
+@@ -11,9 +11,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
+ });
+ 
+ class Autofill {
+-  constructor(sessionId, eventDispatcher) {
++  constructor(sessionId, eventDispatcher, rootActor) {
+     this.eventDispatcher = eventDispatcher;
+     this.sessionId = sessionId;
++    this.rootActor = rootActor;
+   }
+ 
+   start() {
+@@ -55,9 +56,9 @@ class AutofillManager {
+   sessions = new Set();
+   autofill = null;
+ 
+-  ensure(sessionId, eventDispatcher) {
++  ensure(sessionId, eventDispatcher, rootActor) {
+     if (!this.sessions.has(sessionId)) {
+-      this.autofill = new Autofill(sessionId, eventDispatcher);
++      this.autofill = new Autofill(sessionId, eventDispatcher, rootActor);
+       this.sessions.add(sessionId);
+       this.autofill.start();
+     }
+@@ -88,6 +89,10 @@ class AutofillManager {
+     this.autofill.clear();
+     this.autofill = null;
+   }
++
++  fillOneTimeCode(sessionId, fieldUuid, value) {
++    return this.get(sessionId)?.rootActor.fillOneTimeCode(fieldUuid, value);
++  }
+ }
+ 
+ export var gAutofillManager = new AutofillManager();

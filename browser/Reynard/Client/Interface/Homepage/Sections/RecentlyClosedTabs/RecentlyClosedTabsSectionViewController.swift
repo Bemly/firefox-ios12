@@ -35,8 +35,8 @@ final class RecentlyClosedTabsSectionViewController: UIViewController {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = RecentlyClosedTabsSectionViewController.titleFont
-        label.textColor = .appLabel
-        label.text = "Recently Closed Tabs"
+        label.textColor = .label
+        label.text = NSLocalizedString("Recently Closed Tabs", comment: "")
         label.adjustsFontForContentSizeCategory = true
         return label
     }()
@@ -46,7 +46,7 @@ final class RecentlyClosedTabsSectionViewController: UIViewController {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.tintColor = .appLabel
         button.titleLabel?.adjustsFontForContentSizeCategory = true
-        button.setTitle("Clear All", for: .normal)
+        button.setTitle(NSLocalizedString("Clear All", comment: ""), for: .normal)
         button.addTarget(self, action: #selector(clearAllButtonTapped), for: .touchUpInside)
         return button
     }()
@@ -119,6 +119,7 @@ final class RecentlyClosedTabsSectionViewController: UIViewController {
         }
         
         self.contentMode = contentMode
+        updateForegroundColor()
         invalidateCollectionLayout()
     }
     
@@ -126,6 +127,13 @@ final class RecentlyClosedTabsSectionViewController: UIViewController {
     
     private func configureAppearance() {
         view.backgroundColor = .clear
+        updateForegroundColor()
+    }
+    
+    private func updateForegroundColor() {
+        let foregroundColor = HomepageWallpaper.foregroundColor(for: contentMode)
+        titleLabel.textColor = foregroundColor
+        clearAllButton.tintColor = foregroundColor
     }
     
     private func configureHierarchy() {
@@ -204,9 +212,16 @@ final class RecentlyClosedTabsSectionViewController: UIViewController {
             return
         }
         
-        closedTabs.remove(at: index)
+        let previousCount = closedTabs.count
+        closedTabs = tabStore.recentlyClosedTabs(limit: Prefs.HomepageSettings.recentlyClosedTabLimit)
+        let insertedIndexPath = closedTabs.count == previousCount
+        ? IndexPath(item: closedTabs.count - 1, section: 0)
+        : nil
         collectionView.performBatchUpdates {
             collectionView.deleteItems(at: [IndexPath(item: index, section: 0)])
+            if let insertedIndexPath {
+                collectionView.insertItems(at: [insertedIndexPath])
+            }
             updateCollectionHeight()
             view.layoutIfNeeded()
         } completion: { [weak self] _ in

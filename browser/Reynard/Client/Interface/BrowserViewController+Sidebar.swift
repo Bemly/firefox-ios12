@@ -5,6 +5,7 @@
 //  Created by Minh Ton on 16/6/26.
 //
 
+import GeckoView
 import UIKit
 
 extension BrowserViewController: SidebarContentController, SidebarCoordinatorHost {
@@ -20,8 +21,19 @@ extension BrowserViewController: SidebarContentController, SidebarCoordinatorHos
         return browserLayout
     }
     
+    var sidebarContentIsPrivate: Bool {
+        return tabManager.selectedTabMode == .private
+    }
+    
     func openExternalURL(_ url: URL) {
         tabManager.openExternalURL(url)
+    }
+    
+    func sidebarDidEndEditing() {
+        guard tabManager.selectedTab?.session.engineView?.isFirstResponder != true else {
+            return
+        }
+        requestContentKeyboardFocus()
     }
     
     var sidebarHostViewController: UIViewController {
@@ -49,6 +61,7 @@ extension BrowserViewController: SidebarContentController, SidebarCoordinatorHos
     }
     
     func sidebarCoordinatorDidChangeVisibility(_ coordinator: SidebarCoordinator, animated: Bool) {
+        toolbarController.reset()
         updateBrowserLayout(animated: animated)
     }
 }

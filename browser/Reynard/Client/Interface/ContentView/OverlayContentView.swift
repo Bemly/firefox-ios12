@@ -34,7 +34,6 @@ final class OverlayContentView: UIView {
         super.init(frame: frame)
         configureAppearance()
         configureHierarchy()
-        configureConstraints()
         applyPresentation()
     }
     
@@ -56,15 +55,22 @@ final class OverlayContentView: UIView {
         }
     }
     
-    private func configureConstraints() {
+    func configureContentLayout(
+        topAnchor: NSLayoutYAxisAnchor,
+        bottomAnchor: NSLayoutYAxisAnchor
+    ) {
         [homepageView, searchSuggestionView].forEach { contentView in
             NSLayoutConstraint.activate([
-                contentView.topAnchor.constraint(equalTo: topAnchor),
                 contentView.leadingAnchor.constraint(equalTo: leadingAnchor),
                 contentView.trailingAnchor.constraint(equalTo: trailingAnchor),
-                contentView.bottomAnchor.constraint(equalTo: bottomAnchor),
             ])
         }
+        NSLayoutConstraint.activate([
+            homepageView.topAnchor.constraint(equalTo: self.topAnchor),
+            homepageView.bottomAnchor.constraint(equalTo: self.bottomAnchor),
+            searchSuggestionView.topAnchor.constraint(equalTo: topAnchor),
+            searchSuggestionView.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
     }
     
     // MARK: - State
@@ -229,5 +235,4 @@ final class OverlayContentView: UIView {
             return searchSuggestionView
         }
     }
-    
 }

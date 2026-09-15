@@ -71,7 +71,11 @@ extension FilePicker {
             return
         }
         
-        let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        let alert = PromptAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        alert.onDismissed = { [weak self] in
+            self?.presentedController = nil
+            self?.handleMenuDismissed()
+        }
         for action in availableActions {
             alert.addAction(UIAlertAction(title: title(for: action), style: .default) { [weak self] _ in
                 self?.launchFollowupPicker {
@@ -79,9 +83,7 @@ extension FilePicker {
                 }
             })
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
-            self?.finish(with: nil)
-        })
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
         
         if let popover = alert.popoverPresentationController {
             popover.sourceView = geckoView
@@ -130,11 +132,11 @@ extension FilePicker {
     private func title(for action: PickerAction) -> String {
         switch action {
         case .photoLibrary:
-            return "Photo Library"
+            return NSLocalizedString("Photo Library", comment: "")
         case .camera:
             return cameraActionTitle
         case .chooseFile:
-            return mode == .folder ? "Choose Folder" : "Choose File"
+            return mode == .folder ? NSLocalizedString("Choose Folder", comment: "") : NSLocalizedString("Choose File", comment: "")
         }
     }
     
@@ -156,13 +158,13 @@ extension FilePicker {
         
         switch (supportsImages, supportsVideos) {
         case (true, true):
-            return "Take Photo or Video"
+            return NSLocalizedString("Take Photo or Video", comment: "")
         case (true, false):
-            return "Take Photo"
+            return NSLocalizedString("Take Photo", comment: "")
         case (false, true):
-            return "Take Video"
+            return NSLocalizedString("Take Video", comment: "")
         case (false, false):
-            return "Take Photo"
+            return NSLocalizedString("Take Photo", comment: "")
         }
     }
     
@@ -174,9 +176,9 @@ extension FilePicker {
     func handleMenuDismissed() {
         anchorButton?.removeFromSuperview()
         anchorButton = nil
-        if launchedFollowupPicker {
-            return
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.launchedFollowupPicker else { return }
+            self.finish(with: nil)
         }
-        finish(with: nil)
     }
 }

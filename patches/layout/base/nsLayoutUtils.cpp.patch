@@ -1,0 +1,32 @@
+diff --git a/layout/base/nsLayoutUtils.cpp b/layout/base/nsLayoutUtils.cpp
+index 22f2b63b9dc1..b8026b4196bd 100644
+--- a/layout/base/nsLayoutUtils.cpp
++++ b/layout/base/nsLayoutUtils.cpp
+@@ -1351,6 +1351,11 @@ SideBits nsLayoutUtils::GetSideBitsForFixedPositionContent(
+     if (!position->GetAnchorResolvedInset(eSideTop, params)->IsAuto()) {
+       sides |= SideBits::eTop;
+     }
++    if (!(sides & (SideBits::eTop | SideBits::eBottom)) &&
++        aFixedPosFrame->StyleDisplay()->mPosition ==
++            StylePositionProperty::Fixed) {
++      sides |= SideBits::eTop;
++    }
+   }
+   return sides;
+ }
+@@ -8917,14 +8922,7 @@ ScrollMetadata nsLayoutUtils::ComputeScrollMetadata(
+             presContext, viewport.Size()));
+         metrics.SetLayoutViewport(viewport);
+ 
+-        // We need to set 'fixed margins' to adjust 'fixed margins' value on the
+-        // composiutor in the case where the dynamic toolbar is completely
+-        // hidden because the margin value on the compositor is offset from the
+-        // position where the dynamic toolbar is completely VISIBLE but now the
+-        // toolbar is completely HIDDEN we need to adjust the difference on the
+-        // compositor.
+-        if (presContext->GetDynamicToolbarState() ==
+-            DynamicToolbarState::Collapsed) {
++        if (presContext->IsKeyboardHiddenOrResizesContentMode()) {
+           metrics.SetFixedLayerMargins(ScreenMargin(
+               0, 0,
+               ScreenCoord(presContext->GetDynamicToolbarHeight() -

@@ -33,10 +33,9 @@ jobs:
         python .github/update_source.py
     
     - name: Update apps.json in Release 1.0
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         tag_name: "0.0.1-a1"
         files: |
           .github/source.json
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.UPDATE_SOURCE_TOKEN }}

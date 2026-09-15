@@ -44,7 +44,7 @@ final class MultiSelectViewController: UIViewController, UITableViewDataSource, 
     // MARK: - Setup
     
     private func configureNavigation() {
-        title = "Select Options"
+        title = NSLocalizedString("Select Options", comment: "")
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .done,
             target: self,
@@ -114,17 +114,15 @@ final class MultiSelectViewController: UIViewController, UITableViewDataSource, 
     
     @objc private func doneTapped() {
         let result = Array(selectedIds)
-        dismiss(animated: true) { [weak self] in
-            self?.onDone?(result)
-            self?.onDone = nil
-        }
+        dismiss(animated: true)
+        onDone?(result)
+        onDone = nil
     }
     
     @objc private func cancelTapped() {
-        dismiss(animated: true) { [weak self] in
-            self?.onDone?(nil)
-            self?.onDone = nil
-        }
+        dismiss(animated: true)
+        onDone?(nil)
+        onDone = nil
     }
     
     // MARK: - UITableViewDataSource

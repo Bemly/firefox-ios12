@@ -6,8 +6,9 @@
 //
 
 import UIKit
+import QuickLook
 
-final class DownloadsViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate, UIGestureRecognizerDelegate {
+final class DownloadsViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate, UIGestureRecognizerDelegate, QLPreviewControllerDataSource, QLPreviewControllerDelegate {
     private enum UX {
         static let estimatedRowHeight: CGFloat = 96
         static let sectionHeaderTopPadding: CGFloat = 0
@@ -20,7 +21,7 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
         searchBar.autocapitalizationType = .none
         searchBar.autocorrectionType = .no
         searchBar.searchBarStyle = .minimal
-        searchBar.placeholder = "Search Downloads"
+        searchBar.placeholder = NSLocalizedString("Search Downloads", comment: "")
         searchBar.delegate = self
         return searchBar
     }()
@@ -63,6 +64,9 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
         view.delegate = self
         view.rowHeight = UITableView.automaticDimension
         view.estimatedRowHeight = UX.estimatedRowHeight
+        if #available(iOS 14.0, *) {
+            view.selectionFollowsFocus = false
+        }
         if #available(iOS 15.0, *) {
             view.sectionHeaderTopPadding = UX.sectionHeaderTopPadding
         }
@@ -70,12 +74,13 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
         return view
     }()
     
-    private let emptyStateView = SidebarEmptyBackgroundView(message: "Files you download appear here")
+    private let emptyStateView = SidebarEmptyBackgroundView(message: NSLocalizedString("Files you download appear here", comment: ""))
     private var sections: [DownloadSection] = []
     private var storeObserver: NSObjectProtocol?
     private var appActiveObserver: NSObjectProtocol?
     private var isSwipeEditing = false
     private var query = ""
+    private var quickLookPreviewItem: NSURL?
     
     // MARK: - Lifecycle
     
@@ -106,6 +111,7 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        DownloadStore.shared.markCompletedAsViewed()
         installDownloadsNavigationMenuIfNeeded()
         reloadDownloads()
     }
@@ -262,10 +268,10 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
     @available(iOS 13.0, *)
     fileprivate func makeDownloadsMenu() -> UIMenu {
         UIMenu(title: "", children: [
-            UIAction(title: "Open Downloads Folder", image: UIImage(named: "reynard.folder")) { [weak self] _ in
+            UIAction(title: NSLocalizedString("Open in Files", comment: ""), image: UIImage(named: "reynard.folder")) { [weak self] _ in
                 self?.openDownloadsFolder()
             },
-            UIAction(title: "Clear Downloads History", image: UIImage(named: "reynard.arrow.down.circle.badge.xmark")) { [weak self] _ in
+            UIAction(title: NSLocalizedString("Clear Downloads", comment: ""), image: UIImage(named: "reynard.arrow.down.circle.badge.xmark")) { [weak self] _ in
                 self?.showClearDownloads()
             },
         ])
@@ -287,7 +293,7 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
     
     private func showClearDownloads() {
         let clearViewController = ClearDownloadsViewController { startDate in
-            DownloadStore.shared.clearCompletedDownloads(since: startDate)
+            DownloadStore.shared.clearCompletedDownloadFiles(since: startDate)
         }
         let navigationController = UINavigationController(rootViewController: clearViewController)
         navigationController.modalPresentationStyle = .pageSheet
@@ -345,7 +351,7 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
     // MARK: - Display State
     
     private func updateEmptyState() {
-        emptyStateView.message = query.isEmpty ? "Files you download appear here" : "No matching downloads"
+        emptyStateView.message = query.isEmpty ? NSLocalizedString("Files you download appear here", comment: "") : NSLocalizedString("No matching downloads", comment: "")
         tableView.backgroundView = sections.isEmpty ? emptyStateView : nil
         emptyStateView.updateContentInsets(from: tableView)
     }
@@ -398,6 +404,7 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
         lhs.fileName == rhs.fileName &&
         lhs.fileURL == rhs.fileURL &&
         lhs.state == rhs.state &&
+        lhs.canPause == rhs.canPause &&
         lhs.fileExists == rhs.fileExists &&
         lhs.totalBytes == rhs.totalBytes &&
         lhs.downloadedBytes == rhs.downloadedBytes &&
@@ -446,27 +453,45 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
         }
         
         switch item.state {
-        case .downloading:
-            let cancelAction = UIContextualAction(style: .destructive, title: "Cancel") { [weak self] _, _, completion in
+        case .downloading, .paused:
+            let cancelAction = UIContextualAction(style: .destructive, title: NSLocalizedString("Cancel", comment: "Download action")) { [weak self] _, _, completion in
                 self?.confirmCancelDownload(for: item, completion: completion)
             }
-            let configuration = UISwipeActionsConfiguration(actions: [cancelAction])
+            
+            var actions = [cancelAction]
+            if item.state == .paused {
+                let resumeAction = UIContextualAction(style: .normal, title: NSLocalizedString("Resume", comment: "Download action")) { _, _, completion in
+                    DownloadStore.shared.resume(id: item.id)
+                    completion(true)
+                }
+                resumeAction.backgroundColor = .systemBlue
+                actions.append(resumeAction)
+            } else if item.canPause {
+                let pauseAction = UIContextualAction(style: .normal, title: NSLocalizedString("Pause", comment: "Download action")) { _, _, completion in
+                    DownloadStore.shared.pause(id: item.id)
+                    completion(true)
+                }
+                pauseAction.backgroundColor = .systemOrange
+                actions.append(pauseAction)
+            }
+            
+            let configuration = UISwipeActionsConfiguration(actions: actions)
             configuration.performsFirstActionWithFullSwipe = false
             return configuration
             
-        case .completed:
-            let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { _, _, completion in
+        case .cancelled, .failed, .completed:
+            let deleteAction = UIContextualAction(style: .destructive, title: NSLocalizedString("Delete", comment: "")) { _, _, completion in
                 DownloadStore.shared.removeDownload(id: item.id)
                 completion(true)
             }
             
-            guard item.fileExists else {
+            guard item.state == .completed, item.fileExists else {
                 let configuration = UISwipeActionsConfiguration(actions: [deleteAction])
                 configuration.performsFirstActionWithFullSwipe = true
                 return configuration
             }
             
-            let shareAction = UIContextualAction(style: .normal, title: "Share") { [weak self] _, _, completion in
+            let shareAction = UIContextualAction(style: .normal, title: NSLocalizedString("Share", comment: "")) { [weak self] _, _, completion in
                 guard let self else {
                     completion(false)
                     return
@@ -477,7 +502,7 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
             }
             shareAction.backgroundColor = .systemGreen
             
-            let openAction = UIContextualAction(style: .normal, title: "Open in\nFiles") { [weak self] _, _, completion in
+            let openAction = UIContextualAction(style: .normal, title: NSLocalizedString("Open in\nFiles", comment: "Line break intentional")) { [weak self] _, _, completion in
                 guard let self else {
                     completion(false)
                     return
@@ -505,7 +530,7 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
             return
         }
         
-        self.shareDownload(item, from: indexPath)
+        openDownload(item, from: indexPath)
     }
     
     func tableView(_ tableView: UITableView, willBeginEditingRowAt indexPath: IndexPath) {
@@ -537,6 +562,61 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
         return LibrarySharedUtils.isTapOutsideSearchBar(touch, in: tableView, ignoring: searchBar)
     }
     
+    // MARK: - File Opening
+    
+    private func openDownload(_ item: DownloadItemSnapshot, from indexPath: IndexPath) {
+        if isHTMLDownload(item) {
+            guard let fileURL = item.fileURL else {
+                return
+            }
+            LibrarySharedUtils.openLinkInBrowser(fileURL.absoluteString, from: self)
+            return
+        }
+        
+        if let fileURL = item.fileURL,
+           QLPreviewController.canPreview(fileURL as NSURL) {
+            presentQuickLookPreview(for: fileURL)
+            return
+        }
+        
+        shareDownload(item, from: indexPath)
+    }
+    
+    private func isHTMLDownload(_ item: DownloadItemSnapshot) -> Bool {
+        let pathExtension = (item.fileURL?.pathExtension ?? URL(fileURLWithPath: item.fileName).pathExtension).lowercased()
+        if pathExtension == "html" || pathExtension == "htm" || pathExtension == "xhtml" {
+            return true
+        }
+        
+        guard let mimeType = item.mimeType?.lowercased() else {
+            return false
+        }
+        return mimeType.hasPrefix("text/html") || mimeType.hasPrefix("application/xhtml+xml")
+    }
+    
+    // MARK: - Quick Look
+    
+    func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
+        return quickLookPreviewItem == nil ? 0 : 1
+    }
+    
+    func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
+        return quickLookPreviewItem!
+    }
+    
+    func previewControllerDidDismiss(_ controller: QLPreviewController) {
+        quickLookPreviewItem = nil
+    }
+    
+    private func presentQuickLookPreview(for fileURL: URL) {
+        quickLookPreviewItem = fileURL as NSURL
+        
+        let previewController = QLPreviewController()
+        previewController.dataSource = self
+        previewController.delegate = self
+        present(previewController, animated: true)
+    }
+    
     // MARK: - Item Actions
     
     private func confirmCancelDownload(
@@ -544,13 +624,13 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
         completion: @escaping (Bool) -> Void
     ) {
         AlertPresenter.show(
-            title: "Cancel Download?",
-            message: "Do you want to stop downloading \(item.fileName)?",
+            title: NSLocalizedString("Cancel Download?", comment: ""),
+            message: String(format: NSLocalizedString("Do you want to stop downloading %@?", comment: "File name"), item.fileName),
             buttons: [
-                AlertPresenter.Button(title: "Keep Downloading", style: .cancel) {
+                AlertPresenter.Button(title: NSLocalizedString("Keep Downloading", comment: ""), style: .cancel) {
                     completion(false)
                 },
-                AlertPresenter.Button(title: "Cancel Download", style: .destructive) {
+                AlertPresenter.Button(title: NSLocalizedString("Cancel Download", comment: ""), style: .destructive) {
                     DownloadStore.shared.cancel(id: item.id)
                     completion(true)
                 },
@@ -576,7 +656,13 @@ final class DownloadsViewController: UIViewController, UITableViewDataSource, UI
             return
         }
         
-        let encodedPath = fileURL.path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ""
+        var filePath = fileURL.path
+        
+        if filePath.hasPrefix("/var/") {
+            filePath = "/private" + filePath
+        }
+        
+        let encodedPath = filePath.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ""
         guard let filesURL = URL(string: "shareddocuments://\(encodedPath)") else {
             return
         }

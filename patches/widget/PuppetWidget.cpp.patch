@@ -1,9 +1,9 @@
 diff --git a/widget/PuppetWidget.cpp b/widget/PuppetWidget.cpp
-index 86202aed4d95..6253dd4c5830 100644
+index d841ee778433..de63b032e80b 100644
 --- a/widget/PuppetWidget.cpp
 +++ b/widget/PuppetWidget.cpp
-@@ -11,6 +11,7 @@
- #include "mozilla/layers/WebRenderLayerManager.h"
+@@ -10,6 +10,7 @@
+ #include "mozilla/IMEStateManager.h"
  #include "mozilla/NativeKeyBindingsType.h"
  #include "mozilla/PresShell.h"
 +#include "mozilla/ScrollContainerFrame.h"
@@ -15,7 +15,7 @@ index 86202aed4d95..6253dd4c5830 100644
      return NS_ERROR_FAILURE;
    }
 +
-+  // REYNARD: Record the scroll offset at cache time so AdjustIMECacheForScroll
++  // Record the scroll offset at cache time so AdjustIMECacheForScroll
 +  // can compute the correct delta later.
 +  if (nsIWidgetListener* l = mWidgetListener) {
 +    if (PresShell* ps = l->GetPresShell()) {
@@ -47,7 +47,7 @@ index 86202aed4d95..6253dd4c5830 100644
 +                                -NSToIntRound(delta.y * scale));
 +  mContentCache.OffsetAllRectsBy(devDelta);
 +
-+  // REYNARD: Always send position change notification during scroll so the
++  // Always send position change notification during scroll so the
 +  // parent fires selectionGeometryChanged and UIKit updates caret/selection
 +  // display.
 +  widget::IMENotification notification(widget::NOTIFY_IME_OF_POSITION_CHANGE);

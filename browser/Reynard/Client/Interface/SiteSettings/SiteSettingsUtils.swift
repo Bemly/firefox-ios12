@@ -43,13 +43,13 @@ enum SiteSettingsUtils {
         var permissions: [String] = []
         
         if isCameraPermissionDisabled() {
-            permissions.append("Camera")
+            permissions.append(NSLocalizedString("Camera", comment: ""))
         }
         if isMicrophonePermissionDisabled() {
-            permissions.append("Microphone")
+            permissions.append(NSLocalizedString("Microphone", comment: ""))
         }
         if isLocationPermissionDisabled() {
-            permissions.append("Location")
+            permissions.append(NSLocalizedString("Location", comment: ""))
         }
         
         return permissions
@@ -60,10 +60,10 @@ enum SiteSettingsUtils {
         let permissionList = formattedPermissionList(names)
         
         if names.count == 1 {
-            return "\(permissionList) is currently disabled for Reynard. Open the Settings app to enable this permission."
+            return String(format: NSLocalizedString("%@ is disabled for Reynard. Open Settings to allow access.", comment: "Permission list placeholder"), permissionList)
         }
         
-        return "\(permissionList) are currently disabled for Reynard. Open the Settings app to enable these permissions."
+        return String(format: NSLocalizedString("%@ are disabled for Reynard. Open Settings to allow access.", comment: "Permission list placeholder"), permissionList)
     }
     
     // MARK: - Permission Actions
@@ -79,20 +79,20 @@ enum SiteSettingsUtils {
         case .autoplay:
             switch action {
             case .allowed:
-                return "Allow Audio and Video"
+                return NSLocalizedString("Allow Audio and Video", comment: "Autoplay option")
             case .askToAllow:
-                return "Block Audio only"
+                return NSLocalizedString("Block Audio Only", comment: "Autoplay option")
             case .blocked:
-                return "Block Audio and Video"
+                return NSLocalizedString("Block Audio and Video", comment: "Autoplay option")
             }
         default:
             switch action {
             case .allowed:
-                return "Allow"
+                return NSLocalizedString("Allow", comment: "Permission option")
             case .askToAllow:
-                return "Ask"
+                return NSLocalizedString("Ask", comment: "Permission option")
             case .blocked:
-                return "Deny"
+                return NSLocalizedString("Deny", comment: "Permission option")
             }
         }
     }
@@ -274,11 +274,11 @@ enum SiteSettingsUtils {
         }
         
         if names.count == 2 {
-            return "\(names[0]) and \(names[1])"
+            return String(format: NSLocalizedString("%@ and %@", comment: "Two-item list"), names[0], names[1])
         }
         
         let head = names.dropLast().joined(separator: ", ")
         let tail = names[names.count - 1]
-        return "\(head), and \(tail)"
+        return String(format: NSLocalizedString("%@, and %@", comment: "List final item"), head, tail)
     }
 }

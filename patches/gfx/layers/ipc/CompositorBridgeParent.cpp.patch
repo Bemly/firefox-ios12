@@ -1,8 +1,23 @@
 diff --git a/gfx/layers/ipc/CompositorBridgeParent.cpp b/gfx/layers/ipc/CompositorBridgeParent.cpp
-index 7a21b0db13ea..8617a591600c 100644
+index 89b0220589c8..f75da00b1345 100644
 --- a/gfx/layers/ipc/CompositorBridgeParent.cpp
 +++ b/gfx/layers/ipc/CompositorBridgeParent.cpp
-@@ -1510,7 +1510,7 @@ CompositorBridgeParent::AllocPCompositorWidgetParent(
+@@ -834,9 +834,12 @@ void CompositorBridgeParent::SetConfirmedTargetAPZC(
+ }
+ 
+ void CompositorBridgeParent::SetFixedLayerMargins(ScreenIntCoord aTop,
+-                                                  ScreenIntCoord aBottom) {
++                                                  ScreenIntCoord aBottom,
++                                                  ScreenIntCoord aTopInset,
++                                                  ScreenIntCoord aBottomInset) {
+   if (mApzcTreeManager) {
+-    mApzcTreeManager->SetFixedLayerMargins(aTop, aBottom);
++    mApzcTreeManager->SetFixedLayerMargins(aTop, aBottom, aTopInset,
++                                           aBottomInset);
+   }
+ 
+   ScheduleComposition(wr::RenderReasons::RESIZE);
+@@ -1530,7 +1533,7 @@ CompositorBridgeParent::AllocPCompositorWidgetParent(
  #endif
  }
  
@@ -11,12 +26,3 @@ index 7a21b0db13ea..8617a591600c 100644
  mozilla::ipc::IPCResult
  CompositorBridgeParent::RecvPCompositorWidgetConstructor(
      PCompositorWidgetParent* actor, CompositorWidgetInitData&& aInitData) {
-@@ -1519,6 +1519,8 @@ CompositorBridgeParent::RecvPCompositorWidgetConstructor(
-   // with move semantics, because IPDL can't generate move semantics
-   // in the constructor. The macOS-specific aInitData contains an
-   // Endpoint, so it *must* use move semantics.
-+
-+  // REYNARD: Let iOS use this compositor init data as well.
-   auto* widget = static_cast<widget::CompositorWidgetParent*>(actor);
-   widget->Init(std::move(aInitData));
-   return IPC_OK();

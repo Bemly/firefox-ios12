@@ -1,0 +1,92 @@
+diff --git a/dom/base/Navigator.cpp b/dom/base/Navigator.cpp
+index 818005d2cf11..7ae927837b2b 100644
+--- a/dom/base/Navigator.cpp
++++ b/dom/base/Navigator.cpp
+@@ -317,6 +317,19 @@ void Navigator::GetAppCodeName(nsAString& aAppCodeName, ErrorResult& aRv) {
+ 
+ void Navigator::GetAppVersion(nsAString& aAppVersion, CallerType aCallerType,
+                               ErrorResult& aRv) const {
++  if (mWindow) {
++    BrowsingContext* bc = mWindow->GetBrowsingContext();
++    nsString customAppVersion;
++    if (bc) {
++      bc->GetCustomAppVersion(customAppVersion);
++
++      if (!customAppVersion.IsEmpty()) {
++        aAppVersion = std::move(customAppVersion);
++        return;
++      }
++    }
++  }
++
+   nsCOMPtr<Document> doc = mWindow->GetExtantDoc();
+ 
+   nsresult rv = GetAppVersion(
+@@ -457,6 +470,19 @@ void Navigator::GetPlatform(nsAString& aPlatform, CallerType aCallerType,
+ 
+ void Navigator::GetOscpu(nsAString& aOSCPU, CallerType aCallerType,
+                          ErrorResult& aRv) const {
++  if (mWindow) {
++    BrowsingContext* bc = mWindow->GetBrowsingContext();
++    nsString customOscpu;
++    if (bc) {
++      bc->GetCustomOscpu(customOscpu);
++
++      if (!customOscpu.IsEmpty()) {
++        aOSCPU = std::move(customOscpu);
++        return;
++      }
++    }
++  }
++
+   if (aCallerType != CallerType::System) {
+     // If fingerprinting resistance is on, we will spoof this value. See
+     // nsRFPService.h for details about spoofed values.
+@@ -620,6 +646,19 @@ bool Navigator::OnLine() {
+ 
+ void Navigator::GetBuildID(nsAString& aBuildID, CallerType aCallerType,
+                            ErrorResult& aRv) const {
++  if (mWindow) {
++    BrowsingContext* bc = mWindow->GetBrowsingContext();
++    nsString customBuildID;
++    if (bc) {
++      bc->GetCustomBuildID(customBuildID);
++
++      if (!customBuildID.IsEmpty()) {
++        aBuildID = std::move(customBuildID);
++        return;
++      }
++    }
++  }
++
+   if (aCallerType != CallerType::System) {
+     // If fingerprinting resistance is on, we will spoof this value. See
+     // nsRFPService.h for details about spoofed values.
+@@ -2023,6 +2062,18 @@ void Navigator::ClearPlatformCache() {
+   Navigator_Binding::ClearCachedPlatformValue(this);
+ }
+ 
++void Navigator::ClearAppVersionCache() {
++  Navigator_Binding::ClearCachedAppVersionValue(this);
++}
++
++void Navigator::ClearOscpuCache() {
++  Navigator_Binding::ClearCachedOscpuValue(this);
++}
++
++void Navigator::ClearBuildIDCache() {
++  Navigator_Binding::ClearCachedBuildIDValue(this);
++}
++
+ void Navigator::ClearLanguageCache() {
+   Navigator_Binding::ClearCachedLanguageValue(this);
+   Navigator_Binding::ClearCachedLanguagesValue(this);
+@@ -2052,6 +2103,8 @@ nsresult Navigator::GetPlatform(nsAString& aPlatform, Document* aCallerDoc,
+ #elif defined(XP_MACOSX)
+   // Always return "MacIntel", even on ARM64 macOS like Safari does.
+   aPlatform.AssignLiteral("MacIntel");
++#elif defined(XP_IOS)
++  aPlatform.AssignLiteral("iPhone");
+ #elif defined(ANDROID)
+   aPlatform.AssignLiteral("Linux armv81");
+ #else

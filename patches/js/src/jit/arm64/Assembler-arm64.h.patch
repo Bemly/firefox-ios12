@@ -1,18 +1,16 @@
 diff --git a/js/src/jit/arm64/Assembler-arm64.h b/js/src/jit/arm64/Assembler-arm64.h
-index e8ef2354a79e..0a206cef0e77 100644
+index 02b5b872b1be..352d0f6089b0 100644
 --- a/js/src/jit/arm64/Assembler-arm64.h
 +++ b/js/src/jit/arm64/Assembler-arm64.h
-@@ -6,8 +6,8 @@
- #define A64_ASSEMBLER_A64_H_
+@@ -7,6 +7,7 @@
  
  #include "jit/arm64/vixl/Assembler-vixl.h"
--
  #include "jit/CompactBuffer.h"
 +#include "jit/ProcessExecutableMemory.h"
  #include "jit/shared/Disassembler-shared.h"
  #include "wasm/WasmTypeDecls.h"
  
-@@ -509,10 +509,14 @@ class Assembler : public vixl::Assembler {
+@@ -506,10 +507,14 @@ class Assembler : public vixl::Assembler {
      size_t targetOffset = label.target().offset();
  
      if (mode == CodeLabel::MoveImmediate) {
@@ -30,7 +28,7 @@ index e8ef2354a79e..0a206cef0e77 100644
            rawCode + targetOffset;
      }
    }
-@@ -574,7 +578,7 @@ class Assembler : public vixl::Assembler {
+@@ -571,7 +576,7 @@ class Assembler : public vixl::Assembler {
  
    static void PatchWrite_Imm32(CodeLocationLabel label, Imm32 imm) {
      // Raw is going to be the return address.

@@ -1,0 +1,61 @@
+diff --git a/gfx/layers/opengl/MacIOSurfaceTextureHostOGL.cpp b/gfx/layers/opengl/MacIOSurfaceTextureHostOGL.cpp
+index 84afa8b56871..18c5fb2e6005 100644
+--- a/gfx/layers/opengl/MacIOSurfaceTextureHostOGL.cpp
++++ b/gfx/layers/opengl/MacIOSurfaceTextureHostOGL.cpp
+@@ -7,6 +7,7 @@
+ #include "mozilla/gfx/MacIOSurface.h"
+ #include "mozilla/gfx/gfxVars.h"
+ #include "mozilla/layers/GpuFence.h"
++#include "mozilla/layers/IOSurfacePort.h"
+ #include "mozilla/webrender/RenderMacIOSurfaceTextureHost.h"
+ #include "mozilla/webrender/RenderThread.h"
+ #include "mozilla/webrender/WebRenderAPI.h"
+@@ -14,14 +15,29 @@
+ namespace mozilla {
+ namespace layers {
+ 
++static already_AddRefed<MacIOSurface> LookupSurface(
++    const SurfaceDescriptorMacIOSurface& aDescriptor) {
++  MacIOSurface::AllowAlpha allowAlpha = aDescriptor.isOpaque()
++                                            ? MacIOSurface::AllowAlpha::No
++                                            : MacIOSurface::AllowAlpha::Yes;
++  CFTypeRefPtr<IOSurfaceRef> surfaceRef =
++      aDescriptor.surfacePort().GetSurface();
++  if (surfaceRef) {
++    RefPtr<MacIOSurface> surface =
++        new MacIOSurface(std::move(surfaceRef), aDescriptor.yUVColorSpace(),
++                         aDescriptor.transferFunction(), allowAlpha);
++    return surface.forget();
++  }
++
++  return MacIOSurface::LookupSurface(
++      aDescriptor.surfaceId(), aDescriptor.yUVColorSpace(),
++      aDescriptor.transferFunction(), allowAlpha);
++}
++
+ MacIOSurfaceTextureHostOGL::MacIOSurfaceTextureHostOGL(
+     TextureFlags aFlags, const SurfaceDescriptorMacIOSurface& aDescriptor)
+     : TextureHost(TextureHostType::MacIOSurface, aFlags),
+-      mSurface(MacIOSurface::LookupSurface(
+-          aDescriptor.surfaceId(), aDescriptor.yUVColorSpace(),
+-          aDescriptor.transferFunction(),
+-          aDescriptor.isOpaque() ? MacIOSurface::AllowAlpha::No
+-                                 : MacIOSurface::AllowAlpha::Yes)),
++      mSurface(LookupSurface(aDescriptor)),
+       mGpuFence(aDescriptor.gpuFence()) {
+   MOZ_COUNT_CTOR(MacIOSurfaceTextureHostOGL);
+   if (!mSurface) {
+@@ -128,7 +144,12 @@ void MacIOSurfaceTextureHostOGL::PushResourceUpdates(
+                     ? &wr::TransactionBuilder::AddExternalImage
+                     : &wr::TransactionBuilder::UpdateExternalImage;
+   auto imageType = wr::ExternalImageType::TextureHandle(
+-      aResources.GetCapabilities().mIOSurfaceImageKind);
++#ifdef XP_MACOSX
++      wr::ImageBufferKind::TextureRect
++#else
++      wr::ImageBufferKind::Texture2D
++#endif
++  );
+ 
+   switch (GetFormat()) {
+     case gfx::SurfaceFormat::B8G8R8A8:

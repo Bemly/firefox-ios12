@@ -1,8 +1,39 @@
 diff --git a/gfx/thebes/gfxPlatform.cpp b/gfx/thebes/gfxPlatform.cpp
-index 61bc156c1064..74a92a2f73f1 100644
+index f45971a4ec0f..4c9eca31645d 100644
 --- a/gfx/thebes/gfxPlatform.cpp
 +++ b/gfx/thebes/gfxPlatform.cpp
-@@ -3377,7 +3377,7 @@ void gfxPlatform::InitWebGPUConfig() {
+@@ -45,6 +45,7 @@
+ #include "mozilla/image/ImageMemoryReporter.h"
+ #include "mozilla/layers/CompositorBridgeChild.h"
+ #include "mozilla/layers/CompositorManagerChild.h"
++#include "mozilla/layers/CompositorManagerParent.h"
+ #include "mozilla/layers/CompositorThread.h"
+ #include "mozilla/layers/ISurfaceAllocator.h"  // for GfxMemoryImageReporter
+ #include "mozilla/layers/ImageBridgeChild.h"
+@@ -416,7 +417,22 @@ void gfxPlatform::OnMemoryPressure(layers::MemoryPressureReason aWhy) {
+   gfxGradientCache::PurgeAllCaches();
+   gfxFontMissingGlyphs::Purge();
+   PurgeSkiaFontCache();
++
++  // The GPU process dispatches memory pressure directly to its compositor.
++  if (XRE_IsGPUProcess()) {
++    layers::CompositorManagerParent::NotifyMemoryPressure();
++    return;
++  }
++
+   if (XRE_IsParentProcess()) {
++    gfx::GPUProcessManager* gpuProcessManager = gfx::GPUProcessManager::Get();
++    // The GPU process handles native memory pressure independently.
++    // The parent forwards only explicit heap-minimize requests.
++    if (gpuProcessManager && gpuProcessManager->GetGPUChild() &&
++        aWhy != layers::MemoryPressureReason::HEAP_MINIMIZE) {
++      return;
++    }
++
+     layers::CompositorManagerChild* manager =
+         CompositorManagerChild::GetInstance();
+     if (manager) {
+@@ -3385,7 +3401,7 @@ void gfxPlatform::InitWebGPUConfig() {
      featureExternalTexture.Disable(FeatureStatus::Blocklisted, message.get(),
                                     failureId);
    }

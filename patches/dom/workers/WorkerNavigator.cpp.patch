@@ -1,0 +1,68 @@
+diff --git a/dom/workers/WorkerNavigator.cpp b/dom/workers/WorkerNavigator.cpp
+index 519668019e45..9fe12a173c3f 100644
+--- a/dom/workers/WorkerNavigator.cpp
++++ b/dom/workers/WorkerNavigator.cpp
+@@ -9,6 +9,7 @@
+ #include "RuntimeService.h"
+ #include "WorkerRunnable.h"
+ #include "WorkerScope.h"
++#include "mozilla/dom/BrowsingContext.h"
+ #include "mozilla/dom/LockManager.h"
+ #include "mozilla/dom/MediaCapabilities.h"
+ #include "mozilla/dom/Navigator.h"
+@@ -154,11 +155,55 @@ void WorkerNavigator::GetAppVersion(nsString& aAppVersion,
+   aAppVersion = mProperties.mAppVersion;
+ }
+ 
++namespace {
++
++class GetPlatformOverrideRunnable final : public WorkerMainThreadRunnable {
++  nsString& mPlatform;
++
++ public:
++  GetPlatformOverrideRunnable(WorkerPrivate* aWorkerPrivate,
++                              nsString& aPlatform)
++      : WorkerMainThreadRunnable(aWorkerPrivate, "Platform getter"_ns),
++        mPlatform(aPlatform) {
++    MOZ_ASSERT(aWorkerPrivate);
++    aWorkerPrivate->AssertIsOnWorkerThread();
++  }
++
++  bool MainThreadRun() override {
++    AssertIsOnMainThread();
++    MOZ_ASSERT(mWorkerRef);
++
++    nsCOMPtr<nsPIDOMWindowInner> window = mWorkerRef->Private()->GetWindow();
++    if (window) {
++      if (BrowsingContext* browsingContext = window->GetBrowsingContext()) {
++        browsingContext->GetCustomPlatform(mPlatform);
++      }
++    }
++
++    return true;
++  }
++};
++
++}  // namespace
++
+ void WorkerNavigator::GetPlatform(nsString& aPlatform, CallerType aCallerType,
+                                   ErrorResult& aRv) const {
+   WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
+   MOZ_ASSERT(workerPrivate);
+ 
++  nsString platformOverride;
++  RefPtr<GetPlatformOverrideRunnable> runnable =
++      new GetPlatformOverrideRunnable(workerPrivate, platformOverride);
++  runnable->Dispatch(workerPrivate, Canceling, aRv);
++  if (aRv.Failed()) {
++    return;
++  }
++
++  if (!platformOverride.IsEmpty()) {
++    aPlatform = std::move(platformOverride);
++    return;
++  }
++
+   // navigator.platform is the same for default and spoofed values. The
+   // "general.platform.override" pref should override the default platform,
+   // but the spoofed platform should override the pref.

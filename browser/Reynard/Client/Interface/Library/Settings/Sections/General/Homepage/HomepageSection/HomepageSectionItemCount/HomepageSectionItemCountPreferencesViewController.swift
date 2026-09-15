@@ -52,7 +52,7 @@ final class HomepageSectionItemCountPreferencesViewController: SettingsTableView
         }
         
         let value = values[indexPath.row]
-        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
         cell.textLabel?.text = "\(value)"
         cell.accessoryType = value == selectedValue ? .checkmark : .none
         return cell

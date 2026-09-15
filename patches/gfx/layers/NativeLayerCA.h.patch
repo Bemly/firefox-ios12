@@ -1,0 +1,107 @@
+diff --git a/gfx/layers/NativeLayerCA.h b/gfx/layers/NativeLayerCA.h
+index 1456d03f8962..e49071195b87 100644
+--- a/gfx/layers/NativeLayerCA.h
++++ b/gfx/layers/NativeLayerCA.h
+@@ -8,6 +8,7 @@
+ #include <CoreMedia/CoreMedia.h>
+ #include <IOSurface/IOSurfaceRef.h>
+ 
++#include <functional>
+ #include <ostream>
+ 
+ #include "mozilla/Mutex.h"
+@@ -157,6 +158,12 @@ class NativeLayerRootCA final : public NativeLayerRoot {
+   void SetLayers(const nsTArray<RefPtr<NativeLayer>>& aLayers) override;
+   UniquePtr<NativeLayerRootSnapshotter> CreateSnapshotter() override;
+ 
++#ifdef XP_IOS
++  // Retain aLayer so the next CommitToScreen() can clear its onscreen contents.
++  // aLayer must be a NativeLayerCA absent from that commit's layer list.
++  void RetainLayerUntilNextScreenCommit(NativeLayer* aLayer);
++#endif
++
+   void SetBackingScale(float aBackingScale);
+   float BackingScale();
+ 
+@@ -172,6 +179,10 @@ class NativeLayerRootCA final : public NativeLayerRoot {
+ 
+   void SetWindowIsFullscreen(bool aFullscreen);
+ 
++  CALayer* CopyPictureInPictureSource();
++  void SetPictureInPictureSourceChangedCallback(
++      std::function<void()>&& aCallback);
++
+   VideoLowPowerType CheckVideoLowPower(const MutexAutoLock& aProofOfLock);
+ 
+  protected:
+@@ -189,6 +200,10 @@ class NativeLayerRootCA final : public NativeLayerRoot {
+                             bool aMutatedLayerStructure,
+                             bool aWindowIsFullscreen);
+ 
++  CALayer* FindPictureInPictureSource(const MutexAutoLock& aProofOfLock);
++  bool UpdatePictureInPictureSource(const MutexAutoLock& aProofOfLock);
++  void DispatchPictureInPictureSourceChanged();
++
+   void SetMutatedLayerStructure();
+ 
+   using UpdateType = NativeLayerCAUpdateType;
+@@ -218,7 +233,10 @@ class NativeLayerRootCA final : public NativeLayerRoot {
+   CALayer* mOnscreenRootCALayer = nullptr;   // strong
+   CALayer* mOffscreenRootCALayer = nullptr;  // strong
+   NativeLayerRootSnapshotterCA* mWeakSnapshotter = nullptr;
+-  nsTArray<RefPtr<NativeLayerCA>> mSublayers;  // in z-order
++  nsTArray<RefPtr<NativeLayerCA>> mSublayers;       // in z-order
++  CALayer* mPictureInPictureSourceLayer = nullptr;  // strong
++  std::function<void()> mPictureInPictureSourceChangedCallback;
++  bool mPictureInPictureNotificationPending = false;
+   float mBackingScale = 1.0f;
+   bool mMutated = false;
+ 
+@@ -242,6 +260,10 @@ class NativeLayerRootCA final : public NativeLayerRoot {
+   bool mMutatedOnscreenLayerStructure = false;
+   bool mMutatedOffscreenLayerStructure = false;
+ 
++#ifdef XP_IOS
++  nsTArray<RefPtr<NativeLayerCA>> mLayersRetainedUntilNextScreenCommit;
++#endif
++
+   // How many times have we committed since the last time we emitted
+   // telemetry?
+   unsigned int mTelemetryCommitCount = 0;
+@@ -292,6 +314,8 @@ struct NativeLayerCARepresentation {
+     return mWrappingCALayerHasExtent ? mWrappingCALayer : nullptr;
+   }
+ 
++  CALayer* PictureInPictureSourceLayer();
++
+   bool EnqueueSurface(IOSurfaceRef aSurfaceRef, bool aIsHDR);
+ 
+   // Applies buffered changes to the native CALayers. The contract with the
+@@ -331,6 +355,7 @@ struct NativeLayerCARepresentation {
+   CALayer* mRoundedClipCALayer = nullptr;   // strong
+   CALayer* mContentCALayer = nullptr;       // strong
+   CALayer* mOpaquenessTintLayer = nullptr;  // strong
++  bool mPictureInPictureFailureLatched = false;
+ 
+ #ifdef NIGHTLY_BUILD
+   bool mLogNextVideoSurface = false;
+@@ -438,6 +463,10 @@ class NativeLayerCA : public NativeLayer {
+   bool ApplyChanges(WhichRepresentation aRepresentation, UpdateType aUpdate,
+                     bool* aMustRebuild);
+ 
++#ifdef XP_IOS
++  void ClearOnscreenSurfaceContents();
++#endif
++
+   void SetBackingScale(float aBackingScale);
+ 
+   // Invalidate aUpdateRegion and make sure that mInProgressSurface retains any
+@@ -452,6 +481,8 @@ class NativeLayerCA : public NativeLayer {
+                            const gfx::IntRegion& aUpdateRegion, F&& aCopyFn);
+ 
+   bool IsVideo(const MutexAutoLock& aProofOfLock);
++  bool IsPictureInPictureEligibleSurface(const MutexAutoLock& aProofOfLock);
++  CALayer* PictureInPictureSourceLayer();
+   bool ShouldSpecializeVideo(const MutexAutoLock& aProofOfLock);
+ 
+   // This function returns a CGRect if a clip should be applied to the layer.

@@ -1,104 +1,47 @@
 diff --git a/gfx/thebes/SharedFontList.cpp b/gfx/thebes/SharedFontList.cpp
-index 1770cd8315d7..671aaa0f635a 100644
+index 1f3bd63aa5fc..b87531792bd4 100644
 --- a/gfx/thebes/SharedFontList.cpp
 +++ b/gfx/thebes/SharedFontList.cpp
-@@ -6,6 +6,7 @@
- #include "gfxPlatformFontList.h"
- #include "gfxFontUtils.h"
- #include "gfxFont.h"
-+#include "nsUnicodeProperties.h"
- #include "nsReadableUtils.h"
- #include "prerror.h"
- #include "mozilla/dom/ContentChild.h"
-@@ -501,6 +502,22 @@ Face* Family::FindFaceForStyle(FontList* aList, const gfxFontStyle& aStyle,
+@@ -501,6 +501,8 @@ Face* Family::FindFaceForStyle(FontList* aList, const gfxFontStyle& aStyle,
  
  void Family::SearchAllFontsForChar(FontList* aList,
                                     GlobalFontMatch* aMatchData) {
-+
-+  const bool hasPresentationRequest =
-+      aMatchData->mPresentation != FontPresentation::Any;
 +  const bool prefersColor = PrefersColor(aMatchData->mPresentation);
-+  const bool nextIsVarSelector =
-+      gfxFontUtils::IsVarSelector(aMatchData->mNextCh);
-+  auto hasColorGlyphForMatch = [&](gfxFont* aFont) {
-+    if (!aFont) {
-+      return false;
-+    }
-+    return aFont->HasColorGlyphFor(aMatchData->mCh, aMatchData->mNextCh) ||
-+           (!nextIsVarSelector &&
-+            aFont->HasColorGlyphFor(aMatchData->mCh,
-+                                    unicode::kVariationSelector16));
-+  };
 +
    auto* charmap = mCharacterMap.ToPtr<const SharedBitSet>(aList);
    if (!charmap) {
      // If the face list is not yet initialized, or if character maps have
-@@ -515,7 +532,7 @@ void Family::SearchAllFontsForChar(FontList* aList,
+@@ -515,7 +517,7 @@ void Family::SearchAllFontsForChar(FontList* aList,
      }
      charmap = mCharacterMap.ToPtr<const SharedBitSet>(aList);
    }
 -  if (charmap && !charmap->test(aMatchData->mCh)) {
-+  if (charmap && !charmap->test(aMatchData->mCh) && !hasPresentationRequest) {
++  if (charmap && !charmap->test(aMatchData->mCh) && !prefersColor) {
      return;
    }
  
-@@ -536,33 +553,42 @@ void Family::SearchAllFontsForChar(FontList* aList,
-     if (charmap) {
-       ++charMapsLoaded;
-     }
--    // Check style distance if the char is supported, or if charmap not known
--    // (so that we don't trigger cmap-loading for faces that would be a worse
--    // match than what we've already found).
+@@ -539,7 +541,7 @@ void Family::SearchAllFontsForChar(FontList* aList,
+     // Check style distance if the char is supported, or if charmap not known
+     // (so that we don't trigger cmap-loading for faces that would be a worse
+     // match than what we've already found).
 -    if (!charmap || charmap->test(aMatchData->mCh)) {
-+
-+    bool supportsChar = !charmap || charmap->test(aMatchData->mCh);
-+    RefPtr<gfxFontEntry> fe;
-+    RefPtr<gfxFont> font;
-+    if (!supportsChar && hasPresentationRequest) {
-+      fe = gfxPlatformFontList::PlatformFontList()->GetOrCreateFontEntry(face,
-+                                                                         this);
-+      if (!fe) {
-+        continue;
-+      }
-+      font = fe->FindOrMakeFont(&aMatchData->mStyle);
-+      supportsChar = hasColorGlyphForMatch(font);
-+    }
-+    if (supportsChar) {
++    if (!charmap || charmap->test(aMatchData->mCh) || prefersColor) {
        double distance = WSSDistance(face, aMatchData->mStyle);
        if (distance < aMatchData->mMatchDistance) {
--        // It's a better style match: get a fontEntry, and if we haven't
--        // already checked character coverage, do it now (note that
--        // HasCharacter() will trigger loading the fontEntry's cmap, if
--        // needed).
--        RefPtr<gfxFontEntry> fe =
--            gfxPlatformFontList::PlatformFontList()->GetOrCreateFontEntry(face,
--                                                                          this);
+         // It's a better style match: get a fontEntry, and if we haven't
+@@ -552,8 +554,13 @@ void Family::SearchAllFontsForChar(FontList* aList,
          if (!fe) {
+           continue;
+         }
+-        if (!charmap && !fe->HasCharacter(aMatchData->mCh)) {
 -          continue;
-+          fe = gfxPlatformFontList::PlatformFontList()->GetOrCreateFontEntry(
-+              face, this);
-+          if (!fe) {
++        if ((!charmap || !charmap->test(aMatchData->mCh)) &&
++            !fe->HasCharacter(aMatchData->mCh)) {
++          RefPtr<gfxFont> font = fe->FindOrMakeFont(&aMatchData->mStyle);
++          if (!font ||
++              !font->HasColorGlyphFor(aMatchData->mCh, aMatchData->mNextCh)) {
 +            continue;
 +          }
          }
--        if (!charmap && !fe->HasCharacter(aMatchData->mCh)) {
-+        if (!charmap && !fe->HasCharacter(aMatchData->mCh) &&
-+            !hasPresentationRequest) {
-           continue;
-         }
          if (aMatchData->mPresentation != FontPresentation::Any) {
--          RefPtr<gfxFont> font = fe->FindOrMakeFont(&aMatchData->mStyle);
-+          if (!font) {
-+            font = fe->FindOrMakeFont(&aMatchData->mStyle);
-+          }
-           if (!font) {
-             continue;
-           }
--          bool hasColorGlyph =
--              font->HasColorGlyphFor(aMatchData->mCh, aMatchData->mNextCh);
--          if (hasColorGlyph != PrefersColor(aMatchData->mPresentation)) {
-+          bool hasColorGlyph = hasColorGlyphForMatch(font);
-+          if (hasColorGlyph != prefersColor) {
-             distance += kPresentationMismatch;
-             if (distance >= aMatchData->mMatchDistance) {
-               continue;
+           RefPtr<gfxFont> font = fe->FindOrMakeFont(&aMatchData->mStyle);

@@ -1,24 +1,191 @@
 diff --git a/docshell/base/nsDocShell.cpp b/docshell/base/nsDocShell.cpp
-index 69d45a59b433..30330b947108 100644
+index 5a6d13023782..e8b479ead4eb 100644
 --- a/docshell/base/nsDocShell.cpp
 +++ b/docshell/base/nsDocShell.cpp
-@@ -8893,6 +8893,11 @@ nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
+@@ -2336,6 +2336,48 @@  nsDocShell::ClearCachedUserAgent() {
+   return NS_OK;
+ }
+ 
++NS_IMETHODIMP
++nsDocShell::ClearCachedAppVersion() {
++  nsCOMPtr<nsPIDOMWindowInner> win =
++      mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindow() : nullptr;
++  if (win) {
++    Navigator* navigator = win->Navigator();
++    if (navigator) {
++      navigator->ClearAppVersionCache();
++    }
++  }
++
++  return NS_OK;
++}
++
++NS_IMETHODIMP
++nsDocShell::ClearCachedOscpu() {
++  nsCOMPtr<nsPIDOMWindowInner> win =
++      mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindow() : nullptr;
++  if (win) {
++    Navigator* navigator = win->Navigator();
++    if (navigator) {
++      navigator->ClearOscpuCache();
++    }
++  }
++
++  return NS_OK;
++}
++
++NS_IMETHODIMP
++nsDocShell::ClearCachedBuildID() {
++  nsCOMPtr<nsPIDOMWindowInner> win =
++      mScriptGlobal ? mScriptGlobal->GetCurrentInnerWindow() : nullptr;
++  if (win) {
++    Navigator* navigator = win->Navigator();
++    if (navigator) {
++      navigator->ClearBuildIDCache();
++    }
++  }
++
++  return NS_OK;
++}
++
+ /* virtual */
+ int32_t nsDocShell::ItemType() { return mItemType; }
+ 
+@@ -5639,24 +5681,36 @@  nsDocShell::OnLocationChange(nsIWebProgress* aProgress, nsIRequest* aRequest,
+   return NS_OK;
+ }
+ 
+-void nsDocShell::OnRedirectStateChange(nsIChannel* aOldChannel,
+-                                       nsIChannel* aNewChannel,
+-                                       uint32_t aRedirectFlags,
+-                                       uint32_t aStateFlags) {
++MOZ_CAN_RUN_SCRIPT_BOUNDARY nsresult nsDocShell::OnRedirectStateChange(
++    nsIChannel* aOldChannel, nsIChannel* aNewChannel, uint32_t aRedirectFlags,
++    uint32_t aStateFlags) {
+   NS_ASSERTION(aStateFlags & STATE_REDIRECTING,
+                "Calling OnRedirectStateChange when there is no redirect");
+ 
+   if (!(aStateFlags & STATE_IS_DOCUMENT)) {
+-    return;  // not a toplevel document
++    return NS_OK;  // not a document load
+   }
+ 
+   nsCOMPtr<nsIURI> oldURI, newURI;
+   aOldChannel->GetURI(getter_AddRefs(oldURI));
+   aNewChannel->GetURI(getter_AddRefs(newURI));
+   if (!oldURI || !newURI) {
+-    return;
++    return NS_OK;
+   }
+ 
++  nsCOMPtr<nsILoadInfo> loadInfo = aNewChannel->LoadInfo();
++  nsCOMPtr<nsIPrincipal> triggeringPrincipal;
++  bool loadTriggeredFromExternal = false;
++  if (loadInfo) {
++    loadInfo->GetTriggeringPrincipal(getter_AddRefs(triggeringPrincipal));
++    loadInfo->GetLoadTriggeredFromExternal(&loadTriggeredFromExternal);
++  }
++  MOZ_TRY(MaybeHandlePreNavigation(
++      newURI, nsIWebNavigation::LOAD_FLAGS_IS_REDIRECT, mLoadType,
++      triggeringPrincipal,
++      loadInfo && loadInfo->GetHasValidUserGestureActivation(),
++      loadTriggeredFromExternal));
++
+   // DocumentChannel adds redirect chain to global history in the parent
+   // process. The redirect chain can't be queried from the content process, so
+   // there's no need to update global history here.
+@@ -5704,6 +5758,8 @@  void nsDocShell::OnRedirectStateChange(nsIChannel* aOldChannel,
+       mLoadType & (LOAD_CMD_RELOAD | LOAD_CMD_HISTORY)) {
+     mLoadType = LOAD_NORMAL_REPLACE;
+   }
++
++  return NS_OK;
+ }
+ 
+ NS_IMETHODIMP
+@@ -8489,6 +8545,41 @@  static void MaybeConvertToReplaceLoad(nsDocShellLoadState* aLoadState,
+   }
+ }
+ 
++MOZ_CAN_RUN_SCRIPT_BOUNDARY nsresult nsDocShell::MaybeHandlePreNavigation(
++    nsIURI* aURI, uint32_t aLoadFlags, uint32_t aLoadType,
++    nsIPrincipal* aTriggeringPrincipal, bool aHasValidUserGestureActivation,
++    bool aBrowserUIActivation) {
++  if (!mBrowsingContext->IsTopContent() || !aURI ||
++      !(aURI->SchemeIs("http") || aURI->SchemeIs("https"))) {
++    return NS_OK;
++  }
++
++  const bool isLinkNavigation =
++      LOAD_TYPE_HAS_FLAGS(aLoadType, nsIWebNavigation::LOAD_FLAGS_IS_LINK);
++  const bool isHistoryOrReload =
++      (aLoadType &
++       (nsIDocShell::LOAD_CMD_RELOAD | nsIDocShell::LOAD_CMD_HISTORY |
++        nsIDocShell::LOAD_CMD_PUSHSTATE)) != 0;
++  const bool isBrowserUI =
++      aBrowserUIActivation ||
++      (aLoadFlags & nsIWebNavigation::LOAD_FLAGS_FROM_EXTERNAL);
++  const bool isUserInitiatedNavigation =
++      isLinkNavigation && !isHistoryOrReload && !isBrowserUI &&
++      aTriggeringPrincipal && !aTriggeringPrincipal->IsSystemPrincipal() &&
++      aHasValidUserGestureActivation;
++
++  nsCOMPtr<nsILoadURIDelegate> loadURIDelegate = GetLoadURIDelegate();
++  if (!loadURIDelegate) {
++    return NS_OK;
++  }
++
++  bool handled = false;
++  MOZ_TRY(loadURIDelegate->PreNavigation(aURI, aLoadFlags, aTriggeringPrincipal,
++                                         aHasValidUserGestureActivation,
++                                         isUserInitiatedNavigation, &handled));
++  return handled ? NS_ERROR_ABORT : NS_OK;
++}
++
+ // InternalLoad performs several of the steps from
+ // https://html.spec.whatwg.org/#navigate.
+ nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
+@@ -8542,6 +8633,15 @@  nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
+ 
+   MOZ_TRY(CheckDisallowedJavascriptLoad(aLoadState));
+ 
++  if (!aLoadState->GetPendingRedirectedChannel()) {
++    MOZ_TRY(MaybeHandlePreNavigation(
++        aLoadState->URI(), aLoadState->LoadFlags(), aLoadState->LoadType(),
++        aLoadState->TriggeringPrincipal(),
++        aLoadState->HasValidUserGestureActivation(),
++        aLoadState->UserNavigationInvolvement() ==
++            mozilla::dom::UserNavigationInvolvement::BrowserUI));
++  }
++
+   // If we don't have a target, we're loading into ourselves, and our load
+   // delegate may want to intercept that load.
+   SameDocumentNavigationState sameDocumentNavigationState;
+@@ -12175,6 +12275,15 @@  nsresult nsDocShell::OnLinkClick(
+ 
+   bool noOpenerImplied = false;
+   nsAutoString target(aTargetSpec);
++#if defined(XP_IOS)
++  if (aFileName.IsVoid() && aIsUserTriggered && target.IsEmpty()) {
++    UserActivation::Modifiers modifiers;
++    mBrowsingContext->GetUserActivationModifiersForPopup(&modifiers);
++    if (modifiers.IsMeta()) {
++      target = u"_blank";
++    }
++  }
++#endif
+   if (aFileName.IsVoid() &&
+       ShouldOpenInBlankTarget(aTargetSpec, aURI, aContent, aIsUserTriggered)) {
+     target = u"_blank";
+@@ -8965,6 +9074,11 @@  nsresult nsDocShell::OnLinkClick(
  
  /* static */
  bool nsDocShell::CanLoadInParentProcess(nsIURI* aURI) {
 +#ifdef XP_IOS
-+  // iOS runs single-process (no content process), so all loads must be
-+  // allowed in the parent process.
++  // REYNARD (iOS 12): this port runs single-process (no content process), so
++  // all loads must be allowed to proceed in the parent process.
 +  return true;
-+#else
++#endif
    nsCOMPtr<nsIURI> uri = aURI;
    // In e10s, in the parent process, we refuse to load anything other than
    // "safe" resources that we ship or trust enough to give "special" URLs.
-@@ -8942,6 +8947,7 @@ bool nsDocShell::CanLoadInParentProcess(nsIURI* aURI) {
-     return true;
-   }
-   return false;
-+#endif
- }
- 
- nsIPrincipal* nsDocShell::GetInheritedPrincipal(

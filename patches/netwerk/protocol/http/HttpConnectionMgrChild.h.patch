@@ -1,5 +1,5 @@
 diff --git a/netwerk/protocol/http/HttpConnectionMgrChild.h b/netwerk/protocol/http/HttpConnectionMgrChild.h
-index 8a4060b17f9e..3c6ae4eda51c 100644
+index f61675ec13b5..dd8053965cc6 100644
 --- a/netwerk/protocol/http/HttpConnectionMgrChild.h
 +++ b/netwerk/protocol/http/HttpConnectionMgrChild.h
 @@ -33,6 +33,10 @@ class HttpConnectionMgrChild final : public PHttpConnectionMgrChild {

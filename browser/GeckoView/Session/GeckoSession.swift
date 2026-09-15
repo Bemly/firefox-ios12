@@ -8,31 +8,57 @@
 import UIKit
 
 protocol GeckoSessionHandlerCommon: GeckoEventListenerInternal {
-    var moduleName: String { get }
+    var moduleName: String? { get }
     var events: [String] { get }
     var enabled: Bool { get }
 }
 
 public enum GeckoSessionLoadFlags {
     public static let none = 0
+    public static let bypassCache = 1 << 0
     public static let replaceHistory = 1 << 6
+}
+
+public struct GeckoFindInPageResult {
+    public let found: Bool
+    public let current: Int
+    public let total: Int
+    
+    public init(found: Bool, current: Int, total: Int) {
+        self.found = found
+        self.current = current
+        self.total = total
+    }
 }
 
 public class GeckoSession {
     // MARK: - State
     
-    let dispatcher: GeckoEventDispatcherWrapper = GeckoEventDispatcherWrapper()
-    var window: GeckoViewWindow?
     var id: String?
+    var window: GeckoViewWindow?
+    private let stateCache = GeckoSessionState()
+    private var awaitsPurgedHistoryState = false
+    
     public let isAddonPopup: Bool
     public let isPrivateMode: Bool
-    lazy var addonSessionListener = AddonSessionListener(session: self)
     public private(set) var settings: GeckoSessionSettings
+    
+    let dispatcher: GeckoEventDispatcherWrapper = GeckoEventDispatcherWrapper()
+    lazy var addonSessionListener = AddonSessionListener(session: self)
+    
+    public var currentSessionState: GeckoSessionState? {
+        guard !awaitsPurgedHistoryState,
+              !stateCache.isEmpty else {
+            return nil
+        }
+        return GeckoSessionState(copying: stateCache)
+    }
     
     // MARK: - Delegates
     
     public func updateSettings(_ settings: GeckoSessionSettings) {
         self.settings = settings
+        GeckoRuntime.setLocale(acceptLanguages: settings.language.acceptLanguages)
         
         guard isOpen() else { return }
         
@@ -40,6 +66,10 @@ public class GeckoSession {
             type: "GeckoView:UpdateSettings",
             message: [
                 "userAgentOverride": settings.websiteMode.userAgentOverride ?? NSNull(),
+                "platformOverride": settings.websiteMode.platformOverride ?? NSNull(),
+                "appVersionOverride": settings.websiteMode.appVersionOverride ?? NSNull(),
+                "oscpuOverride": settings.websiteMode.oscpuOverride ?? NSNull(),
+                "buildIDOverride": settings.websiteMode.buildIDOverride ?? NSNull(),
                 "userAgentMode": settings.websiteMode.userAgentMode,
                 "viewportMode": settings.websiteMode.viewportMode,
                 "pageZoom": settings.pageZoom.scale,
@@ -56,10 +86,22 @@ public class GeckoSession {
         }
     }
     
+    lazy var contentBlockingHandler = newContentBlockingHandler(self)
+    public var contentBlockingDelegate: ContentBlockingDelegate? {
+        get { contentBlockingHandler.delegate(as: ContentBlockingDelegate.self) }
+        set { contentBlockingHandler.setDelegate(newValue) }
+    }
+    
     lazy var navigationHandler = newNavigationHandler(self)
     public var navigationDelegate: NavigationDelegate? {
         get { navigationHandler.delegate(as: NavigationDelegate.self) }
         set { navigationHandler.setDelegate(newValue) }
+    }
+    
+    lazy var historyHandler = newHistoryHandler(self)
+    public var historyDelegate: HistoryDelegate? {
+        get { historyHandler.delegate(as: HistoryDelegate.self) }
+        set { historyHandler.setDelegate(newValue) }
     }
     
     lazy var permissionHandler = newPermissionHandler(self)
@@ -95,18 +137,35 @@ public class GeckoSession {
         set { mediaSessionHandler.setDelegate(newValue) }
     }
     public lazy var mediaSession = MediaSession(session: self)
+    private lazy var autofillHandler = GeckoAutofillHandler(session: self)
+    private lazy var pictureInPictureHandler = newPictureInPictureHandler(self)
+    public var pictureInPictureDelegate: PictureInPictureDelegate? {
+        get { pictureInPictureHandler.delegate }
+        set { pictureInPictureHandler.delegate = newValue }
+    }
+    public var pictureInPictureDisplayLayer: AVSampleBufferDisplayLayer? {
+        return pictureInPictureHandler.displayLayer
+    }
+    
+    public func notifyScreenOrientationChanged(to orientation: UIInterfaceOrientation) {
+        window?.updateScreenOrientation(orientation.rawValue)
+    }
     
     // MARK: - Session Handlers
     
     lazy var sessionHandlers: [GeckoSessionHandlerCommon] = [
         contentHandler,
+        contentBlockingHandler,
         processHangHandler,
         navigationHandler,
+        historyHandler,
         permissionHandler,
         progressHandler,
         promptHandler,
         selectionActionHandler,
         mediaSessionHandler,
+        autofillHandler,
+        pictureInPictureHandler,
     ]
     
     // MARK: - Lifecycle
@@ -137,12 +196,18 @@ public class GeckoSession {
         id = windowId ?? UUID().uuidString.replacingOccurrences(of: "-", with: "")
         
         let sessionSettings = settings
+        GeckoRuntime.setLocale(acceptLanguages: sessionSettings.language.acceptLanguages)
+        
         let settings: [String: Any?] = [
             "chromeUri": nil,
             "screenId": 0,
             "useTrackingProtection": false,
             "userAgentMode": sessionSettings.websiteMode.userAgentMode,
             "userAgentOverride": sessionSettings.websiteMode.userAgentOverride,
+            "platformOverride": sessionSettings.websiteMode.platformOverride,
+            "appVersionOverride": sessionSettings.websiteMode.appVersionOverride,
+            "oscpuOverride": sessionSettings.websiteMode.oscpuOverride,
+            "buildIDOverride": sessionSettings.websiteMode.buildIDOverride,
             "viewportMode": sessionSettings.websiteMode.viewportMode,
             "pageZoom": sessionSettings.pageZoom.scale,
             "displayMode": 0,
@@ -154,9 +219,14 @@ public class GeckoSession {
             "unsafeSessionContextId": nil,
         ]
         
-        let modules = Dictionary(uniqueKeysWithValues: sessionHandlers.map {
-            ($0.moduleName, $0.enabled)
-        })
+        let modules: [String: Bool] = Dictionary(
+            uniqueKeysWithValues: sessionHandlers.compactMap {
+                guard let moduleName = $0.moduleName else {
+                    return nil
+                }
+                return (moduleName, $0.enabled)
+            }
+        )
         
         window = GeckoViewOpenWindow(
             id,
@@ -167,6 +237,10 @@ public class GeckoSession {
             ],
             isPrivateMode
         )
+        guard let engineView = window?.view() else {
+            fatalError("GeckoView window has no view")
+        }
+        autofillHandler.attach(to: engineView)
     }
     
     public func isOpen() -> Bool { window != nil }
@@ -177,17 +251,25 @@ public class GeckoSession {
     
     public func close() {
         contentDelegate = nil
+        contentBlockingDelegate = nil
         navigationDelegate = nil
+        historyDelegate = nil
         permissionDelegate = nil
         progressDelegate = nil
         promptDelegate = nil
         selectionActionDelegate = nil
+        mediaSessionDelegate?.onDeactivated(session: self)
         mediaSessionDelegate = nil
+        pictureInPictureDelegate = nil
         
         guard let window else {
             return
         }
         
+        if let engineView = window.view() {
+            autofillHandler.detach(from: engineView)
+        }
+        autofillHandler.close()
         window.close()
         self.window = nil
         id = nil
@@ -206,11 +288,11 @@ public class GeckoSession {
             ])
     }
     
-    public func reload() {
+    public func reload(flags: Int = GeckoSessionLoadFlags.none) {
         dispatcher.dispatch(
             type: "GeckoView:Reload",
             message: [
-                "flags": 0
+                "flags": flags
             ])
     }
     
@@ -234,10 +316,84 @@ public class GeckoSession {
             ])
     }
     
+    public func goToHistoryIndex(_ index: Int) {
+        dispatcher.dispatch(type: "GeckoView:GotoHistoryIndex", message: ["index": index])
+    }
+    
+    public func purgeHistory() {
+        awaitsPurgedHistoryState = stateCache.history.count > 1
+        dispatcher.dispatch(type: "GeckoView:PurgeHistory")
+    }
+    
+    public func exitFullScreen() {
+        dispatcher.dispatch(type: "GeckoViewContent:ExitFullScreen")
+    }
+    
+    // MARK: - Find in Page
+    
+    @MainActor
+    public func findInPage(
+        _ searchString: String? = nil,
+        backwards: Bool = false
+    ) async throws -> GeckoFindInPageResult {
+        var message: [String: Any?] = [:]
+        if let searchString {
+            message["searchString"] = searchString
+        }
+        if backwards {
+            message["backwards"] = true
+        }
+        let response = try await dispatcher.query(type: "GeckoView:FindInPage", message: message)
+        let payload: [String: Any?]
+        if let values = response as? [String: Any] {
+            payload = values.mapValues { $0 }
+        } else if let values = response as? [String: Any?] {
+            payload = values
+        } else {
+            throw GeckoHandlerError("Invalid find-in-page response")
+        }
+        return GeckoFindInPageResult(
+            found: PayloadValue.bool(payload["found"]) ?? false,
+            current: PayloadValue.int(payload["current"]) ?? 0,
+            total: PayloadValue.int(payload["total"]) ?? 0
+        )
+    }
+    
+    public func setFindInPageMatchHighlighting(_ enabled: Bool) {
+        dispatcher.dispatch(
+            type: "GeckoView:DisplayMatches",
+            message: [
+                "highlightAll": enabled,
+                "dimPage": true,
+                "drawOutline": false,
+            ]
+        )
+    }
+    
+    public func clearFindInPageMatches() {
+        dispatcher.dispatch(type: "GeckoView:ClearMatches")
+        setFindInPageMatchHighlighting(false)
+    }
+    
+    public func scrollTo(_ position: CGPoint, animated: Bool = true) {
+        dispatcher.dispatch(
+            type: "GeckoView:ScrollTo",
+            message: [
+                "widthValue": position.x,
+                "widthType": 0,
+                "heightValue": position.y,
+                "heightType": 0,
+                "behavior": animated ? 0 : 1,
+            ])
+    }
+    
     // MARK: - State Updates
     
     public func setActive(_ active: Bool) {
         dispatcher.dispatch(type: "GeckoView:SetActive", message: ["active": active])
+        if !active {
+            flushSessionState()
+        }
     }
     
     public func setFocused(_ focused: Bool) {
@@ -255,6 +411,74 @@ public class GeckoSession {
             completion(PayloadValue.cgFloat(bottomRatioValue))
         }
     }
+
+    public func flushSessionState() {
+        dispatcher.dispatch(type: "GeckoView:FlushSessionState")
+    }
+
+    public func restoreState(_ state: GeckoSessionState) {
+        awaitsPurgedHistoryState = false
+        stateCache.replace(with: state)
+        dispatcher.dispatch(type: "GeckoView:RestoreState", message: state.restorePayload)
+    }
+
+    func handleSessionStateUpdate(_ stateUpdate: [String: Any]) {
+        let previousHistoryCount = stateCache.history.count
+        if awaitsPurgedHistoryState,
+           let historyChange = stateUpdate["historychange"] as? [String: Any] {
+            let updatedState = GeckoSessionState(copying: stateCache)
+            updatedState.update(with: stateUpdate)
+            guard PayloadValue.int(historyChange["fromIdx"]) == -1,
+                  updatedState.history.count <= 1 else {
+                return
+            }
+            stateCache.replace(with: updatedState)
+            awaitsPurgedHistoryState = false
+        } else {
+            stateCache.update(with: stateUpdate)
+        }
+        guard !awaitsPurgedHistoryState else {
+            return
+        }
+        let sessionState = GeckoSessionState(copying: stateCache)
+        if !sessionState.isEmpty {
+            progressDelegate?.onSessionStateChange(session: self, sessionState: sessionState)
+        }
+        guard stateUpdate["historychange"] != nil else {
+            return
+        }
+        historyDelegate?.onHistoryStateChange(session: self, sessionState: sessionState)
+        if previousHistoryCount > 1,
+           sessionState.history.count == 1 {
+            navigationDelegate?.onCanGoForward(session: self, canGoForward: false)
+            navigationDelegate?.onCanGoBack(session: self, canGoBack: false)
+        }
+    }
+
+    // Keyboard
+    public func focusedInputMetrics(completion: @escaping ((bottomRatio: CGFloat, caretTop: CGFloat?)?) -> Void) {
+        dispatcher.query(type: "GeckoView:GetFocusedInputMetrics") { result in
+            guard case .success(let response) = result,
+                  let values = response as? [AnyHashable: Any],
+                  let bottomRatio = PayloadValue.cgFloat(values["bottomRatio"]),
+                  let engineView else {
+                completion(nil)
+                return
+            }
+            let caretTop = PayloadValue.cgFloat(values["caretTop"])
+            completion((bottomRatio, caretTop.map { $0 / engineView.contentScaleFactor }))
+        }
+    }
+
+    @discardableResult
+    public func focusForHardwareKeyboard() -> Bool {
+        return window?.focusForHardwareKeyboard() ?? false
+    }
+
+    public func isInHardwareKeyboardMode() -> Bool {
+        return window?.isInHardwareKeyboardMode() ?? false
+    }
+    }
     
     // MARK: - Selection Actions
     
@@ -266,5 +490,14 @@ public class GeckoSession {
                 "id": commandId,
             ]
         )
+    }
+    
+    // MARK: - Toolbar
+    public func setDynamicToolbarMaxHeight(_ height: CGFloat) {
+        window?.setDynamicToolbarMaxHeight(max(0, height))
+    }
+    
+    public func setContentOffsets(top: CGFloat, bottom: CGFloat, topInset: CGFloat, bottomInset: CGFloat) {
+        window?.setContentOffsets(top, bottom: bottom, topInset: topInset, bottomInset: bottomInset)
     }
 }

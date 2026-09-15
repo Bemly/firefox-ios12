@@ -1,0 +1,27 @@
+diff --git a/uriloader/base/nsDocLoader.cpp b/uriloader/base/nsDocLoader.cpp
+index 524451a83e03..b44cadc499a2 100644
+--- a/uriloader/base/nsDocLoader.cpp
++++ b/uriloader/base/nsDocLoader.cpp
+@@ -1591,7 +1591,7 @@ int64_t nsDocLoader::CalculateMaxProgress() {
+   return max;
+ }
+ 
+-NS_IMETHODIMP nsDocLoader::AsyncOnChannelRedirect(
++MOZ_CAN_RUN_SCRIPT_BOUNDARY NS_IMETHODIMP nsDocLoader::AsyncOnChannelRedirect(
+     nsIChannel* aOldChannel, nsIChannel* aNewChannel, uint32_t aFlags,
+     nsIAsyncVerifyRedirectCallback* cb) {
+   if (aOldChannel) {
+@@ -1615,7 +1615,12 @@ NS_IMETHODIMP nsDocLoader::AsyncOnChannelRedirect(
+ #endif /* DEBUG */
+     }
+ 
+-    OnRedirectStateChange(aOldChannel, aNewChannel, aFlags, stateFlags);
++    nsresult rv =
++        OnRedirectStateChange(aOldChannel, aNewChannel, aFlags, stateFlags);
++    if (NS_FAILED(rv)) {
++      cb->OnRedirectVerifyCallback(rv);
++      return NS_OK;
++    }
+     FireOnStateChange(this, aOldChannel, stateFlags, NS_OK);
+   }
+ 

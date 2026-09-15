@@ -10,11 +10,24 @@ import UIKit
 final class SitePermissionsViewController: SettingsTableViewController {
     private enum Section {
         case availability
-        case permissions
+        case media
+        case access
+        case advanced
         case websiteActions
         
         var text: SettingsSectionText {
-            return SettingsSectionText()
+            switch self {
+            case .availability:
+                return SettingsSectionText()
+            case .media:
+                return SettingsSectionText(headerTitle: NSLocalizedString("Media", comment: ""))
+            case .access:
+                return SettingsSectionText(headerTitle: NSLocalizedString("Access", comment: ""))
+            case .advanced:
+                return SettingsSectionText(headerTitle: NSLocalizedString("Advanced", comment: ""))
+            case .websiteActions:
+                return SettingsSectionText()
+            }
         }
     }
     
@@ -28,6 +41,7 @@ final class SitePermissionsViewController: SettingsTableViewController {
     }
     
     private enum Row {
+        case autoplay
         case camera
         case microphone
         case location
@@ -38,25 +52,29 @@ final class SitePermissionsViewController: SettingsTableViewController {
         
         var title: String {
             switch self {
+            case .autoplay:
+                return NSLocalizedString("Autoplay", comment: "")
             case .camera:
-                return "Camera"
+                return NSLocalizedString("Camera", comment: "")
             case .microphone:
-                return "Microphone"
+                return NSLocalizedString("Microphone", comment: "")
             case .location:
-                return "Location"
+                return NSLocalizedString("Location", comment: "")
             case .persistentStorage:
-                return "Persistent Storage"
+                return NSLocalizedString("Persistent Storage", comment: "")
             case .crossOriginStorageAccess:
-                return "Cross-site Cookies"
+                return NSLocalizedString("Cross-Site Cookies", comment: "")
             case .localDeviceAccess:
-                return "Device Apps and Services"
+                return NSLocalizedString("Apps and Services", comment: "")
             case .localNetworkAccess:
-                return "Local Network Devices"
+                return NSLocalizedString("Local Network", comment: "")
             }
         }
         
         var permission: SitePermission {
             switch self {
+            case .autoplay:
+                return .autoplay
             case .camera:
                 return .camera
             case .microphone:
@@ -75,10 +93,12 @@ final class SitePermissionsViewController: SettingsTableViewController {
         }
     }
     
-    private let permissionOptions: [Row] = [
+    private let accessPermissionOptions: [Row] = [
         .camera,
         .microphone,
         .location,
+    ]
+    private let advancedPermissionOptions: [Row] = [
         .persistentStorage,
         .crossOriginStorageAccess,
         .localDeviceAccess,
@@ -92,14 +112,16 @@ final class SitePermissionsViewController: SettingsTableViewController {
             sections.append(.availability)
         }
         
-        sections.append(.permissions)
+        sections.append(.media)
+        sections.append(.access)
+        sections.append(.advanced)
         sections.append(.websiteActions)
         return sections
     }
     
     init() {
         super.init(style: .appGrouped)
-        title = "Site Permissions"
+        title = NSLocalizedString("Website Permissions", comment: "")
     }
     
     required init?(coder: NSCoder) {
@@ -123,8 +145,12 @@ final class SitePermissionsViewController: SettingsTableViewController {
         switch displayedSections[section] {
         case .availability:
             return AvailabilityRow.allCases.count
-        case .permissions:
-            return permissionOptions.count
+        case .media:
+            return 1
+        case .access:
+            return accessPermissionOptions.count
+        case .advanced:
+            return advancedPermissionOptions.count
         case .websiteActions:
             return WebsiteActionRow.allCases.count
         }
@@ -146,18 +172,18 @@ final class SitePermissionsViewController: SettingsTableViewController {
             case .disabledPermissions:
                 return disabledPermissionMessageCell()
             case .openSettings:
-                let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-                cell.textLabel?.text = "Open Settings"
+                let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
+                cell.textLabel?.text = NSLocalizedString("Open Settings", comment: "")
                 cell.textLabel?.textColor = view.tintColor
                 cell.accessoryType = .none
                 return cell
             }
-        case .permissions:
+        case .media, .access, .advanced:
             guard let row = permissionOption(at: indexPath) else {
                 return UITableViewCell()
             }
             
-            let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .value1, reuseIdentifier: nil)
             cell.textLabel?.text = row.title
             cell.detailTextLabel?.text = SiteSettingsUtils.actionTitle(
                 for: SiteSettingsUtils.defaultAction(for: row.permission),
@@ -181,13 +207,12 @@ final class SitePermissionsViewController: SettingsTableViewController {
             guard WebsiteActionRow.allCases.indices.contains(indexPath.row) else {
                 return UITableViewCell()
             }
-            let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
             switch WebsiteActionRow.allCases[indexPath.row] {
             case .resetPermissions:
-                cell.textLabel?.text = "Reset Permissions for all Sites"
+                cell.textLabel?.text = NSLocalizedString("Reset Permissions for All Websites", comment: "")
                 cell.textLabel?.textColor = .systemRed
-                cell.detailTextLabel?.text = nil
-                cell.detailTextLabel?.textColor = .appSecondaryLabel
+                cell.textLabel?.textAlignment = .center
                 cell.accessoryType = .none
                 return cell
             }
@@ -210,7 +235,7 @@ final class SitePermissionsViewController: SettingsTableViewController {
             if AvailabilityRow.allCases[indexPath.row] == .openSettings {
                 SiteSettingsUtils.openAppSettings()
             }
-        case .permissions:
+        case .media, .access, .advanced:
             guard let row = permissionOption(at: indexPath) else {
                 return
             }
@@ -241,7 +266,7 @@ final class SitePermissionsViewController: SettingsTableViewController {
     }
     
     private func disabledPermissionMessageCell() -> UITableViewCell {
-        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
         cell.textLabel?.text = SiteSettingsUtils.disabledPermissionMessage()
         cell.textLabel?.textColor = .appSecondaryLabel
         cell.textLabel?.numberOfLines = 0
@@ -251,22 +276,33 @@ final class SitePermissionsViewController: SettingsTableViewController {
     
     private func permissionOption(at indexPath: IndexPath) -> Row? {
         guard displayedSections.indices.contains(indexPath.section),
-              displayedSections[indexPath.section] == .permissions else {
+              displayedSections[indexPath.section] == .media
+                || displayedSections[indexPath.section] == .access
+                || displayedSections[indexPath.section] == .advanced else {
             return nil
         }
         
-        return permissionOptions[safe: indexPath.row]
+        switch displayedSections[indexPath.section] {
+        case .availability, .websiteActions:
+            return nil
+        case .media:
+            return indexPath.row == 0 ? .autoplay : nil
+        case .access:
+            return accessPermissionOptions[safe: indexPath.row]
+        case .advanced:
+            return advancedPermissionOptions[safe: indexPath.row]
+        }
     }
     
     private func confirmResetSitePermissions() {
         AlertPresenter.show(
             title: nil,
-            message: "This action will reset permissions for all sites. It cannot be undone.",
+            message: NSLocalizedString("This will reset permissions for all websites. This action cannot be undone.", comment: ""),
             buttons: [
-                AlertPresenter.Button(title: "OK", style: .destructive) {
+                AlertPresenter.Button(title: NSLocalizedString("Reset", comment: "Destructive button"), style: .destructive) {
                     SiteSettingsUtils.resetStoredSitePermissions()
                 },
-                AlertPresenter.Button(title: "Cancel"),
+                AlertPresenter.Button(title: NSLocalizedString("Cancel", comment: "")),
             ]
         )
     }

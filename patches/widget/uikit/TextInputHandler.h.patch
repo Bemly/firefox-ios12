@@ -1,16 +1,41 @@
 diff --git a/widget/uikit/TextInputHandler.h b/widget/uikit/TextInputHandler.h
-index 5073da48f88c..1a41d7d7bb67 100644
+index 5073da48f88c..d8112420222c 100644
 --- a/widget/uikit/TextInputHandler.h
 +++ b/widget/uikit/TextInputHandler.h
-@@ -7,6 +7,7 @@
- 
+@@ -8,13 +8,18 @@
  #import <UIKit/UITextInput.h>
  
-+#include "mozilla/Maybe.h"
  #include "mozilla/EventForwards.h"
++#include "mozilla/Maybe.h"
  #include "mozilla/TextEventDispatcherListener.h"
++#include "mozilla/UniquePtr.h"
  #include "mozilla/widget/IMEData.h"
-@@ -39,6 +40,20 @@ class TextInputHandler final : public TextEventDispatcherListener {
+ #include "nsCOMPtr.h"
++#include "nsTArray.h"
+ 
+ class nsWindow;
++@class WebEvent;
+ 
+ namespace mozilla::widget {
++class GeckoKeyboardSupport;
+ class TextEventDispatcher;
+ 
+ // This is the temporary input class. When implementing UITextInpt protocol, we
+@@ -36,14 +41,43 @@ class TextInputHandler final : public TextEventDispatcherListener {
+                             WidgetKeyboardEvent& aKeyboardEvent,
+                             uint32_t aIndexOfKeypress, void* aData) override;
+ 
++  bool HandleKeyEvent(WebEvent* aEvent);
++  void HandleModifierFlagsChanged(UIKeyModifierFlags aOldFlags,
++                                  UIKeyModifierFlags aNewFlags);
++  void ReleasePhysicalKey(uint16_t aNativeKeyCode);
++  void ReleasePhysicalKeys();
++  void PostHandleKeyEvent(WidgetKeyboardEvent* aEvent);
++  bool HandlePhysicalDeleteBackward(bool aHasIMEBuffer,
++                                    bool aHasKoreanComposition);
++  bool GetEditCommands(const WidgetKeyboardEvent& aEvent,
++                       nsTArray<CommandInt>& aCommands);
++
    // UIKeyInput delegation
    bool InsertText(NSString* aText);
    bool HandleCommand(Command aCommand);
@@ -31,10 +56,27 @@ index 5073da48f88c..1a41d7d7bb67 100644
  
    void OnDestroyed();
  
-@@ -54,11 +69,17 @@ class TextInputHandler final : public TextEventDispatcherListener {
+  private:
+-  virtual ~TextInputHandler() = default;
++  friend class GeckoKeyboardSupport;
++
++  struct KeyEventState;
++
++  virtual ~TextInputHandler();
+ 
+   bool DispatchKeyDownEvent(uint32_t aKeyCode, KeyNameIndex aKeyNameIndex,
+                             char16_t aCharCode, nsEventStatus& aStatus);
+@@ -54,11 +88,26 @@ class TextInputHandler final : public TextEventDispatcherListener {
  
    bool EmulateKeyboardEvent(uint32_t aKeyCode, KeyNameIndex aKeyNameIndex,
                              char16_t charCode);
++  KeyEventState* CurrentKeyEvent();
++  bool DispatchCurrentKeyDown(bool aProcessedByIME);
++  bool DispatchCurrentKeyPress();
++  bool PrepareCurrentKeyForIME();
++  void MarkCurrentKeyEventFailed();
++  bool DispatchPhysicalKeyDown(WebEvent* aEvent, bool aForceRepeat,
++                               bool aHasCurrentNativeEvent);
 +  bool CancelMarkedText();
 +  void ClearCompositionState();
 +  bool HasMarkedText() const;
@@ -46,6 +88,8 @@ index 5073da48f88c..1a41d7d7bb67 100644
 +  NSRange mMarkedRange;
 +  Maybe<NSRange> mSelectedRangeOverride;
 +  nsString mMarkedText;
++  UniquePtr<GeckoKeyboardSupport> mKeyboardSupport;
++  AutoTArray<UniquePtr<KeyEventState>, 1> mCurrentKeyEvents;
  };
  
  }  // namespace mozilla::widget

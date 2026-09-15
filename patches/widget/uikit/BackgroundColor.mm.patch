@@ -1,0 +1,69 @@
+diff --git a/widget/uikit/BackgroundColor.mm b/widget/uikit/BackgroundColor.mm
+new file mode 100644
+index 000000000000..0d34c974e01b
+--- /dev/null
++++ b/widget/uikit/BackgroundColor.mm
+@@ -0,0 +1,63 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#include "BackgroundColor.h"
++
++#include "js/Object.h"
++#include "js/PropertyAndElement.h"
++#include "js/RootingAPI.h"
++#include "js/Value.h"
++#include "mozilla/MacStringHelpers.h"
++#include "mozilla/dom/ScriptSettings.h"
++#include "mozilla/widget/EventDispatcher.h"
++#include "nsWindow.h"
++#include "xpcpublic.h"
++
++namespace mozilla::widget {
++
++void DispatchBackgroundColor(nsIWidget* aWidget, nscolor aColor) {
++  AssertIsOnMainThread();
++
++  RefPtr<nsWindow> window = nsWindow::From(aWidget);
++  if (!window) {
++    return;
++  }
++
++  EventDispatcher* dispatcher = window->GetEventDispatcher();
++  static constexpr auto kBackgroundColorEvent = u"GeckoView:BackgroundColor"_ns;
++  if (!dispatcher || !dispatcher->HasEmbedderListener(kBackgroundColorEvent)) {
++    return;
++  }
++
++  dom::AutoJSAPI jsapi;
++  if (!jsapi.Init(xpc::PrivilegedJunkScope())) {
++    return;
++  }
++
++  JSContext* cx = jsapi.cx();
++  JS::RootedObject payload(cx, JS_NewPlainObject(cx));
++  if (!payload) {
++    return;
++  }
++
++  auto defineComponent = [&](const char* aName, uint8_t aValue) {
++    JS::RootedValue jsValue(cx, JS::Int32Value(aValue));
++    return JS_DefineProperty(cx, payload, aName, jsValue, JSPROP_ENUMERATE);
++  };
++  if (!defineComponent("red", NS_GET_R(aColor)) ||
++      !defineComponent("green", NS_GET_G(aColor)) ||
++      !defineComponent("blue", NS_GET_B(aColor)) ||
++      !defineComponent("alpha", NS_GET_A(aColor))) {
++    return;
++  }
++
++  JS::RootedValue payloadValue(cx, JS::ObjectValue(*payload));
++  dispatcher->DispatchToEmbedder(cx, kBackgroundColorEvent, payloadValue,
++                                 nullptr);
++}
++
++}  // namespace mozilla::widget

@@ -1,9 +1,9 @@
 diff --git a/netwerk/system/ios/nsIOSNetworkLinkService.h b/netwerk/system/ios/nsIOSNetworkLinkService.h
 new file mode 100644
-index 000000000000..9b9546af5be4
+index 000000000000..e22bba6a2251
 --- /dev/null
 +++ b/netwerk/system/ios/nsIOSNetworkLinkService.h
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,68 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -14,15 +14,15 @@ index 000000000000..9b9546af5be4
 +#ifndef NSIOSNETWORKLINKSERVICE_H_
 +#define NSIOSNETWORKLINKSERVICE_H_
 +
-+#include "mozilla/Mutex.h"
-+#include "mozilla/net/DNS.h"
-+#include "nsIObserver.h"
-+#include "nsINetworkLinkService.h"
-+#include "nsString.h"
-+#include "nsTArray.h"
-+
 +#include <Network/Network.h>
 +#include <dispatch/dispatch.h>
++
++#include "mozilla/Mutex.h"
++#include "mozilla/net/DNS.h"
++#include "nsINetworkLinkService.h"
++#include "nsIObserver.h"
++#include "nsString.h"
++#include "nsTArray.h"
 +
 +class nsIOSNetworkLinkService final : public nsINetworkLinkService,
 +                                      public nsIObserver {
@@ -45,6 +45,7 @@ index 000000000000..9b9546af5be4
 +    bool mHasIPv6 = false;
 +    bool mVPNDetected = false;
 +    bool mProxyDetected = false;
++    bool mPrivateDNSDetected = false;
 +    uint32_t mLinkType = nsINetworkLinkService::LINK_TYPE_UNKNOWN;
 +    nsCString mNetworkID;
 +  };
@@ -55,6 +56,7 @@ index 000000000000..9b9546af5be4
 +  void ProcessPathUpdate(nw_path_t aPath);
 +  nsCString NetworkIDForPath(nw_path_t aPath, PathState& aState);
 +  bool VPNDetectedForPath(nw_path_t aPath);
++  bool PrivateDNSDetectedForPath(nw_path_t aPath);
 +  bool ProxyDetected();
 +  void UpdateDNSConfig();
 +  void NotifyObservers(const char* aTopic, const char* aData);

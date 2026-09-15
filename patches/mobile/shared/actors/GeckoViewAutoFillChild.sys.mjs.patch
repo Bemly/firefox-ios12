@@ -1,0 +1,523 @@
+diff --git a/mobile/shared/actors/GeckoViewAutoFillChild.sys.mjs b/mobile/shared/actors/GeckoViewAutoFillChild.sys.mjs
+index 5c273d0eaee3..61e7d6abd535 100644
+--- a/mobile/shared/actors/GeckoViewAutoFillChild.sys.mjs
++++ b/mobile/shared/actors/GeckoViewAutoFillChild.sys.mjs
+@@ -4,6 +4,11 @@
+ 
+ import { GeckoViewActorChild } from "resource://gre/modules/GeckoViewActorChild.sys.mjs";
+ import { GeckoViewUtils } from "resource://gre/modules/GeckoViewUtils.sys.mjs";
++import {
++  isSafariTextControl,
++  looksLikeSafariOneTimeCodeField,
++  looksLikeSafariStandaloneLoginField,
++} from "resource://gre/modules/FormFieldClassifier.sys.mjs";
+ 
+ const lazy = {};
+ 
+@@ -20,6 +25,13 @@ export class GeckoViewAutoFillChild extends GeckoViewActorChild {
+     this._autofillInfos = undefined;
+   }
+ 
++  receiveMessage(aMessage) {
++    if (aMessage.name == "FillOneTimeCode") {
++      return this.fillOneTimeCode(aMessage.data.fieldUuid, aMessage.data.value);
++    }
++    return null;
++  }
++
+   // eslint-disable-next-line complexity
+   handleEvent(aEvent) {
+     debug`handleEvent: ${aEvent.type}`;
+@@ -39,9 +51,35 @@ export class GeckoViewAutoFillChild extends GeckoViewActorChild {
+       }
+       case "focusin": {
+         const element = aEvent.composedTarget;
+-        if (!this.contentWindow.HTMLInputElement.isInstance(element)) {
++        if (!isSafariTextControl(element)) {
+           break;
+         }
++        const isOneTimeCode = this._isOneTimeCodeField(element);
++        if (isOneTimeCode) {
++          this._getInfo(element, null, null, null, null, null, true);
++          this.onFocus(element);
++        } else if (this._autofillInfos?.has(element)) {
++          this.onFocus(element);
++        } else if (
++          this.contentWindow.HTMLInputElement.isInstance(element) &&
++          element.type == "password"
++        ) {
++          // Some document-level FormLikes omit their focused password input.
++          this.addElement(
++            lazy.FormLikeFactory.createFromField(element),
++            null,
++            element
++          );
++        } else if (
++          this.contentWindow.HTMLInputElement.isInstance(element) &&
++          looksLikeSafariStandaloneLoginField(element)
++        ) {
++          // Safari positively identified an otherwise untracked login step.
++          this.addElement(
++            lazy.FormLikeFactory.createFromField(element),
++            element
++          );
++        }
+         GeckoViewUtils.waitForPanZoomState(this.contentWindow).finally(() => {
+           if (Cu.isDeadWrapper(element)) {
+             // Focus element is removed or document is navigated to new page.
+@@ -50,16 +88,35 @@ export class GeckoViewAutoFillChild extends GeckoViewActorChild {
+           const focusedElement =
+             Services.focus.focusedElement ||
+             element.ownerDocument?.activeElement;
+-          if (element == focusedElement) {
++          if (element == focusedElement && element.isConnected) {
++            if (
++              !this._autofillInfos?.has(focusedElement) &&
++              ["text", "email"].includes(focusedElement.type)
++            ) {
++              const formLike =
++                lazy.FormLikeFactory.createFromField(focusedElement);
++              const loginManagerChild = lazy.LoginManagerChild.forWindow(
++                this.contentWindow
++              );
++              const docState = loginManagerChild.stateForDocument(
++                focusedElement.ownerDocument
++              );
++              const usernameField =
++                docState.getUsernameFieldFromUsernameOnlyForm(formLike, {});
++              if (usernameField === focusedElement) {
++                // Register only text/email fields positively identified by
++                // LoginManager as a username-only login step.
++                this.addElement(formLike, usernameField);
++                return;
++              }
++            }
+             this.onFocus(focusedElement);
+           }
+         });
+         break;
+       }
+       case "focusout": {
+-        if (
+-          this.contentWindow.HTMLInputElement.isInstance(aEvent.composedTarget)
+-        ) {
++        if (isSafariTextControl(aEvent.composedTarget)) {
+           this.onFocus(null);
+         }
+         break;
+@@ -84,6 +141,35 @@ export class GeckoViewAutoFillChild extends GeckoViewActorChild {
+     }
+   }
+ 
++  _isOneTimeCodeField(aElement) {
++    if (!looksLikeSafariOneTimeCodeField(aElement)) {
++      return false;
++    }
++
++    return this._hasEligibleOneTimeCodePrincipal(aElement);
++  }
++
++  _hasEligibleOneTimeCodePrincipal(aElement) {
++    try {
++      const principal = aElement.nodePrincipal;
++      if (!principal || principal.isNullPrincipal) {
++        return false;
++      }
++      if (this.browsingContext === this.browsingContext.top) {
++        return true;
++      }
++      const topPrincipal =
++        this.browsingContext.top.currentWindowGlobal?.documentPrincipal;
++      return (
++        !!topPrincipal &&
++        !topPrincipal.isNullPrincipal &&
++        principal.equals(topPrincipal)
++      );
++    } catch {
++      return false;
++    }
++  }
++
+   /**
+    * Process an auto-fillable form and send the relevant details of the form
+    * to Java. Multiple calls within a short time period for the same form are
+@@ -93,14 +179,27 @@ export class GeckoViewAutoFillChild extends GeckoViewActorChild {
+    * there is no difference in how we process them.
+    *
+    * @param aFormLike A FormLike object produced by FormLikeFactory.
++   * @param aUsernameOnlyField Positively identified username-only field.
++   * @param aFocusedPasswordField Focused password omitted by the FormLike.
+    */
+-  async addElement(aFormLike) {
++  async addElement(
++    aFormLike,
++    aUsernameOnlyField = null,
++    aFocusedPasswordField = null
++  ) {
+     debug`Adding auto-fill ${aFormLike.rootElement.tagName}`;
+ 
+     const window = aFormLike.rootElement.documentGlobal;
++    const focusedCredentialField = aFocusedPasswordField || aUsernameOnlyField;
++    // Preserve a positively identified focused field that FormLike omitted.
++    const elements =
++      focusedCredentialField &&
++        !aFormLike.elements.includes(focusedCredentialField)
++        ? [...aFormLike.elements, focusedCredentialField]
++        : aFormLike.elements;
+     // Get password field to get better form data via LoginManagerChild.
+     let passwordField;
+-    for (const field of aFormLike.elements) {
++    for (const field of elements) {
+       if (
+         ChromeUtils.getClassName(field) === "HTMLInputElement" &&
+         field.type == "password"
+@@ -112,11 +211,15 @@ export class GeckoViewAutoFillChild extends GeckoViewActorChild {
+ 
+     const loginManagerChild = lazy.LoginManagerChild.forWindow(window);
+     const docState = loginManagerChild.stateForDocument(
+-      passwordField?.ownerDocument || aFormLike.rootElement.ownerDocument
+-    );
+-    const [usernameField] = docState.getUserNameAndPasswordFields(
+-      passwordField || aFormLike.elements[0]
++      aFormLike.ownerDocument
+     );
++    let usernameField = aUsernameOnlyField;
++    let primaryPasswordField = null;
++    let oldPasswordField = null;
++    if (passwordField) {
++      [usernameField, primaryPasswordField, oldPasswordField] =
++        docState.getUserNameAndPasswordFields(passwordField);
++    }
+ 
+     const focusedElement = aFormLike.rootElement.ownerDocument.activeElement;
+     let sendFocusEvent = aFormLike.rootElement === focusedElement;
+@@ -129,10 +232,11 @@ export class GeckoViewAutoFillChild extends GeckoViewActorChild {
+     );
+ 
+     rootInfo.rootUuid = rootInfo.uuid;
+-    rootInfo.children = aFormLike.elements
++    rootInfo.children = elements
+       .filter(
+         element =>
+           element.type != "hidden" &&
++          element.getAutocompleteInfo?.()?.fieldName != "one-time-code" &&
+           (!usernameField ||
+             element.type != "text" ||
+             element == usernameField ||
+@@ -145,9 +249,18 @@ export class GeckoViewAutoFillChild extends GeckoViewActorChild {
+           element,
+           rootInfo.uuid,
+           rootInfo.uuid,
+-          usernameField
++          usernameField,
++          primaryPasswordField,
++          oldPasswordField
+         );
+       });
++    rootInfo.acceptsLoginCredentials =
++      !!aUsernameOnlyField ||
++      rootInfo.children.some(
++        info =>
++          info.credentialRole == "password" ||
++          info.credentialRole == "current-password"
++      );
+ 
+     try {
+       // We don't await here so that we can send a focus event immediately
+@@ -199,7 +312,15 @@ export class GeckoViewAutoFillChild extends GeckoViewActorChild {
+     }
+   }
+ 
+-  _getInfo(aElement, aParent, aRoot, aUsernameField) {
++  _getInfo(
++    aElement,
++    aParent,
++    aRoot,
++    aUsernameField,
++    aPrimaryPasswordField,
++    aOldPasswordField,
++    aIsOneTimeCode = false
++  ) {
+     if (!this._autofillInfos) {
+       this._autofillInfos = new WeakMap();
+       this._autofillElements = new Map();
+@@ -207,6 +328,9 @@ export class GeckoViewAutoFillChild extends GeckoViewActorChild {
+ 
+     let info = this._autofillInfos.get(aElement);
+     if (info) {
++      if (aIsOneTimeCode) {
++        info.isOneTimeCode = true;
++      }
+       return info;
+     }
+ 
+@@ -249,6 +373,7 @@ export class GeckoViewAutoFillChild extends GeckoViewActorChild {
+       ),
+       origin: aElement.ownerDocument.location.origin,
+       autofillhint: "",
++      credentialRole: "",
+       bounds: {
+         left: bounds.left,
+         top: bounds.top,
+@@ -258,16 +383,32 @@ export class GeckoViewAutoFillChild extends GeckoViewActorChild {
+       datalist: [],
+     };
+ 
++    if (aIsOneTimeCode) {
++      info.isOneTimeCode = true;
++    }
++
+     if (aElement === aUsernameField) {
+       info.autofillhint = "username"; // AUTOFILL.HINT.USERNAME
++      info.credentialRole = "username";
+     } else if (isInputElement) {
+-      // Using autocomplete attribute if it is email.
+       const autocompleteInfo = aElement.getAutocompleteInfo();
+       if (autocompleteInfo) {
+         const autocompleteAttr = autocompleteInfo.fieldName;
+         if (autocompleteAttr == "email") {
+           info.type = "email";
+         }
++        if (autocompleteAttr == "username") {
++          info.credentialRole = "username";
++        } else if (autocompleteAttr == "new-password") {
++          info.credentialRole = "new-password";
++        } else if (autocompleteAttr == "current-password") {
++          info.credentialRole = "current-password";
++        }
++      }
++      if (!info.credentialRole && aElement === aOldPasswordField) {
++        info.credentialRole = "current-password";
++      } else if (!info.credentialRole && aElement === aPrimaryPasswordField) {
++        info.credentialRole = "password";
+       }
+ 
+       if (aElement.list?.options) {
+@@ -283,6 +424,227 @@ export class GeckoViewAutoFillChild extends GeckoViewActorChild {
+     return info;
+   }
+ 
++  _activeElement(document) {
++    let element = document.activeElement;
++    while (element?.openOrClosedShadowRoot?.activeElement) {
++      element = element.openOrClosedShadowRoot.activeElement;
++    }
++    return element;
++  }
++
++  _isWritableOneTimeCodeField(element) {
++    return (
++      element?.isConnected &&
++      !element.disabled &&
++      !element.readOnly &&
++      isSafariTextControl(element) &&
++      this._isOneTimeCodeField(element)
++    );
++  }
++
++  _dispatchInputEvent(element, type, inputType, data = null) {
++    return element.dispatchEvent(
++      new element.documentGlobal.InputEvent(type, {
++        bubbles: true,
++        cancelable: type == "beforeinput",
++        composed: true,
++        data,
++        inputType,
++      })
++    );
++  }
++
++  _dispatchKeyEvent(element, type, key) {
++    let code = "";
++    if (/^\d$/.test(key)) {
++      code = `Digit${key}`;
++    } else if (/^[a-z]$/i.test(key)) {
++      code = `Key${key.toUpperCase()}`;
++    }
++    return element.dispatchEvent(
++      new element.documentGlobal.KeyboardEvent(type, {
++        bubbles: true,
++        cancelable: true,
++        composed: true,
++        key,
++        code,
++      })
++    );
++  }
++
++  _clearOneTimeCodeField(element) {
++    try {
++      element.select();
++    } catch { }
++    this._dispatchKeyEvent(element, "keydown", "Backspace");
++    if (
++      this._dispatchInputEvent(element, "beforeinput", "deleteContentBackward")
++    ) {
++      element.value = "";
++      this._dispatchInputEvent(element, "input", "deleteContentBackward");
++    }
++    this._dispatchKeyEvent(element, "keyup", "Backspace");
++    element.dispatchEvent(
++      new element.documentGlobal.Event("change", { bubbles: true })
++    );
++  }
++
++  _insertOneTimeCodeCharacter(element, character) {
++    this._dispatchKeyEvent(element, "keydown", character);
++    this._dispatchKeyEvent(element, "keypress", character);
++
++    const textInput = element.ownerDocument.createEvent("TextEvent");
++    textInput.initTextEvent(
++      "textInput",
++      true,
++      true,
++      element.documentGlobal,
++      character
++    );
++    const previousValue = element.value;
++    if (
++      element.dispatchEvent(textInput) &&
++      this._dispatchInputEvent(
++        element,
++        "beforeinput",
++        "insertText",
++        character
++      ) &&
++      element.value == previousValue
++    ) {
++      const start = element.selectionStart ?? element.value.length;
++      const end = element.selectionEnd ?? start;
++      element.setRangeText(character, start, end, "end");
++      this._dispatchInputEvent(element, "input", "insertText", character);
++    }
++    this._dispatchKeyEvent(element, "keyup", character);
++  }
++
++  _wait(window, milliseconds) {
++    return new Promise(resolve => window.setTimeout(resolve, milliseconds));
++  }
++
++  async _nextOneTimeCodeField(element) {
++    for (let attempt = 0; attempt < 20; attempt++) {
++      const focused = this._activeElement(element.ownerDocument);
++      if (focused !== element) {
++        return this._isWritableOneTimeCodeField(focused) ? focused : null;
++      }
++      await this._wait(element.documentGlobal, 1);
++    }
++    return null;
++  }
++
++  _oneTimeCodeWasInserted(fields, value) {
++    return (
++      fields
++        .map(field => field.value)
++        .join("")
++        .replaceAll("-", "") == value.replaceAll("-", "")
++    );
++  }
++
++  _setOneTimeCodeValue(element, value) {
++    if (typeof element.setUserInput == "function") {
++      element.setUserInput(value);
++      return;
++    }
++    if (this._dispatchInputEvent(element, "beforeinput", "insertText", value)) {
++      element.value = value;
++      this._dispatchInputEvent(element, "input", "insertText", value);
++      element.dispatchEvent(
++        new element.documentGlobal.Event("change", { bubbles: true })
++      );
++    }
++  }
++
++  async fillOneTimeCode(fieldUuid, value) {
++    const entry = this._autofillElements?.get(fieldUuid);
++    const firstField = entry?.get();
++    const info = firstField && this._autofillInfos?.get(firstField);
++    if (
++      typeof value != "string" ||
++      !value ||
++      !info?.isOneTimeCode ||
++      this._activeElement(firstField?.ownerDocument) !== firstField ||
++      !this._isWritableOneTimeCodeField(firstField)
++    ) {
++      return false;
++    }
++
++    if (firstField.maxLength != 1) {
++      this._setOneTimeCodeValue(firstField, value);
++      return firstField.value == value;
++    }
++
++    const interactionEvents = [
++      "keydown",
++      "keypress",
++      "keyup",
++      "dblclick",
++      "mousedown",
++      "mousemove",
++      "mouseup",
++      "click",
++      "pointerdown",
++      "pointermove",
++      "pointerup",
++      "pointercancel",
++      "touchstart",
++      "touchmove",
++      "touchend",
++      "touchcancel",
++    ];
++    const suppressInteraction = event => {
++      if (event.isTrusted) {
++        event.preventDefault();
++        event.stopImmediatePropagation();
++      }
++    };
++    for (const type of interactionEvents) {
++      firstField.ownerDocument.addEventListener(
++        type,
++        suppressInteraction,
++        true
++      );
++    }
++
++    const touchedFields = [];
++    let field = firstField;
++    try {
++      for (let index = 0; index < value.length; index++) {
++        const character = value[index];
++        if (!this._isWritableOneTimeCodeField(field)) {
++          break;
++        }
++        if (!touchedFields.includes(field)) {
++          touchedFields.push(field);
++          this._clearOneTimeCodeField(field);
++        }
++        this._insertOneTimeCodeCharacter(field, character);
++        await this._wait(field.documentGlobal, 10);
++        field = await this._nextOneTimeCodeField(field);
++        if (!field && index + 1 < value.length) {
++          break;
++        }
++      }
++
++      if (!this._oneTimeCodeWasInserted(touchedFields, value)) {
++        this._setOneTimeCodeValue(firstField, value);
++        touchedFields.splice(0, touchedFields.length, firstField);
++      }
++      return this._oneTimeCodeWasInserted(touchedFields, value);
++    } finally {
++      for (const type of interactionEvents) {
++        firstField.ownerDocument.removeEventListener(
++          type,
++          suppressInteraction,
++          true
++        );
++      }
++    }
++  }
++
+   _updateInfoValues(aElements) {
+     if (!this._autofillInfos) {
+       return [];

@@ -25,11 +25,13 @@ public enum PromptRequest {
     case alert(AlertPromptRequest)
     case button(ButtonPromptRequest)
     case text(TextPromptRequest)
+    case auth(AuthPromptRequest)
     case folderUpload(FolderUploadPromptRequest)
     case color(ColorPromptRequest)
     case dateTime(DateTimePromptRequest)
     case file(FilePickerPromptRequest)
     case choice(SelectPromptRequest)
+    case share(SharePromptRequest)
     
     public var id: String {
         switch self {
@@ -38,6 +40,8 @@ public enum PromptRequest {
         case .button(let request):
             return request.id
         case .text(let request):
+            return request.id
+        case .auth(let request):
             return request.id
         case .folderUpload(let request):
             return request.id
@@ -48,6 +52,8 @@ public enum PromptRequest {
         case .file(let request):
             return request.id
         case .choice(let request):
+            return request.id
+        case .share(let request):
             return request.id
         }
     }

@@ -24,9 +24,9 @@ final class AddonsPreferencesViewController: SettingsTableViewController {
         var text: SettingsSectionText {
             switch self {
             case .installed:
-                return SettingsSectionText(headerTitle: "Installed Add-ons")
+                return SettingsSectionText(headerTitle: NSLocalizedString("Installed Add-ons", comment: ""))
             case .unsupported:
-                return SettingsSectionText(headerTitle: "Unsupported Add-ons")
+                return SettingsSectionText(headerTitle: NSLocalizedString("Unsupported Add-ons", comment: ""))
             case .more:
                 return SettingsSectionText()
             }
@@ -81,20 +81,20 @@ final class AddonsPreferencesViewController: SettingsTableViewController {
     
     private var addonUpdateActionTitle: String {
         if isCheckingForAddonUpdates {
-            return "Updating Add-ons..."
+            return NSLocalizedString("Updating Add-ons…", comment: "")
         }
         if let browserViewController = LibrarySharedUtils.resolvedBrowserViewController(from: self),
            browserViewController.addonCoordinator.updateCoordinator.hasPendingApprovals {
-            return "Complete Add-on Updates"
+            return NSLocalizedString("Complete Add-on Updates", comment: "")
         }
-        return "Update All Add-ons"
+        return NSLocalizedString("Update All Add-ons", comment: "")
     }
     
     // MARK: - Lifecycle
     
     init() {
         super.init(style: .appGrouped)
-        title = "Add-ons"
+        title = NSLocalizedString("Add-ons", comment: "")
     }
     
     required init?(coder: NSCoder) {
@@ -148,9 +148,9 @@ final class AddonsPreferencesViewController: SettingsTableViewController {
         switch displayedSections[indexPath.section] {
         case .installed:
             if installedAddons.isEmpty {
-                let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+                let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
                 cell.selectionStyle = .none
-                cell.textLabel?.text = isLoadingAddons ? "Loading Add-ons..." : "No Add-ons Installed"
+                cell.textLabel?.text = isLoadingAddons ? NSLocalizedString("Loading Add-ons…", comment: "") : NSLocalizedString("No Add-ons Installed", comment: "")
                 cell.textLabel?.textColor = .appSecondaryLabel
                 return cell
             }
@@ -161,7 +161,7 @@ final class AddonsPreferencesViewController: SettingsTableViewController {
             
             let addon = installedAddons[indexPath.row]
             let statusText = statusText(for: addon)
-            let cell = UITableViewCell(style: statusText == nil ? .default : .subtitle, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: statusText == nil ? .default : .subtitle, reuseIdentifier: nil)
             cell.textLabel?.text = addon.metaData.name ?? addon.id
             cell.detailTextLabel?.text = statusText
             cell.detailTextLabel?.textColor = .appSecondaryLabel
@@ -176,8 +176,8 @@ final class AddonsPreferencesViewController: SettingsTableViewController {
             }
             
             let addon = unsupportedAddons[indexPath.row]
-            let statusText = statusText(for: addon) ?? "Unsupported"
-            let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
+            let statusText = statusText(for: addon) ?? NSLocalizedString("Unsupported", comment: "")
+            let cell = SettingsTableViewCell(style: .subtitle, reuseIdentifier: nil)
             cell.textLabel?.text = addon.metaData.name ?? addon.id
             cell.detailTextLabel?.text = statusText
             cell.detailTextLabel?.textColor = .appSecondaryLabel
@@ -190,13 +190,13 @@ final class AddonsPreferencesViewController: SettingsTableViewController {
             guard displayedMoreRows.indices.contains(indexPath.row) else {
                 return UITableViewCell()
             }
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
             switch displayedMoreRows[indexPath.row] {
             case .discover:
-                cell.textLabel?.text = "Discover Add-ons..."
+                cell.textLabel?.text = NSLocalizedString("Discover Add-ons…", comment: "")
                 cell.textLabel?.textColor = view.tintColor
             case .installFromFile:
-                cell.textLabel?.text = isInstallingAddonFromFile ? "Installing Add-on..." : "Install Add-on From File..."
+                cell.textLabel?.text = isInstallingAddonFromFile ? NSLocalizedString("Installing Add-on…", comment: "") : NSLocalizedString("Install Add-on from File…", comment: "")
                 cell.textLabel?.textColor = isInstallingAddonFromFile ? .appSecondaryLabel : view.tintColor
                 if isInstallingAddonFromFile {
                     cell.selectionStyle = .none
@@ -228,7 +228,7 @@ final class AddonsPreferencesViewController: SettingsTableViewController {
                 return
             }
             navigationController?.pushViewController(
-                AddonDetailsPreferencesViewController(addonID: addon.id),
+                AddonDetailsPreferencesViewController(addonID: addon.id, addonName: addon.metaData.name ?? addon.id),
                 animated: true
             )
         case .more:
@@ -272,7 +272,7 @@ final class AddonsPreferencesViewController: SettingsTableViewController {
             }
             if let lastGlobalCheckAt = Prefs.AddonSettings.lastGlobalCheckAt {
                 return SettingsSectionText(
-                    footerTitle: "Last checked on \(lastCheckedDateFormatter.string(from: lastGlobalCheckAt))."
+                    footerTitle: String(format: NSLocalizedString("Last checked %@.", comment: "Date placeholder"), lastCheckedDateFormatter.string(from: lastGlobalCheckAt))
                 )
             }
             return displayedSection.text
@@ -489,7 +489,7 @@ final class AddonsPreferencesViewController: SettingsTableViewController {
             return statusText
         }
         if addon.metaData.isUnsupported {
-            return "Unsupported"
+            return NSLocalizedString("Unsupported", comment: "")
         }
         return nil
     }
@@ -518,10 +518,11 @@ final class AddonsPreferencesViewController: SettingsTableViewController {
             return
         }
         
-        pendingApprovalAddonIDs.forEach { addonStatusTextByID[$0] = "Needs permission to update" }
-        updateFooterMessage = pendingApprovalAddonIDs.count == 1
-        ? "1 add-on needs permission to update."
-        : "\(pendingApprovalAddonIDs.count) add-ons need permission to update."
+        pendingApprovalAddonIDs.forEach { addonStatusTextByID[$0] = NSLocalizedString("Needs Permission to Update", comment: "") }
+        updateFooterMessage = String.localizedStringWithFormat(
+            NSLocalizedString("%d add-ons need permission to update.", comment: "Add-on count"),
+            pendingApprovalAddonIDs.count
+        )
     }
     
     private func updateAddons() {
@@ -549,7 +550,7 @@ final class AddonsPreferencesViewController: SettingsTableViewController {
                 self.isCheckingForAddonUpdates = false
 
                 let pendingApprovalAddonIDs = Prefs.AddonSettings.pendingApprovalAddonIDs
-                pendingApprovalAddonIDs.forEach { self.addonStatusTextByID[$0] = "Needs permission to update" }
+                pendingApprovalAddonIDs.forEach { self.addonStatusTextByID[$0] = NSLocalizedString("Needs Permission to Update", comment: "") }
                 self.updateFooterMessage = self.updateFooterSummary(for: result)
                 self.tableView.reloadData()
             }
@@ -580,23 +581,34 @@ final class AddonsPreferencesViewController: SettingsTableViewController {
         var parts: [String] = []
         
         if result.updatedCount > 0 {
-            parts.append(result.updatedCount == 1 ? "1 add-on updated." : "\(result.updatedCount) add-ons updated.")
+            parts.append(
+                String.localizedStringWithFormat(
+                    NSLocalizedString("%d add-ons updated.", comment: "Add-on count"),
+                    result.updatedCount
+                )
+            )
         }
         
         if result.pendingApprovalCount > 0 {
             parts.append(
-                result.pendingApprovalCount == 1
-                ? "1 add-on needs permission to update."
-                : "\(result.pendingApprovalCount) add-ons need permission to update."
+                String.localizedStringWithFormat(
+                    NSLocalizedString("%d add-ons need permission to update.", comment: "Add-on count"),
+                    result.pendingApprovalCount
+                )
             )
         }
         
         if result.failedCount > 0 {
-            parts.append(result.failedCount == 1 ? "1 add-on failed to update." : "\(result.failedCount) add-ons failed to update.")
+            parts.append(
+                String.localizedStringWithFormat(
+                    NSLocalizedString("%d add-ons couldn’t be updated.", comment: "Add-on count"),
+                    result.failedCount
+                )
+            )
         }
         
         if parts.isEmpty, result.noUpdateCount > 0 {
-            return "No updates found."
+            return NSLocalizedString("No updates found.", comment: "")
         }
         
         return parts.isEmpty ? nil : parts.joined(separator: " ")

@@ -18,8 +18,10 @@
 @property(nonatomic, assign) DeviceProvider *sharedProvider;
 @property(nonatomic, strong) dispatch_queue_t providerQueue;
 @property(nonatomic, assign) BOOL didEnsureDDIMounted;
+@property(nonatomic, copy) NSString *jitHelper;
 
 - (DeviceProvider *)getProvider:(NSError **)error;
+- (void)resolveJITHelper;
 
 @end
 
@@ -40,41 +42,68 @@
         _sharedProvider = NULL;
         _providerQueue = dispatch_queue_create("com.minh-ton.Reynard.JITEnabler.ProviderQueue", DISPATCH_QUEUE_SERIAL);
         _didEnsureDDIMounted = NO;
+        [self resolveJITHelper];
     }
     return self;
+}
+
+- (void)resolveJITHelper {
+    NSBundle *bundle = NSBundle.mainBundle;
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    NSArray<NSString *> *helperNames = @[@"ts_ptrace_jit", @"jb_ptrace_jit"];
+    NSString *helperName = helperNames.firstObject;
+    NSString *helperPath = [bundle.bundlePath stringByAppendingPathComponent:helperName];
+    
+    for (NSString *candidateName in helperNames) {
+        NSString *bundleCandidate = [bundle.bundlePath stringByAppendingPathComponent:candidateName];
+        if ([fileManager fileExistsAtPath:bundleCandidate]) {
+            helperName = candidateName;
+            helperPath = bundleCandidate;
+            break;
+        }
+        
+        NSString *resourceCandidate = [bundle.resourcePath stringByAppendingPathComponent:candidateName];
+        if ([fileManager fileExistsAtPath:resourceCandidate]) {
+            helperName = candidateName;
+            helperPath = resourceCandidate;
+            break;
+        }
+        
+        NSURL *auxURL = [bundle URLForAuxiliaryExecutable:candidateName];
+        if (auxURL.path.length > 0 && [fileManager fileExistsAtPath:auxURL.path]) {
+            helperName = candidateName;
+            helperPath = auxURL.path;
+            break;
+        }
+    }
+    
+    self.jitHelper = helperPath;
 }
 
 - (BOOL)enableJITForPID:(int32_t)pid hasTXMSupport:(BOOL)hasTXMSupport error:(NSError **)error {
     // TrollStore or jailbroken devices
     if (getEntitlementValue(@"com.apple.private.security.no-sandbox")) {
-        NSBundle *bundle = NSBundle.mainBundle;
-        NSString *helperPath = [bundle.bundlePath stringByAppendingPathComponent:@"ptrace_jit"];
-        if (![[NSFileManager defaultManager] fileExistsAtPath:helperPath]) {
-            NSString *resourceCandidate = [bundle.resourcePath stringByAppendingPathComponent:@"ptrace_jit"];
-            if ([[NSFileManager defaultManager] fileExistsAtPath:resourceCandidate]) helperPath = resourceCandidate;
-        }
-        if (![[NSFileManager defaultManager] fileExistsAtPath:helperPath]) {
-            NSURL *auxURL = [bundle URLForAuxiliaryExecutable:@"ptrace_jit"];
-            if (auxURL.path.length > 0) helperPath = auxURL.path;
-        }
+        NSString *jitHelper = self.jitHelper;
+        NSString *helperName = jitHelper.lastPathComponent;
+        NSFileManager *fileManager = NSFileManager.defaultManager;
         
-        int result = spawnRoot(helperPath, @[[NSString stringWithFormat:@"%d", pid]]);
-        logger([NSString stringWithFormat:@"ptrace_jit result %d", result]);
+        int result = spawnRoot(jitHelper, @[[NSString stringWithFormat:@"%d", pid]]);
+        logger([NSString stringWithFormat:@"%@ result %d", helperName, result]);
         
         if (result != 0 && result != EACCES && result != ENOENT && result != ENOEXEC && result != 126 && result != 127) {
             // keep existing behavior for non-permission failures
         } else if (result == EACCES || result == ENOENT || result == ENOEXEC || result == 126 || result == 127) {
-            NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"ptrace_jit"];
+            NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:helperName];
             NSError *copyError = nil;
-            [[NSFileManager defaultManager] removeItemAtPath:tempPath error:nil];
-            if ([[NSFileManager defaultManager] copyItemAtPath:helperPath toPath:tempPath error:&copyError]) {
+            [fileManager removeItemAtPath:tempPath error:nil];
+            if ([fileManager copyItemAtPath:jitHelper toPath:tempPath error:&copyError]) {
                 chmod(tempPath.UTF8String, 0755);
-                if ([[NSFileManager defaultManager] isExecutableFileAtPath:tempPath]) {
-                    logger([NSString stringWithFormat:@"Retrying ptrace_jit from temp path %@", tempPath]);
+                if ([fileManager isExecutableFileAtPath:tempPath]) {
+                    logger([NSString stringWithFormat:@"Retrying %@ from temp path %@", helperName, tempPath]);
                     result = spawnRoot(tempPath, @[[NSString stringWithFormat:@"%d", pid]]);
                 }
             } else {
-                logger([NSString stringWithFormat:@"Failed to copy ptrace_jit to temp path: %@", copyError.localizedDescription ?: @"unknown"]);
+                logger([NSString stringWithFormat:@"Failed to copy %@ to temp path: %@", helperName, copyError.localizedDescription ?: @"unknown"]);
             }
         }
         if (result >= 128) {

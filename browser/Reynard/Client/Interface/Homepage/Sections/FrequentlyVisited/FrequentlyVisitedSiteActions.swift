@@ -19,22 +19,22 @@ struct FrequentlyVisitedSiteActions {
         return UIContextMenuConfiguration(identifier: site.url as NSURL, previewProvider: nil) { _ in
             UIMenu(title: "", children: [
                 UIMenu(title: "", options: .displayInline, children: [
-                    UIAction(title: "Open in New Tab", image: UIImage(named: "reynard.plus.square.on.square")) { _ in
+                    UIAction(title: NSLocalizedString("Open in New Tab", comment: ""), image: UIImage(named: "reynard.plus.square.on.square")) { _ in
                         openInNewTab()
                     },
-                    UIAction(title: "Open in New Private Tab", image: UIImage(named: "reynard.plus.square.on.square")) { _ in
+                    UIAction(title: NSLocalizedString("Open in New Private Tab", comment: ""), image: UIImage(named: "reynard.plus.square.fill.on.square.fill")) { _ in
                         openInNewPrivateTab()
                     },
                 ]),
                 UIMenu(title: "", options: .displayInline, children: [
-                    UIAction(title: "Copy Link", image: UIImage(named: "reynard.document.on.document")) { _ in
+                    UIAction(title: NSLocalizedString("Copy Link", comment: ""), image: UIImage(named: "reynard.document.on.document")) { _ in
                         UIPasteboard.general.string = site.url.absoluteString
                     },
-                    UIAction(title: "Share Link", image: UIImage(named: "reynard.square.and.arrow.up")) { _ in
+                    UIAction(title: NSLocalizedString("Share Link", comment: ""), image: UIImage(named: "reynard.square.and.arrow.up")) { _ in
                         shareLink(site.url)
                     },
                 ]),
-                UIAction(title: "Remove Link", image: UIImage(named: "reynard.minus.circle")) { _ in
+                UIAction(title: NSLocalizedString("Remove Link", comment: ""), image: UIImage(named: "reynard.minus.circle"), attributes: .destructive) { _ in
                     removeLink()
                 },
             ])
@@ -69,12 +69,17 @@ extension FrequentlyVisitedSectionViewController: UIContextMenuInteractionDelega
                 
                 self.delegate?.homepageSection(self, didRequestOpenURL: site.url, disposition: .newPrivateTab)
             },
-            shareLink: { [weak self] url in
-                guard let self else {
+            shareLink: { [weak self, weak cardView] url in
+                guard let self,
+                      let cardView else {
                     return
                 }
                 
-                self.delegate?.homepageSection(self, didRequestShareURL: url)
+                self.delegate?.homepageSection(
+                    self,
+                    didRequestShareURL: url,
+                    sourceView: cardView
+                )
             },
             removeLink: { [weak self] in
                 guard let self else {

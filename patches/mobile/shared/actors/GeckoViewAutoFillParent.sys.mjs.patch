@@ -1,0 +1,62 @@
+diff --git a/mobile/shared/actors/GeckoViewAutoFillParent.sys.mjs b/mobile/shared/actors/GeckoViewAutoFillParent.sys.mjs
+index d7248d61feb9..74e35b2a1a8f 100644
+--- a/mobile/shared/actors/GeckoViewAutoFillParent.sys.mjs
++++ b/mobile/shared/actors/GeckoViewAutoFillParent.sys.mjs
+@@ -14,6 +14,7 @@ export class GeckoViewAutoFillParent extends GeckoViewActorParent {
+   constructor() {
+     super();
+     this.sessionId = Services.uuid.generateUUID().toString().slice(1, -1); // discard the surrounding curly braces
++    this.focusedOneTimeCodeActor = null;
+   }
+ 
+   get rootActor() {
+@@ -30,13 +31,29 @@ export class GeckoViewAutoFillParent extends GeckoViewActorParent {
+     // We will start a new session if the current one does not exist.
+     const autofill = lazy.gAutofillManager.ensure(
+       this.sessionId,
+-      this.eventDispatcher
++      this.eventDispatcher,
++      this
+     );
+     return autofill?.add(node);
+   }
+ 
+-  focus(node) {
+-    this.autofill?.focus(node);
++  focus(node, sourceActor = this) {
++    const autofill = node?.isOneTimeCode
++      ? lazy.gAutofillManager.ensure(this.sessionId, this.eventDispatcher, this)
++      : this.autofill;
++    if (node?.isOneTimeCode) {
++      this.focusedOneTimeCodeActor = sourceActor;
++    } else {
++      this.focusedOneTimeCodeActor = null;
++    }
++    autofill?.focus(node);
++  }
++
++  fillOneTimeCode(fieldUuid, value) {
++    return this.focusedOneTimeCodeActor?.sendQuery("FillOneTimeCode", {
++      fieldUuid,
++      value,
++    });
+   }
+ 
+   commit(node) {
+@@ -48,6 +65,7 @@ export class GeckoViewAutoFillParent extends GeckoViewActorParent {
+   }
+ 
+   clear() {
++    this.focusedOneTimeCodeActor = null;
+     lazy.gAutofillManager.delete(this.sessionId);
+   }
+ 
+@@ -62,7 +80,7 @@ export class GeckoViewAutoFillParent extends GeckoViewActorParent {
+         return this.rootActor.add(aMessage.data.node);
+       }
+       case "Focus": {
+-        this.rootActor.focus(aMessage.data.node);
++        this.rootActor.focus(aMessage.data.node, this);
+         break;
+       }
+       case "Update": {

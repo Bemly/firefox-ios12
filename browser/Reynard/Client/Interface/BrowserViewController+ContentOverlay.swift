@@ -66,6 +66,7 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
     
     func endSearchEditing() {
         view.endEditing(true)
+        requestContentKeyboardFocus()
     }
     
     // MARK: - Homepage Overlay Delegate
@@ -105,7 +106,7 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
     }
     
     var homepageTabActions: ContextMenuTabActions {
-        return ContextMenuTabActions(tabManager: tabManager)
+        return ContextMenuTabActions(tabManager: tabManager, sessionManager: sessionManager)
     }
     
     func openURLFromHomepage(_ url: URL, disposition: TabOpenDisposition) {
@@ -116,7 +117,7 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
         case .currentTab:
             tabManager.browse(to: url.absoluteString)
             return
-        case .newTab:
+        case .newTab, .backgroundTab:
             mode = tabManager.selectedTabMode
             target = .afterSelected
         case .newPrivateTab:
@@ -124,13 +125,17 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
             target = tabManager.selectedTabMode == .private ? .afterSelected : .end
         }
         
-        let tabIndex = tabManager.createTab(selecting: false, target: target, mode: mode)
+        let tabIndex = tabManager.createTab(selecting: disposition != .backgroundTab, target: target, mode: mode)
         let tabs = mode == .private ? tabManager.privateTabs : tabManager.regularTabs
         guard let tab = tabs[safe: tabIndex] else {
             return
         }
         
         tabManager.browse(to: url.absoluteString, in: tab)
+        guard disposition != .backgroundTab else {
+            return
+        }
+        
         captureThumbnail(forTabAt: tabManager.selectedTabIndex, mode: tabManager.selectedTabMode) { [weak self] _ in
             guard let self else {
                 return
@@ -143,8 +148,12 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
         }
     }
     
-    func shareURLFromHomepage(_ url: URL) {
-        presentShareSheet(url: url.absoluteString)
+    func shareURLFromHomepage(_ url: URL, sourceView: UIView) {
+        presentShareSheet(
+            items: [url],
+            sourceView: sourceView,
+            sourceRect: sourceView.bounds
+        )
     }
     
     func openSettingsFromHomepage() {
@@ -162,6 +171,7 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
     
     func endHomepageEditing() {
         view.endEditing(true)
+        requestContentKeyboardFocus()
     }
     
     func updateHomepageLayout(animated: Bool, duration: TimeInterval) {
@@ -181,6 +191,7 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
     }
     
     func addressBarDidBeginEditing(_ addressBar: AddressBar) {
+        toolbarController.lock(for: .addressBarEditing)
         homepageOverlayCoordinator.addressBarDidBeginEditing(addressBar)
         searchOverlayCoordinator.addressBarDidBeginEditing(addressBar)
     }
@@ -188,10 +199,23 @@ extension BrowserViewController: ContentOverlayCoordinatorHost, SearchOverlayCoo
     func addressBarDidEndEditing(_ addressBar: AddressBar) {
         homepageOverlayCoordinator.addressBarDidEndEditing(addressBar)
         searchOverlayCoordinator.addressBarDidEndEditing(addressBar)
+        toolbarController.unlock(for: .addressBarEditing)
     }
     
     func addressBar(_ addressBar: AddressBar, didChangeText text: String, previousText: String, isDelete: Bool) {
         searchOverlayCoordinator.addressBar(addressBar, didChangeText: text, previousText: previousText, isDelete: isDelete)
         homepageOverlayCoordinator.addressBar(addressBar, didChangeText: text, previousText: previousText, isDelete: isDelete)
+    }
+    
+    func addressBarCanNavigateSuggestions(_ addressBar: AddressBar) -> Bool {
+        return searchOverlayCoordinator.canNavigateSuggestions
+    }
+    
+    func addressBar(_ addressBar: AddressBar, didMoveSuggestionSelectionBy offset: Int) {
+        searchOverlayCoordinator.moveSuggestionSelection(by: offset)
+    }
+    
+    func addressBarDidRequestSubmitSelectedSuggestion(_ addressBar: AddressBar) -> Bool {
+        return searchOverlayCoordinator.submitSelectedSuggestion()
     }
 }

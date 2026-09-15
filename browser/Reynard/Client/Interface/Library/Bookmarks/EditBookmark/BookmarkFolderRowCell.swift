@@ -79,7 +79,13 @@ final class BookmarkFolderRowCell: UITableViewCell {
     
     func configure(folder: BookmarkFolderSnapshot, depth: Int, isSelected: Bool) {
         hierarchyDepth = depth
-        folderTitleLabel.text = folder.title
+        if folder.isProtected && folder.title == "Bookmarks" {
+            folderTitleLabel.text = NSLocalizedString("Bookmarks", comment: "")
+        } else if folder.isProtected && folder.title == "Favorites" {
+            folderTitleLabel.text = NSLocalizedString("Favorites", comment: "")
+        } else {
+            folderTitleLabel.text = folder.title
+        }
         folderIconLeadingConstraint?.constant = CGFloat(depth) * UX.hierarchyIndentWidth
         folderIconView.tintColor = isSelected ? .systemBlue : .appSecondaryLabel
         

@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/ExternalResponseService.mm b/widget/uikit/ExternalResponseService.mm
 new file mode 100644
-index 000000000000..33a52199595e
+index 000000000000..e4858ffc0021
 --- /dev/null
 +++ b/widget/uikit/ExternalResponseService.mm
-@@ -0,0 +1,540 @@
+@@ -0,0 +1,937 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -13,12 +13,14 @@ index 000000000000..33a52199595e
 +
 +#include "ExternalResponseService.h"
 +
++#include "js/Array.h"
 +#include "js/Object.h"
 +#include "js/PropertyAndElement.h"
 +#include "js/RootingAPI.h"
 +#include "js/String.h"
 +#include "js/Value.h"
 +#include "mozilla/StaticPtr.h"
++#include "mozilla/TimeStamp.h"
 +#include "mozilla/dom/BrowsingContext.h"
 +#include "mozilla/dom/CanonicalBrowsingContext.h"
 +#include "mozilla/dom/ScriptSettings.h"
@@ -34,14 +36,14 @@ index 000000000000..33a52199595e
 +#include "nsIHttpHeaderVisitor.h"
 +#include "nsIInputStream.h"
 +#include "nsIInterfaceRequestor.h"
-+#include "nsILoadInfo.h"
++#include "nsIMIMEService.h"
 +#include "nsIOutputStream.h"
 +#include "nsIRequest.h"
 +#include "nsIStreamListener.h"
 +#include "nsITransfer.h"
++#include "nsMimeTypes.h"
 +#include "nsNetUtil.h"
 +#include "nsPrintfCString.h"
-+#include "nsReadableUtils.h"
 +#include "nsStreamUtils.h"
 +#include "nsString.h"
 +#include "nsXPCOM.h"
@@ -49,39 +51,19 @@ index 000000000000..33a52199595e
 +
 +using namespace mozilla;
 +
-+// REYNARD: Capture final external download responses on iOS and dispatch the
-+// resolved URL plus response metadata to Swift so the app can download with
-+// URLSession instead of handing the transfer back to Gecko.
-+
 +namespace {
 +
-+struct HeaderEntry {
-+  nsCString name;
-+  nsCString value;
-+};
-+
-+class HeaderCollector final : public nsIHttpHeaderVisitor {
-+ public:
-+  NS_DECL_THREADSAFE_ISUPPORTS
-+
-+  NS_IMETHOD VisitHeader(const nsACString& aHeader,
-+                         const nsACString& aValue) override {
-+    HeaderEntry& entry = *mEntries.AppendElement();
-+    entry.name = nsCString(aHeader);
-+    ToLowerCase(entry.name);
-+    entry.value = nsCString(aValue);
-+    return NS_OK;
-+  }
-+
-+  const nsTArray<HeaderEntry>& Entries() const { return mEntries; }
-+
-+ private:
-+  ~HeaderCollector() = default;
-+
-+  nsTArray<HeaderEntry> mEntries;
-+};
-+
-+NS_IMPL_ISUPPORTS(HeaderCollector, nsIHttpHeaderVisitor)
++static constexpr auto kExternalResponseEvent = u"GeckoView:ExternalResponse"_ns;
++static constexpr auto kExternalResponseProgressEvent =
++    u"GeckoView:ExternalResponseProgress"_ns;
++static constexpr auto kExternalResponseCompleteEvent =
++    u"GeckoView:ExternalResponseComplete"_ns;
++static constexpr char kExternalResponseCancelEvent[] =
++    "GeckoView:ExternalResponseCancel";
++static constexpr char kExternalResponsePauseEvent[] =
++    "GeckoView:ExternalResponsePause";
++static constexpr char kExternalResponseResumeEvent[] =
++    "GeckoView:ExternalResponseResume";
 +
 +bool DefineUTF8StringProperty(JSContext* aCx, JS::HandleObject aObject,
 +                              const char* aName, const nsACString& aValue) {
@@ -108,53 +90,66 @@ index 000000000000..33a52199595e
 +  return JS_DefineProperty(aCx, aObject, aName, value, JSPROP_ENUMERATE);
 +}
 +
-+bool DefineOptionalInt64Property(JSContext* aCx, JS::HandleObject aObject,
-+                                 const char* aName, int64_t aValue,
-+                                 bool aShouldDefine) {
-+  if (!aShouldDefine) {
-+    return true;
-+  }
-+
++bool DefineInt64Property(JSContext* aCx, JS::HandleObject aObject,
++                         const char* aName, int64_t aValue) {
 +  JS::RootedValue value(aCx, JS::NumberValue(static_cast<double>(aValue)));
 +  return JS_DefineProperty(aCx, aObject, aName, value, JSPROP_ENUMERATE);
 +}
 +
-+bool DefineHeadersProperty(JSContext* aCx, JS::HandleObject aObject,
-+                           const char* aName,
-+                           const nsTArray<HeaderEntry>& aHeaders) {
-+  JS::RootedObject headers(aCx, JS_NewPlainObject(aCx));
-+  if (!headers) {
-+    return false;
-+  }
++class ResponseHeaderCollector final : public nsIHttpHeaderVisitor {
++ public:
++  NS_DECL_THREADSAFE_ISUPPORTS
 +
-+  for (const HeaderEntry& header : aHeaders) {
-+    if (!DefineUTF8StringProperty(aCx, headers, header.name.get(),
-+                                  header.value)) {
-+      return false;
++  ResponseHeaderCollector(JSContext* aCx, JS::HandleObject aHeaders)
++      : mCx(aCx), mHeaders(aCx, aHeaders) {}
++
++  nsresult AppendHeader(const nsACString& aName, const nsACString& aValue) {
++    JS::RootedObject header(mCx, JS_NewPlainObject(mCx));
++    if (!header) {
++      return NS_ERROR_OUT_OF_MEMORY;
 +    }
-+  }
 +
-+  JS::RootedValue headersValue(aCx, JS::ObjectValue(*headers));
-+  return JS_DefineProperty(aCx, aObject, aName, headersValue, JSPROP_ENUMERATE);
-+}
-+
-+nsCString FindHeaderValue(const nsTArray<HeaderEntry>& aHeaders,
-+                          const nsACString& aName) {
-+  nsCString normalizedName(aName);
-+  ToLowerCase(normalizedName);
-+
-+  for (const HeaderEntry& header : aHeaders) {
-+    if (header.name == normalizedName) {
-+      return header.value;
++    if (!DefineUTF8StringProperty(mCx, header, "name", aName) ||
++        !DefineUTF8StringProperty(mCx, header, "value", aValue)) {
++      return NS_ERROR_FAILURE;
 +    }
++
++    JS::RootedValue headerValue(mCx, JS::ObjectValue(*header));
++    JS::RootedObject headers(mCx, mHeaders);
++    if (!JS_SetElement(mCx, headers, mHeaderCount, headerValue)) {
++      return NS_ERROR_FAILURE;
++    }
++
++    ++mHeaderCount;
++    if (aName.Equals("content-disposition"_ns,
++                     nsCaseInsensitiveCStringComparator)) {
++      mHasContentDisposition = true;
++    }
++    return NS_OK;
 +  }
 +
-+  return nsCString();
-+}
++  NS_IMETHOD VisitHeader(const nsACString& aHeader,
++                         const nsACString& aValue) override {
++    return AppendHeader(aHeader, aValue);
++  }
++
++  bool HasContentDisposition() const { return mHasContentDisposition; }
++
++ private:
++  ~ResponseHeaderCollector() = default;
++
++  JSContext* mCx;
++  JS::PersistentRootedObject mHeaders;
++  uint32_t mHeaderCount = 0;
++  bool mHasContentDisposition = false;
++};
++
++NS_IMPL_ISUPPORTS(ResponseHeaderCollector, nsIHttpHeaderVisitor)
 +
 +class ExternalResponseListener final : public nsIStreamListener,
 +                                       public nsIInterfaceRequestor,
-+                                       public nsIChannelEventSink {
++                                       public nsIChannelEventSink,
++                                       public nsIGeckoViewEventListener {
 + public:
 +  explicit ExternalResponseListener(nsWindow* aWindow) : mWindow(aWindow) {
 +    MOZ_ASSERT(aWindow);
@@ -165,102 +160,194 @@ index 000000000000..33a52199595e
 +  NS_DECL_NSISTREAMLISTENER
 +  NS_DECL_NSIINTERFACEREQUESTOR
 +  NS_DECL_NSICHANNELEVENTSINK
++  NS_DECL_NSIGECKOVIEWEVENTLISTENER
++
++  enum class DecisionType {
++    Acceptance,
++    Progress,
++  };
++
++  enum class TransferState {
++    PendingStart,
++    AwaitingAcceptance,
++    Transferring,
++    Paused,
++    Finished,
++  };
++
++  void HandleDecision(nsIRequest* aRequest, DecisionType aType,
++                      bool aShouldContinue);
 +
 + private:
 +  ~ExternalResponseListener() = default;
 +
 +  nsresult BeginCapturingResponseBody();
++  void CloseCapturedResponseStream();
 +  void CleanupCapturedResponseBody();
-+  bool ShouldCaptureResponseBody(nsIChannel* aChannel);
-+  nsresult DispatchExternalResponse(nsIChannel* aChannel);
++  void AbortStartup(nsIRequest* aRequest, nsresult aStatus);
++  nsresult RegisterControlListeners();
++  void UnregisterControlListeners();
++  nsresult SuspendRequest(nsIRequest* aRequest);
++  nsresult ResumeRequest(nsIRequest* aRequest);
++  void CancelAndResumeRequest(nsIRequest* aRequest, nsresult aStatus);
++  nsresult DispatchExternalResponse(nsIChannel* aChannel,
++                                    nsIGeckoViewEventCallback* aCallback);
++  nsresult DispatchProgress(nsIRequest* aRequest);
++  nsresult DispatchCompletion(bool aSucceeded);
 +
 +  RefPtr<nsWindow> mWindow;
 +  nsCOMPtr<nsIFile> mCapturedResponseFile;
 +  nsCOMPtr<nsIOutputStream> mCapturedResponseStream;
-+  bool mIsCapturingResponseBody = false;
++  nsCOMPtr<nsIRequest> mRequest;
++  uint64_t mCapturedBytes = 0;
++  TimeStamp mLastProgressReport;
++  TransferState mTransferState = TransferState::PendingStart;
++  bool mRequestSuspended = false;
++  bool mControlListenersRegistered = false;
 +};
 +
 +NS_IMPL_ISUPPORTS(ExternalResponseListener, nsIStreamListener,
-+                  nsIInterfaceRequestor, nsIChannelEventSink)
++                  nsIInterfaceRequestor, nsIChannelEventSink,
++                  nsIGeckoViewEventListener)
++
++class ExternalResponseDecisionCallback final
++    : public nsIGeckoViewEventCallback {
++ public:
++  ExternalResponseDecisionCallback(ExternalResponseListener* aListener,
++                                   nsIRequest* aRequest,
++                                   ExternalResponseListener::DecisionType aType)
++      : mListener(aListener), mRequest(aRequest), mType(aType) {}
++
++  NS_DECL_ISUPPORTS
++
++  NS_IMETHOD OnSuccess(JS::Handle<JS::Value> aData, JSContext* aCx) override {
++    mListener->HandleDecision(mRequest, mType,
++                              aData.isBoolean() && aData.toBoolean());
++    return NS_OK;
++  }
++
++  NS_IMETHOD OnError(JS::Handle<JS::Value> aData, JSContext* aCx) override {
++    mListener->HandleDecision(mRequest, mType, false);
++    return NS_OK;
++  }
++
++ private:
++  ~ExternalResponseDecisionCallback() = default;
++
++  RefPtr<ExternalResponseListener> mListener;
++  nsCOMPtr<nsIRequest> mRequest;
++  ExternalResponseListener::DecisionType mType;
++};
++
++NS_IMPL_ISUPPORTS(ExternalResponseDecisionCallback, nsIGeckoViewEventCallback)
 +
 +NS_IMETHODIMP ExternalResponseListener::OnStartRequest(nsIRequest* aRequest) {
++  MOZ_ASSERT(mTransferState == TransferState::PendingStart);
++
 +  nsresult status = NS_OK;
 +  aRequest->GetStatus(&status);
 +  if (NS_FAILED(status)) {
++    AbortStartup(aRequest, status);
 +    return NS_OK;
 +  }
 +
 +  nsCOMPtr<nsIChannel> channel = do_QueryInterface(aRequest);
 +  if (!channel) {
++    AbortStartup(aRequest, NS_ERROR_ABORT);
 +    return NS_OK;
 +  }
 +
 +  int32_t classification = nsContentSecurityUtils::ClassifyDownload(channel);
 +  if (classification == nsITransfer::DOWNLOAD_FORBIDDEN) {
-+    channel->Cancel(NS_ERROR_ABORT);
++    AbortStartup(aRequest, NS_ERROR_ABORT);
 +    return NS_OK;
 +  }
 +
-+  if (ShouldCaptureResponseBody(channel)) {
-+    return BeginCapturingResponseBody();
-+  }
-+
-+  nsresult rv = DispatchExternalResponse(channel);
++  nsresult rv = BeginCapturingResponseBody();
 +  if (NS_FAILED(rv)) {
++    AbortStartup(aRequest, rv);
 +    return rv;
 +  }
 +
-+  channel->Cancel(NS_BINDING_ABORTED);
-+  return NS_OK;
++  rv = SuspendRequest(aRequest);
++  if (NS_FAILED(rv)) {
++    AbortStartup(aRequest, rv);
++    return rv;
++  }
++  mTransferState = TransferState::AwaitingAcceptance;
++  mRequest = aRequest;
++
++  rv = RegisterControlListeners();
++  if (NS_FAILED(rv)) {
++    AbortStartup(aRequest, rv);
++    return rv;
++  }
++
++  RefPtr<ExternalResponseDecisionCallback> callback =
++      new ExternalResponseDecisionCallback(this, aRequest,
++                                           DecisionType::Acceptance);
++  rv = DispatchExternalResponse(channel, callback);
++  if (NS_FAILED(rv)) {
++    AbortStartup(aRequest, rv);
++  }
++  return rv;
 +}
 +
 +NS_IMETHODIMP ExternalResponseListener::OnStopRequest(nsIRequest* aRequest,
 +                                                      nsresult aStatusCode) {
-+  if (!mIsCapturingResponseBody) {
++  bool succeeded = NS_SUCCEEDED(aStatusCode) &&
++                   mTransferState == TransferState::Transferring;
++  mTransferState = TransferState::Finished;
++
++  UnregisterControlListeners();
++  ResumeRequest(aRequest);
++  mRequest = nullptr;
++
++  if (!mCapturedResponseFile) {
 +    return NS_OK;
 +  }
 +
-+  if (mCapturedResponseStream) {
-+    mCapturedResponseStream->Close();
-+    mCapturedResponseStream = nullptr;
-+  }
++  CloseCapturedResponseStream();
 +
-+  if (NS_FAILED(aStatusCode)) {
-+    mIsCapturingResponseBody = false;
-+    CleanupCapturedResponseBody();
-+    return NS_OK;
-+  }
-+
-+  nsCOMPtr<nsIChannel> channel = do_QueryInterface(aRequest);
-+  if (!channel) {
-+    mIsCapturingResponseBody = false;
-+    CleanupCapturedResponseBody();
-+    return NS_OK;
-+  }
-+
-+  nsresult rv = DispatchExternalResponse(channel);
-+  mIsCapturingResponseBody = false;
-+  if (NS_SUCCEEDED(rv)) {
++  nsresult rv = DispatchCompletion(succeeded);
++  if (succeeded && NS_SUCCEEDED(rv)) {
 +    mCapturedResponseFile = nullptr;
 +  } else {
 +    CleanupCapturedResponseBody();
 +  }
 +
-+  return rv;
++  return succeeded ? rv : NS_OK;
 +}
 +
 +NS_IMETHODIMP ExternalResponseListener::OnDataAvailable(
 +    nsIRequest* aRequest, nsIInputStream* aInputStream, uint64_t aOffset,
 +    uint32_t aCount) {
-+  if (mIsCapturingResponseBody && mCapturedResponseStream) {
-+    uint32_t written = 0;
-+    return aInputStream->ReadSegments(
-+        NS_CopySegmentToStream, mCapturedResponseStream, aCount, &written);
++  if (mTransferState != TransferState::Transferring ||
++      !mCapturedResponseStream) {
++    return NS_ERROR_ABORT;
 +  }
 +
-+  uint32_t discarded = 0;
-+  return aInputStream->ReadSegments(NS_DiscardSegment, nullptr, aCount,
-+                                    &discarded);
++  uint32_t written = 0;
++  nsresult rv = aInputStream->ReadSegments(
++      NS_CopySegmentToStream, mCapturedResponseStream, aCount, &written);
++  if (NS_FAILED(rv)) {
++    mTransferState = TransferState::Finished;
++    CancelAndResumeRequest(aRequest, rv);
++    return rv;
++  }
++
++  mCapturedBytes += written;
++  static const TimeDuration kProgressInterval =
++      TimeDuration::FromMilliseconds(500);
++  if (TimeStamp::Now() - mLastProgressReport >= kProgressInterval) {
++    rv = DispatchProgress(aRequest);
++    if (NS_FAILED(rv)) {
++      mTransferState = TransferState::Finished;
++      CancelAndResumeRequest(aRequest, rv);
++      return rv;
++    }
++  }
++  return NS_OK;
 +}
 +
 +NS_IMETHODIMP ExternalResponseListener::GetInterface(const nsIID& aIID,
@@ -281,6 +368,89 @@ index 000000000000..33a52199595e
 +  return NS_OK;
 +}
 +
++NS_IMETHODIMP ExternalResponseListener::OnEvent(
++    const nsAString& aEvent, JS::Handle<JS::Value> aData,
++    nsIGeckoViewEventCallback* aCallback) {
++  bool isCancel = aEvent.EqualsLiteral(kExternalResponseCancelEvent);
++  bool isPause = aEvent.EqualsLiteral(kExternalResponsePauseEvent);
++  bool isResume = aEvent.EqualsLiteral(kExternalResponseResumeEvent);
++  if ((!isCancel && !isPause && !isResume) || !mRequest ||
++      !mCapturedResponseFile) {
++    return NS_OK;
++  }
++
++  if (isCancel) {
++    if (mTransferState != TransferState::AwaitingAcceptance &&
++        mTransferState != TransferState::Transferring &&
++        mTransferState != TransferState::Paused) {
++      return NS_OK;
++    }
++  } else if (isPause) {
++    if (mTransferState != TransferState::Transferring) {
++      return NS_OK;
++    }
++  } else if (mTransferState != TransferState::Paused) {
++    return NS_OK;
++  }
++
++  if (!aData.isObject()) {
++    return NS_OK;
++  }
++
++  dom::AutoJSAPI jsapi;
++  NS_ENSURE_TRUE(jsapi.Init(xpc::PrivilegedJunkScope()), NS_OK);
++
++  JSContext* cx = jsapi.cx();
++  JS::RootedObject data(cx, &aData.toObject());
++  JS::RootedValue pathValue(cx);
++  if (!JS_GetProperty(cx, data, "localFilePath", &pathValue)) {
++    JS_ClearPendingException(cx);
++    return NS_OK;
++  }
++  if (!pathValue.isString()) {
++    return NS_OK;
++  }
++
++  nsAutoJSString requestedPath;
++  if (!requestedPath.init(cx, pathValue.toString())) {
++    JS_ClearPendingException(cx);
++    return NS_OK;
++  }
++
++  nsAutoString capturedPath;
++  if (NS_FAILED(mCapturedResponseFile->GetPath(capturedPath)) ||
++      !requestedPath.Equals(capturedPath)) {
++    return NS_OK;
++  }
++
++  if (isCancel) {
++    mTransferState = TransferState::Finished;
++    UnregisterControlListeners();
++    CancelAndResumeRequest(mRequest, NS_BINDING_ABORTED);
++    mRequest = nullptr;
++    return NS_OK;
++  }
++
++  if (isPause) {
++    if (NS_SUCCEEDED(SuspendRequest(mRequest))) {
++      mTransferState = TransferState::Paused;
++    }
++    return NS_OK;
++  }
++
++  mTransferState = TransferState::Transferring;
++  nsresult rv = ResumeRequest(mRequest);
++  if (NS_FAILED(rv)) {
++    mTransferState = TransferState::Finished;
++    UnregisterControlListeners();
++    CancelAndResumeRequest(mRequest, rv);
++    mRequest = nullptr;
++    return NS_OK;
++  }
++
++  return NS_OK;
++}
++
 +nsresult ExternalResponseListener::BeginCapturingResponseBody() {
 +  nsresult rv = NS_GetSpecialDirectory(NS_OS_TEMP_DIR,
 +                                       getter_AddRefs(mCapturedResponseFile));
@@ -294,15 +464,22 @@ index 000000000000..33a52199595e
 +                                   mCapturedResponseFile);
 +  NS_ENSURE_SUCCESS(rv, rv);
 +
-+  mIsCapturingResponseBody = true;
++  mCapturedBytes = 0;
++  mLastProgressReport = TimeStamp::Now();
 +  return NS_OK;
 +}
 +
-+void ExternalResponseListener::CleanupCapturedResponseBody() {
-+  if (mCapturedResponseStream) {
-+    mCapturedResponseStream->Close();
-+    mCapturedResponseStream = nullptr;
++void ExternalResponseListener::CloseCapturedResponseStream() {
++  if (!mCapturedResponseStream) {
++    return;
 +  }
++
++  mCapturedResponseStream->Close();
++  mCapturedResponseStream = nullptr;
++}
++
++void ExternalResponseListener::CleanupCapturedResponseBody() {
++  CloseCapturedResponseStream();
 +
 +  if (mCapturedResponseFile) {
 +    nsresult rv = mCapturedResponseFile->Remove(false);
@@ -313,30 +490,255 @@ index 000000000000..33a52199595e
 +  }
 +}
 +
-+bool ExternalResponseListener::ShouldCaptureResponseBody(nsIChannel* aChannel) {
-+  nsCOMPtr<nsIURI> uri;
-+  if (NS_FAILED(aChannel->GetURI(getter_AddRefs(uri))) || !uri) {
-+    return false;
++void ExternalResponseListener::AbortStartup(nsIRequest* aRequest,
++                                            nsresult aStatus) {
++  mTransferState = TransferState::Finished;
++  UnregisterControlListeners();
++  CleanupCapturedResponseBody();
++  if (aRequest) {
++    CancelAndResumeRequest(aRequest, aStatus);
++  }
++  mRequest = nullptr;
++}
++
++nsresult ExternalResponseListener::RegisterControlListeners() {
++  if (mControlListenersRegistered) {
++    return NS_OK;
 +  }
 +
-+  bool isHttp = false;
-+  if (NS_SUCCEEDED(uri->SchemeIs("http", &isHttp)) && isHttp) {
-+    return false;
++  mozilla::widget::EventDispatcher* dispatcher = mWindow->GetEventDispatcher();
++  if (!dispatcher) {
++    return NS_ERROR_ABORT;
 +  }
 +
-+  bool isHttps = false;
-+  if (NS_SUCCEEDED(uri->SchemeIs("https", &isHttps)) && isHttps) {
-+    return false;
++  dom::AutoJSAPI jsapi;
++  NS_ENSURE_TRUE(jsapi.Init(xpc::PrivilegedJunkScope()), NS_ERROR_FAILURE);
++
++  JSContext* cx = jsapi.cx();
++  JS::RootedString cancelEvent(
++      cx, JS_NewStringCopyZ(cx, kExternalResponseCancelEvent));
++  JS::RootedString pauseEvent(
++      cx, JS_NewStringCopyZ(cx, kExternalResponsePauseEvent));
++  JS::RootedString resumeEvent(
++      cx, JS_NewStringCopyZ(cx, kExternalResponseResumeEvent));
++  NS_ENSURE_TRUE(cancelEvent && pauseEvent && resumeEvent,
++                 NS_ERROR_OUT_OF_MEMORY);
++
++  JS::RootedValue cancelValue(cx, JS::StringValue(cancelEvent));
++  JS::RootedValue pauseValue(cx, JS::StringValue(pauseEvent));
++  JS::RootedValue resumeValue(cx, JS::StringValue(resumeEvent));
++  nsresult rv = dispatcher->RegisterListener(this, cancelValue, cx);
++  if (NS_FAILED(rv)) {
++    return rv;
 +  }
 +
-+  return true;
++  rv = dispatcher->RegisterListener(this, pauseValue, cx);
++  if (NS_FAILED(rv)) {
++    dispatcher->UnregisterListener(this, cancelValue, cx);
++    return rv;
++  }
++
++  rv = dispatcher->RegisterListener(this, resumeValue, cx);
++  if (NS_FAILED(rv)) {
++    dispatcher->UnregisterListener(this, pauseValue, cx);
++    dispatcher->UnregisterListener(this, cancelValue, cx);
++    return rv;
++  }
++
++  mControlListenersRegistered = true;
++  return rv;
++}
++
++void ExternalResponseListener::UnregisterControlListeners() {
++  if (!mControlListenersRegistered) {
++    return;
++  }
++
++  mozilla::widget::EventDispatcher* dispatcher = mWindow->GetEventDispatcher();
++  if (dispatcher) {
++    dom::AutoJSAPI jsapi;
++    if (jsapi.Init(xpc::PrivilegedJunkScope())) {
++      JSContext* cx = jsapi.cx();
++      JS::RootedString cancelEvent(
++          cx, JS_NewStringCopyZ(cx, kExternalResponseCancelEvent));
++      JS::RootedString pauseEvent(
++          cx, JS_NewStringCopyZ(cx, kExternalResponsePauseEvent));
++      JS::RootedString resumeEvent(
++          cx, JS_NewStringCopyZ(cx, kExternalResponseResumeEvent));
++      if (cancelEvent && pauseEvent && resumeEvent) {
++        JS::RootedValue cancelValue(cx, JS::StringValue(cancelEvent));
++        JS::RootedValue pauseValue(cx, JS::StringValue(pauseEvent));
++        JS::RootedValue resumeValue(cx, JS::StringValue(resumeEvent));
++        dispatcher->UnregisterListener(this, cancelValue, cx);
++        dispatcher->UnregisterListener(this, pauseValue, cx);
++        dispatcher->UnregisterListener(this, resumeValue, cx);
++      }
++    }
++  }
++  mControlListenersRegistered = false;
++}
++
++nsresult ExternalResponseListener::SuspendRequest(nsIRequest* aRequest) {
++  if (mRequestSuspended) {
++    return NS_OK;
++  }
++
++  nsresult rv = aRequest->Suspend();
++  if (NS_SUCCEEDED(rv)) {
++    mRequestSuspended = true;
++  }
++  return rv;
++}
++
++nsresult ExternalResponseListener::ResumeRequest(nsIRequest* aRequest) {
++  if (!mRequestSuspended) {
++    return NS_OK;
++  }
++
++  nsresult rv = aRequest->Resume();
++  if (NS_SUCCEEDED(rv)) {
++    mRequestSuspended = false;
++  } else {
++    NS_WARNING("Failed to resume external response request");
++  }
++  return rv;
++}
++
++void ExternalResponseListener::CancelAndResumeRequest(nsIRequest* aRequest,
++                                                      nsresult aStatus) {
++  aRequest->Cancel(aStatus);
++  ResumeRequest(aRequest);
++}
++
++void ExternalResponseListener::HandleDecision(nsIRequest* aRequest,
++                                              DecisionType aType,
++                                              bool aShouldContinue) {
++  AssertIsOnMainThread();
++
++  if (aType == DecisionType::Acceptance) {
++    if (mTransferState != TransferState::AwaitingAcceptance) {
++      return;
++    }
++
++    if (!aShouldContinue) {
++      mTransferState = TransferState::Finished;
++      UnregisterControlListeners();
++      CleanupCapturedResponseBody();
++      CancelAndResumeRequest(aRequest, NS_BINDING_ABORTED);
++      mRequest = nullptr;
++      return;
++    }
++
++    mTransferState = TransferState::Transferring;
++    nsresult rv = ResumeRequest(aRequest);
++    if (NS_FAILED(rv)) {
++      mTransferState = TransferState::Finished;
++      CancelAndResumeRequest(aRequest, rv);
++    }
++    return;
++  }
++
++  if (mTransferState != TransferState::Transferring) {
++    return;
++  }
++
++  if (!aShouldContinue) {
++    mTransferState = TransferState::Finished;
++    UnregisterControlListeners();
++    CancelAndResumeRequest(aRequest, NS_BINDING_ABORTED);
++    mRequest = nullptr;
++    return;
++  }
++
++  nsresult rv = ResumeRequest(aRequest);
++  if (NS_FAILED(rv)) {
++    mTransferState = TransferState::Finished;
++    CancelAndResumeRequest(aRequest, rv);
++  }
++}
++
++nsresult ExternalResponseListener::DispatchProgress(nsIRequest* aRequest) {
++  AssertIsOnMainThread();
++
++  if (mWindow->Destroyed() || !mCapturedResponseFile) {
++    return NS_ERROR_ABORT;
++  }
++
++  mozilla::widget::EventDispatcher* dispatcher = mWindow->GetEventDispatcher();
++  if (!dispatcher ||
++      !dispatcher->HasEmbedderListener(kExternalResponseProgressEvent)) {
++    return NS_ERROR_ABORT;
++  }
++
++  dom::AutoJSAPI jsapi;
++  NS_ENSURE_TRUE(jsapi.Init(xpc::PrivilegedJunkScope()), NS_ERROR_FAILURE);
++
++  JSContext* cx = jsapi.cx();
++  JS::RootedObject payload(cx, JS_NewPlainObject(cx));
++  NS_ENSURE_TRUE(payload, NS_ERROR_OUT_OF_MEMORY);
++
++  nsAutoString localFilePath;
++  nsresult rv = mCapturedResponseFile->GetPath(localFilePath);
++  NS_ENSURE_SUCCESS(rv, rv);
++  NS_ENSURE_TRUE(
++      DefineUTF16StringProperty(cx, payload, "localFilePath", localFilePath),
++      NS_ERROR_FAILURE);
++  NS_ENSURE_TRUE(DefineInt64Property(cx, payload, "bytesReceived",
++                                     static_cast<int64_t>(mCapturedBytes)),
++                 NS_ERROR_FAILURE);
++
++  mLastProgressReport = TimeStamp::Now();
++  RefPtr<ExternalResponseDecisionCallback> callback =
++      new ExternalResponseDecisionCallback(this, aRequest,
++                                           DecisionType::Progress);
++  rv = SuspendRequest(aRequest);
++  NS_ENSURE_SUCCESS(rv, rv);
++
++  JS::RootedValue payloadValue(cx, JS::ObjectValue(*payload));
++  return dispatcher->DispatchToEmbedder(cx, kExternalResponseProgressEvent,
++                                        payloadValue, callback);
++}
++
++nsresult ExternalResponseListener::DispatchCompletion(bool aSucceeded) {
++  AssertIsOnMainThread();
++
++  if (mWindow->Destroyed() || !mCapturedResponseFile) {
++    return NS_ERROR_ABORT;
++  }
++
++  mozilla::widget::EventDispatcher* dispatcher = mWindow->GetEventDispatcher();
++  if (!dispatcher ||
++      !dispatcher->HasEmbedderListener(kExternalResponseCompleteEvent)) {
++    return NS_ERROR_ABORT;
++  }
++
++  dom::AutoJSAPI jsapi;
++  NS_ENSURE_TRUE(jsapi.Init(xpc::PrivilegedJunkScope()), NS_ERROR_FAILURE);
++
++  JSContext* cx = jsapi.cx();
++  JS::RootedObject payload(cx, JS_NewPlainObject(cx));
++  NS_ENSURE_TRUE(payload, NS_ERROR_OUT_OF_MEMORY);
++
++  nsAutoString localFilePath;
++  nsresult rv = mCapturedResponseFile->GetPath(localFilePath);
++  NS_ENSURE_SUCCESS(rv, rv);
++  NS_ENSURE_TRUE(
++      DefineUTF16StringProperty(cx, payload, "localFilePath", localFilePath),
++      NS_ERROR_FAILURE);
++  NS_ENSURE_TRUE(
++      JS_DefineProperty(cx, payload, "succeeded", aSucceeded, JSPROP_ENUMERATE),
++      NS_ERROR_FAILURE);
++
++  JS::RootedValue payloadValue(cx, JS::ObjectValue(*payload));
++  return dispatcher->DispatchToEmbedder(cx, kExternalResponseCompleteEvent,
++                                        payloadValue, nullptr);
 +}
 +
 +nsresult ExternalResponseListener::DispatchExternalResponse(
-+    nsIChannel* aChannel) {
++    nsIChannel* aChannel, nsIGeckoViewEventCallback* aCallback) {
 +  AssertIsOnMainThread();
 +
-+  if (!mWindow || mWindow->Destroyed()) {
++  if (mWindow->Destroyed()) {
 +    return NS_ERROR_ABORT;
 +  }
 +
@@ -345,8 +747,6 @@ index 000000000000..33a52199595e
 +    return NS_ERROR_ABORT;
 +  }
 +
-+  static constexpr auto kExternalResponseEvent =
-+      u"GeckoView:ExternalResponse"_ns;
 +  if (!dispatcher->HasEmbedderListener(kExternalResponseEvent)) {
 +    return NS_ERROR_ABORT;
 +  }
@@ -357,6 +757,9 @@ index 000000000000..33a52199595e
 +  JSContext* cx = jsapi.cx();
 +  JS::RootedObject payload(cx, JS_NewPlainObject(cx));
 +  NS_ENSURE_TRUE(payload, NS_ERROR_OUT_OF_MEMORY);
++
++  JS::RootedObject headers(cx, JS::NewArrayObject(cx, 0));
++  NS_ENSURE_TRUE(headers, NS_ERROR_OUT_OF_MEMORY);
 +
 +  nsCOMPtr<nsIURI> uri;
 +  nsresult rv = aChannel->GetURI(getter_AddRefs(uri));
@@ -369,25 +772,43 @@ index 000000000000..33a52199595e
 +  NS_ENSURE_TRUE(DefineUTF8StringProperty(cx, payload, "url", uriSpec),
 +                 NS_ERROR_FAILURE);
 +
-+  if (mCapturedResponseFile) {
-+    nsAutoString localFilePath;
-+    rv = mCapturedResponseFile->GetPath(localFilePath);
-+    NS_ENSURE_SUCCESS(rv, rv);
-+    NS_ENSURE_TRUE(
-+        DefineUTF16StringProperty(cx, payload, "localFilePath", localFilePath),
-+        NS_ERROR_FAILURE);
-+  }
++  NS_ENSURE_TRUE(mCapturedResponseFile, NS_ERROR_FAILURE);
++  nsAutoString localFilePath;
++  rv = mCapturedResponseFile->GetPath(localFilePath);
++  NS_ENSURE_SUCCESS(rv, rv);
++  NS_ENSURE_TRUE(
++      DefineUTF16StringProperty(cx, payload, "localFilePath", localFilePath),
++      NS_ERROR_FAILURE);
 +
-+  nsString filename;
-+  if (NS_SUCCEEDED(aChannel->GetContentDispositionFilename(filename)) &&
-+      !filename.IsEmpty()) {
-+    NS_ENSURE_TRUE(DefineUTF16StringProperty(cx, payload, "filename", filename),
++  JS::RootedValue headersValue(cx, JS::ObjectValue(*headers));
++  NS_ENSURE_TRUE(
++      JS_DefineProperty(cx, payload, "headers", headersValue, JSPROP_ENUMERATE),
++      NS_ERROR_FAILURE);
++
++  nsCString mimeType;
++  aChannel->GetContentType(mimeType);
++  if (!mimeType.IsEmpty()) {
++    NS_ENSURE_TRUE(DefineUTF8StringProperty(cx, payload, "mimeType", mimeType),
 +                   NS_ERROR_FAILURE);
 +  }
 +
-+  nsCString mimeType;
-+  if (NS_SUCCEEDED(aChannel->GetContentType(mimeType)) && !mimeType.IsEmpty()) {
-+    NS_ENSURE_TRUE(DefineUTF8StringProperty(cx, payload, "mimeType", mimeType),
++  uint32_t filenameFlags = nsIMIMEService::VALIDATE_DEFAULT;
++  if (mimeType.IsEmpty()) {
++    filenameFlags = nsIMIMEService::VALIDATE_SANITIZE_ONLY;
++  } else if (mimeType.Equals(APPLICATION_GUESS_FROM_EXT,
++                             nsCaseInsensitiveCStringComparator)) {
++    filenameFlags = nsIMIMEService::VALIDATE_GUESS_FROM_EXTENSION;
++  }
++
++  nsCOMPtr<nsIMIMEService> mimeService = do_GetService("@mozilla.org/mime;1");
++  NS_ENSURE_TRUE(mimeService, NS_ERROR_FAILURE);
++
++  nsString filename;
++  nsresult filenameRv = mimeService->GetValidFileName(
++      aChannel, mimeType, nullptr, filenameFlags, filename);
++  NS_ENSURE_SUCCESS(filenameRv, filenameRv);
++  if (!filename.IsEmpty()) {
++    NS_ENSURE_TRUE(DefineUTF16StringProperty(cx, payload, "filename", filename),
 +                   NS_ERROR_FAILURE);
 +  }
 +
@@ -395,83 +816,59 @@ index 000000000000..33a52199595e
 +  bool hasContentLength =
 +      NS_SUCCEEDED(aChannel->GetContentLength(&contentLength)) &&
 +      contentLength >= 0;
-+  NS_ENSURE_TRUE(DefineOptionalInt64Property(cx, payload, "contentLength",
-+                                             contentLength, hasContentLength),
-+                 NS_ERROR_FAILURE);
++  if (hasContentLength) {
++    NS_ENSURE_TRUE(
++        DefineInt64Property(cx, payload, "contentLength", contentLength),
++        NS_ERROR_FAILURE);
++  }
 +
-+  nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
-+  bool isRedirected = loadInfo && !loadInfo->RedirectChain().IsEmpty();
-+  NS_ENSURE_TRUE(JS_DefineProperty(cx, payload, "isRedirected", isRedirected,
++  uint32_t statusCode = 0;
++  nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(aChannel);
++  RefPtr<ResponseHeaderCollector> headerCollector =
++      new ResponseHeaderCollector(cx, headers);
++  if (httpChannel) {
++    rv = httpChannel->GetResponseStatus(&statusCode);
++    NS_ENSURE_SUCCESS(rv, rv);
++
++    rv = httpChannel->VisitOriginalResponseHeaders(headerCollector);
++    NS_ENSURE_SUCCESS(rv, rv);
++  } else {
++    nsCString contentType;
++    if (NS_SUCCEEDED(aChannel->GetContentType(contentType))) {
++      rv = headerCollector->AppendHeader("content-type"_ns, contentType);
++      NS_ENSURE_SUCCESS(rv, rv);
++    }
++
++    int64_t nonHttpContentLength = 0;
++    if (NS_SUCCEEDED(aChannel->GetContentLength(&nonHttpContentLength))) {
++      nsAutoCString contentLengthString;
++      contentLengthString.AppendInt(nonHttpContentLength);
++      rv = headerCollector->AppendHeader("content-length"_ns,
++                                         contentLengthString);
++      NS_ENSURE_SUCCESS(rv, rv);
++    }
++  }
++
++  if (!headerCollector->HasContentDisposition()) {
++    nsString contentDispositionFilename;
++    if (NS_SUCCEEDED(aChannel->GetContentDispositionFilename(
++            contentDispositionFilename))) {
++      nsPrintfCString contentDisposition(
++          "attachment; filename=\"%s\"",
++          NS_ConvertUTF16toUTF8(contentDispositionFilename).get());
++      rv = headerCollector->AppendHeader("content-disposition"_ns,
++                                         contentDisposition);
++      NS_ENSURE_SUCCESS(rv, rv);
++    }
++  }
++
++  NS_ENSURE_TRUE(JS_DefineProperty(cx, payload, "statusCode", statusCode,
 +                                   JSPROP_ENUMERATE),
 +                 NS_ERROR_FAILURE);
 +
-+  nsTArray<HeaderEntry> responseHeaders;
-+  nsTArray<HeaderEntry> requestHeaders;
-+
-+  nsCOMPtr<nsIHttpChannel> httpChannel(do_QueryInterface(aChannel, &rv));
-+  if (httpChannel) {
-+    uint32_t statusCode = 0;
-+    if (NS_SUCCEEDED(httpChannel->GetResponseStatus(&statusCode))) {
-+      NS_ENSURE_TRUE(JS_DefineProperty(cx, payload, "statusCode", statusCode,
-+                                       JSPROP_ENUMERATE),
-+                     NS_ERROR_FAILURE);
-+    }
-+
-+    RefPtr<HeaderCollector> responseCollector = new HeaderCollector();
-+    rv = httpChannel->VisitResponseHeaders(responseCollector);
-+    NS_ENSURE_SUCCESS(rv, rv);
-+    responseHeaders.AppendElements(responseCollector->Entries());
-+
-+    RefPtr<HeaderCollector> requestCollector = new HeaderCollector();
-+    rv = httpChannel->VisitRequestHeaders(requestCollector);
-+    NS_ENSURE_SUCCESS(rv, rv);
-+    requestHeaders.AppendElements(requestCollector->Entries());
-+
-+    nsCString requestMethod;
-+    if (NS_SUCCEEDED(httpChannel->GetRequestMethod(requestMethod)) &&
-+        !requestMethod.IsEmpty()) {
-+      NS_ENSURE_TRUE(
-+          DefineUTF8StringProperty(cx, payload, "requestMethod", requestMethod),
-+          NS_ERROR_FAILURE);
-+    }
-+  } else {
-+    if (!filename.IsEmpty()) {
-+      HeaderEntry& entry = *responseHeaders.AppendElement();
-+      entry.name = "content-disposition"_ns;
-+      entry.value = nsPrintfCString("attachment; filename=\"%s\"",
-+                                    NS_ConvertUTF16toUTF8(filename).get());
-+    }
-+
-+    if (!mimeType.IsEmpty()) {
-+      HeaderEntry& entry = *responseHeaders.AppendElement();
-+      entry.name = "content-type"_ns;
-+      entry.value = mimeType;
-+    }
-+
-+    if (hasContentLength) {
-+      HeaderEntry& entry = *responseHeaders.AppendElement();
-+      entry.name = "content-length"_ns;
-+      entry.value.AppendInt(contentLength);
-+    }
-+  }
-+
-+  NS_ENSURE_TRUE(DefineHeadersProperty(cx, payload, "headers", responseHeaders),
-+                 NS_ERROR_FAILURE);
-+  NS_ENSURE_TRUE(
-+      DefineHeadersProperty(cx, payload, "requestHeaders", requestHeaders),
-+      NS_ERROR_FAILURE);
-+
-+  nsCString contentDisposition =
-+      FindHeaderValue(responseHeaders, "content-disposition"_ns);
-+  if (!contentDisposition.IsEmpty()) {
-+    NS_ENSURE_TRUE(DefineUTF8StringProperty(cx, payload, "contentDisposition",
-+                                            contentDisposition),
-+                   NS_ERROR_FAILURE);
-+  }
-+
 +  JS::RootedValue payloadValue(cx, JS::ObjectValue(*payload));
 +  return dispatcher->DispatchToEmbedder(cx, kExternalResponseEvent,
-+                                        payloadValue, nullptr);
++                                        payloadValue, aCallback);
 +}
 +
 +}  // namespace

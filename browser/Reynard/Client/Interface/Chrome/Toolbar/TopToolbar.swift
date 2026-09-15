@@ -9,13 +9,16 @@ import UIKit
 
 final class TopToolbar: UIView {
     private enum UX {
-        static let topToolbarContentHeight: CGFloat = 52
+        static let topToolbarContentHeight: CGFloat = 60
         static let topToolbarButtonStackHeight: CGFloat = 30
         static let topToolbarStandardButtonStackWidth: CGFloat = 126
         static let topToolbarHorizontalInset: CGFloat = 12
         static let topToolbarButtonSpacing: CGFloat = 10
         static let topToolbarAddressBarSpacing: CGFloat = 12
+        static let topToolbarAddressBarVerticalSpacing: CGFloat = 8
         static let topToolbarAddressBarWidthLimit: CGFloat = 650
+        static let backgroundViewHorizontalExtension: CGFloat = 16
+        static let borderWidth: CGFloat = 0.5
     }
     
     enum LayoutState {
@@ -37,6 +40,28 @@ final class TopToolbar: UIView {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.backgroundColor = .clear
+        return view
+    }()
+    
+    private let backgroundView: UIVisualEffectView = {
+        let effect: UIVisualEffect
+        if #available(iOS 26.0, *) {
+            effect = UIGlassEffect.nonAdaptive(style: .regular)
+        } else {
+            effect = UIBlurEffect(style: .systemChromeMaterial)
+        }
+        let view = UIVisualEffectView(effect: effect)
+        view.translatesAutoresizingMaskIntoConstraints = false
+        return view
+    }()
+    
+    private let backgroundBottomBorderView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = UIColor.separator.withAlphaComponent(0.2)
+        if #available(iOS 26.0, *) {
+            view.isHidden = true
+        }
         return view
     }()
     
@@ -80,6 +105,7 @@ final class TopToolbar: UIView {
         target: self,
         action: #selector(tabOverviewTapped)
     )
+    private let buttonMenus = ToolbarButtonMenus()
     
     private lazy var leadingButtons: UIStackView = {
         downloadButton.isHidden = true
@@ -100,8 +126,25 @@ final class TopToolbar: UIView {
         return stack
     }()
     
+    private lazy var contentLayoutGuide: UILayoutGuide = {
+        if #available(iOS 26.0, *) {
+            return layoutGuide(for: .safeArea(cornerAdaptation: .horizontal))
+        }
+        
+        return safeAreaLayoutGuide
+    }()
+    
+    private var compactAddressBarHorizontalInset: CGFloat {
+        if #available(iOS 26.0, *) {
+            return 0
+        }
+        
+        return UX.topToolbarHorizontalInset
+    }
+    
     private var heightConstraint: NSLayoutConstraint!
     private var contentTopConstraint: NSLayoutConstraint!
+    private var backgroundBottomConstraint: NSLayoutConstraint!
     private var leadingWidthConstraint: NSLayoutConstraint!
     private var trailingWidthConstraint: NSLayoutConstraint!
     private var standardAddressBarConstraints: [NSLayoutConstraint] = []
@@ -142,19 +185,28 @@ final class TopToolbar: UIView {
             standardAddressBarConstraints = [
                 addressBar.leadingAnchor.constraint(equalTo: leadingButtons.trailingAnchor, constant: UX.topToolbarAddressBarSpacing),
                 addressBar.trailingAnchor.constraint(equalTo: trailingButtons.leadingAnchor, constant: -UX.topToolbarAddressBarSpacing),
-                addressBar.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+                addressBar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.topToolbarAddressBarVerticalSpacing),
+                addressBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.topToolbarAddressBarVerticalSpacing),
             ]
             widthLimitedStandardAddressBarConstraints = [
-                addressBar.centerXAnchor.constraint(equalTo: safeAreaLayoutGuide.centerXAnchor),
+                addressBar.centerXAnchor.constraint(equalTo: contentLayoutGuide.centerXAnchor),
                 addressBar.widthAnchor.constraint(equalToConstant: UX.topToolbarAddressBarWidthLimit),
                 addressBar.leadingAnchor.constraint(greaterThanOrEqualTo: leadingButtons.trailingAnchor, constant: UX.topToolbarAddressBarSpacing),
                 addressBar.trailingAnchor.constraint(lessThanOrEqualTo: trailingButtons.leadingAnchor, constant: -UX.topToolbarAddressBarSpacing),
-                addressBar.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+                addressBar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.topToolbarAddressBarVerticalSpacing),
+                addressBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.topToolbarAddressBarVerticalSpacing),
             ]
             compactAddressBarConstraints = [
-                addressBar.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: UX.topToolbarHorizontalInset),
-                addressBar.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -UX.topToolbarHorizontalInset),
-                addressBar.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+                addressBar.leadingAnchor.constraint(
+                    equalTo: contentLayoutGuide.leadingAnchor,
+                    constant: compactAddressBarHorizontalInset
+                ),
+                addressBar.trailingAnchor.constraint(
+                    equalTo: contentLayoutGuide.trailingAnchor,
+                    constant: -compactAddressBarHorizontalInset
+                ),
+                addressBar.topAnchor.constraint(equalTo: contentView.topAnchor, constant: UX.topToolbarAddressBarVerticalSpacing),
+                addressBar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -UX.topToolbarAddressBarVerticalSpacing),
             ]
         }
     }
@@ -162,6 +214,20 @@ final class TopToolbar: UIView {
     func detachAddressBar() {
         NSLayoutConstraint.deactivate(standardAddressBarConstraints + widthLimitedStandardAddressBarConstraints + compactAddressBarConstraints)
         isUsingStandardAddressBarWidthLimit = false
+    }
+    
+    func sharePopoverSourceView() -> UIView {
+        return shareButton
+    }
+    
+    func extendBackground(to bottomAnchor: NSLayoutYAxisAnchor) {
+        backgroundBottomConstraint.isActive = false
+        backgroundBottomConstraint = backgroundView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        backgroundBottomConstraint.isActive = true
+    }
+    
+    func setBackgroundCollapseOffset(_ offset: CGFloat) {
+        backgroundBottomConstraint.constant = -offset
     }
     
     func apply(
@@ -205,12 +271,66 @@ final class TopToolbar: UIView {
         }
     }
     
+    func setContentAlpha(_ alpha: CGFloat) {
+        contentView.alpha = alpha
+    }
+    
     // MARK: - Updates
     
     func updateNavigation(canGoBack: Bool, canGoForward: Bool, canShare: Bool) {
         backButton.isEnabled = canGoBack
         forwardButton.isEnabled = canGoForward
         shareButton.isEnabled = canShare
+    }
+    
+    func configureNavigationMenus(
+        itemsProvider: @escaping (ToolbarButtonMenus.NavigationDirection) -> [NavigationHistoryStore.HistoryItem],
+        onSelect: @escaping (ToolbarButtonMenus.NavigationDirection, Int) -> Void
+    ) {
+        buttonMenus.installNavigationMenus(
+            on: backButton,
+            forwardButton: forwardButton,
+            itemsProvider: itemsProvider,
+            onSelect: onSelect,
+            isReversed: false
+        )
+    }
+    
+    func configureRecentlyClosedTabsMenu(
+        isAvailable: @escaping () -> Bool,
+        itemsProvider: @escaping () -> [TabManagementStore.RecentlyClosedTabSnapshot],
+        onSelect: @escaping (UUID) -> Void
+    ) {
+        buttonMenus.installRecentlyClosedTabsMenu(
+            on: newTabButton,
+            isAvailable: isAvailable,
+            itemsProvider: itemsProvider,
+            onSelect: onSelect
+        )
+    }
+    
+    func configureLibraryMenus(onSelect: @escaping (LibrarySection) -> Void) {
+        buttonMenus.installLibraryMenus(
+            on: [sidebarButton, libraryButton],
+            onSelect: onSelect
+        )
+    }
+    
+    func configureTabOverviewMenus(
+        tabCountProvider: @escaping () -> Int,
+        onCloseAllTabs: @escaping () -> Void,
+        onCloseTab: @escaping () -> Void,
+        onNewPrivateTab: @escaping () -> Void,
+        onNewTab: @escaping () -> Void
+    ) {
+        buttonMenus.installTabOverviewMenus(
+            on: [tabOverviewButton],
+            tabCountProvider: tabCountProvider,
+            onCloseAllTabs: onCloseAllTabs,
+            onCloseTab: onCloseTab,
+            onNewPrivateTab: onNewPrivateTab,
+            onNewTab: onNewTab
+        )
     }
     
     func updateDownload(_ summary: DownloadStoreSummary) {
@@ -254,10 +374,12 @@ final class TopToolbar: UIView {
     
     private func configureAppearance() {
         translatesAutoresizingMaskIntoConstraints = false
-        backgroundColor = .appSystemGray6
+        backgroundColor = .clear
     }
     
     private func configureHierarchy() {
+        addSubview(backgroundView)
+        addSubview(backgroundBottomBorderView)
         addSubview(contentView)
         contentView.addSubview(leadingButtons)
         contentView.addSubview(trailingButtons)
@@ -266,22 +388,33 @@ final class TopToolbar: UIView {
     private func configureConstraints() {
         heightConstraint = heightAnchor.constraint(equalToConstant: UX.topToolbarContentHeight)
         contentTopConstraint = contentView.topAnchor.constraint(equalTo: topAnchor)
+        backgroundBottomConstraint = backgroundView.bottomAnchor.constraint(equalTo: bottomAnchor)
         leadingWidthConstraint = leadingButtons.widthAnchor.constraint(equalToConstant: UX.topToolbarStandardButtonStackWidth)
         trailingWidthConstraint = trailingButtons.widthAnchor.constraint(equalToConstant: UX.topToolbarStandardButtonStackWidth)
         
         NSLayoutConstraint.activate([
+            backgroundView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: -UX.backgroundViewHorizontalExtension),
+            backgroundView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: UX.backgroundViewHorizontalExtension),
+            backgroundView.topAnchor.constraint(equalTo: topAnchor),
+            backgroundBottomConstraint,
+            
+            backgroundBottomBorderView.leadingAnchor.constraint(equalTo: backgroundView.leadingAnchor),
+            backgroundBottomBorderView.trailingAnchor.constraint(equalTo: backgroundView.trailingAnchor),
+            backgroundBottomBorderView.bottomAnchor.constraint(equalTo: backgroundView.bottomAnchor),
+            backgroundBottomBorderView.heightAnchor.constraint(equalToConstant: UX.borderWidth),
+            
             heightConstraint,
             contentTopConstraint,
             contentView.leadingAnchor.constraint(equalTo: leadingAnchor),
             contentView.trailingAnchor.constraint(equalTo: trailingAnchor),
             contentView.heightAnchor.constraint(equalToConstant: UX.topToolbarContentHeight),
             
-            leadingButtons.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor, constant: UX.topToolbarHorizontalInset),
+            leadingButtons.leadingAnchor.constraint(equalTo: contentLayoutGuide.leadingAnchor, constant: UX.topToolbarHorizontalInset),
             leadingButtons.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             leadingWidthConstraint,
             leadingButtons.heightAnchor.constraint(equalToConstant: UX.topToolbarButtonStackHeight),
             
-            trailingButtons.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor, constant: -UX.topToolbarHorizontalInset),
+            trailingButtons.trailingAnchor.constraint(equalTo: contentLayoutGuide.trailingAnchor, constant: -UX.topToolbarHorizontalInset),
             trailingButtons.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             trailingWidthConstraint,
             trailingButtons.heightAnchor.constraint(equalToConstant: UX.topToolbarButtonStackHeight),
@@ -300,7 +433,8 @@ final class TopToolbar: UIView {
     }
     
     private var shouldLimitStandardAddressBarWidth: Bool {
-        let safeWidth = bounds.width - safeAreaInsets.left - safeAreaInsets.right
+        let layoutInsets = contentLayoutInsets
+        let safeWidth = bounds.width - layoutInsets.left - layoutInsets.right
         guard safeWidth > 0 else { return false }
         
         let leadingBoundary = UX.topToolbarHorizontalInset
@@ -316,6 +450,14 @@ final class TopToolbar: UIView {
         ) * 2
         
         return centeredWidth > UX.topToolbarAddressBarWidthLimit
+    }
+    
+    private var contentLayoutInsets: UIEdgeInsets {
+        if #available(iOS 26.0, *) {
+            return edgeInsets(for: .safeArea(cornerAdaptation: .horizontal))
+        }
+        
+        return safeAreaInsets
     }
     
     private func updateStandardAddressBarLayout() {

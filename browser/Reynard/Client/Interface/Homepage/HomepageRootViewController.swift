@@ -9,7 +9,11 @@ import UIKit
 
 protocol HomepageRootViewControllerDelegate: AnyObject {
     func homepageRootViewController(_ controller: HomepageRootViewController, didRequestOpenURL url: URL, disposition: TabOpenDisposition)
-    func homepageRootViewController(_ controller: HomepageRootViewController, didRequestShareURL url: URL)
+    func homepageRootViewController(
+        _ controller: HomepageRootViewController,
+        didRequestShareURL url: URL,
+        sourceView: UIView
+    )
     func homepageRootViewController(_ controller: HomepageRootViewController, didRequestHideFromSuggestions siteID: Int64)
     func homepageRootViewController(_ controller: HomepageRootViewController, didSelectRecentlyClosedTab id: UUID)
     func homepageRootViewControllerDidSelectFolder(_ folder: BookmarkFolderSnapshot)
@@ -39,8 +43,17 @@ final class HomepageRootViewController: UIViewController {
     private let sections: [HomepageSection]
     private var isPrivateBrowsing: Bool
     private var contentMode: HomepageContentMode = .embeddedNarrow
+    private var visibleContentInsets: UIEdgeInsets = .zero
     private var sectionViewControllers: [HomepageSection: UIViewController] = [:]
     private var sectionStackWidthConstraint: NSLayoutConstraint?
+    
+    private let wallpaperImageView: UIImageView = {
+        let imageView = UIImageView()
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        return imageView
+    }()
     
     private let scrollView: UIScrollView = {
         let scrollView = UIScrollView()
@@ -112,7 +125,12 @@ final class HomepageRootViewController: UIViewController {
         }
         privateBrowsingSectionViewController?.setContentMode(contentMode)
         favoritesSectionViewController?.setContentMode(contentMode)
+        frequentlyVisitedSectionViewController?.setContentMode(contentMode)
         recentlyClosedTabsSectionViewController?.setContentMode(contentMode)
+        if isViewLoaded {
+            updateWallpaper()
+            updateScrollInsets()
+        }
         updateSectionStackWidth()
     }
     
@@ -122,6 +140,9 @@ final class HomepageRootViewController: UIViewController {
         }
         
         self.isPrivateBrowsing = isPrivateBrowsing
+        guard isViewLoaded else {
+            return
+        }
         
         if folder == nil {
             reloadSections()
@@ -134,23 +155,47 @@ final class HomepageRootViewController: UIViewController {
         privateBrowsingSectionViewController?.setPrivateBrowsing(isPrivateBrowsing)
     }
     
+    func setVisibleContentInsets(_ visibleContentInsets: UIEdgeInsets) {
+        guard self.visibleContentInsets != visibleContentInsets else {
+            return
+        }
+        
+        self.visibleContentInsets = visibleContentInsets
+        guard isViewLoaded else {
+            return
+        }
+        updateScrollInsets()
+    }
+    
     // MARK: - Configuration
     
     private func configureScrollView() {
         scrollView.delegate = self
         scrollView.contentInsetAdjustmentBehavior = .never
-        scrollView.contentInset = UIEdgeInsets(
-            top: folder == nil ? UX.topInset : UX.folderTopInset,
+        updateScrollInsets()
+    }
+    
+    private func updateScrollInsets() {
+        let isAtTop = scrollView.contentOffset.y <= -scrollView.contentInset.top
+        let effectiveVisibleContentInsets = contentMode.isDetached ? .zero : visibleContentInsets
+        let contentInset = UIEdgeInsets(
+            top: effectiveVisibleContentInsets.top + (folder == nil ? UX.topInset : UX.folderTopInset),
             left: 0,
-            bottom: UX.bottomInset,
+            bottom: effectiveVisibleContentInsets.bottom + UX.bottomInset,
             right: 0
         )
-        scrollView.scrollIndicatorInsets = scrollView.contentInset
+        scrollView.contentInset = contentInset
+        scrollView.scrollIndicatorInsets = contentInset
+        if isAtTop {
+            scrollView.contentOffset.y = -contentInset.top
+        }
     }
     
     private func configureHierarchy() {
+        view.addSubview(wallpaperImageView)
         view.addSubview(scrollView)
         scrollView.addSubview(sectionStackView)
+        updateWallpaper()
     }
     
     private func configureConstraints() {
@@ -158,6 +203,11 @@ final class HomepageRootViewController: UIViewController {
         sectionStackWidthConstraint = widthConstraint
         
         NSLayoutConstraint.activate([
+            wallpaperImageView.topAnchor.constraint(equalTo: view.topAnchor),
+            wallpaperImageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            wallpaperImageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            wallpaperImageView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            
             scrollView.topAnchor.constraint(equalTo: view.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
@@ -185,6 +235,7 @@ final class HomepageRootViewController: UIViewController {
     private func reloadSections() {
         sectionViewControllers.values.forEach { viewController in
             viewController.willMove(toParent: nil)
+            sectionStackView.removeArrangedSubview(viewController.view)
             viewController.view.removeFromSuperview()
             viewController.removeFromParent()
         }
@@ -235,6 +286,7 @@ final class HomepageRootViewController: UIViewController {
         case .frequentlyVisited:
             let viewController = FrequentlyVisitedSectionViewController()
             viewController.delegate = self
+            viewController.setContentMode(contentMode)
             return viewController
             
         case .recentlyClosedTabs:
@@ -257,6 +309,15 @@ final class HomepageRootViewController: UIViewController {
         sectionStackWidthConstraint?.constant = min(width, maximumWidth)
     }
     
+    private func updateWallpaper() {
+        guard Prefs.HomepageSettings.showsWallpaper,
+              !contentMode.isDetached else {
+            wallpaperImageView.image = nil
+            return
+        }
+        wallpaperImageView.image = HomepageWallpaper.image
+    }
+    
     // MARK: - Helpers
     
     private var recommendationViewControllers: [HomepageRecommendationViewController] {
@@ -277,6 +338,10 @@ final class HomepageRootViewController: UIViewController {
         return sectionViewControllers[.favorites] as? FavoritesSectionViewController
     }
     
+    private var frequentlyVisitedSectionViewController: FrequentlyVisitedSectionViewController? {
+        return sectionViewControllers[.frequentlyVisited] as? FrequentlyVisitedSectionViewController
+    }
+    
     private var recentlyClosedTabsSectionViewController: RecentlyClosedTabsSectionViewController? {
         return sectionViewControllers[.recentlyClosedTabs] as? RecentlyClosedTabsSectionViewController
     }
@@ -288,6 +353,8 @@ final class HomepageRootViewController: UIViewController {
         
         return sections.filter { section in
             switch section {
+            case .privateBrowsing:
+                return isPrivateBrowsing
             case .favorites:
                 return Prefs.HomepageSettings.showsFavorites &&
                 (!isPrivateBrowsing || Prefs.HomepageSettings.showsFavoritesInPrivateBrowsing)
@@ -316,6 +383,7 @@ final class HomepageRootViewController: UIViewController {
     }
     
     @objc private func homepageSettingsDidChange() {
+        updateWallpaper()
         reloadSections()
     }
     
@@ -332,8 +400,16 @@ extension HomepageRootViewController: HomepageSectionDelegate {
         delegate?.homepageRootViewController(self, didRequestOpenURL: url, disposition: disposition)
     }
     
-    func homepageSection(_ viewController: UIViewController, didRequestShareURL url: URL) {
-        delegate?.homepageRootViewController(self, didRequestShareURL: url)
+    func homepageSection(
+        _ viewController: UIViewController,
+        didRequestShareURL url: URL,
+        sourceView: UIView
+    ) {
+        delegate?.homepageRootViewController(
+            self,
+            didRequestShareURL: url,
+            sourceView: sourceView
+        )
     }
     
     func homepageSection(_ viewController: UIViewController, didRequestHideFromSuggestions siteID: Int64) {

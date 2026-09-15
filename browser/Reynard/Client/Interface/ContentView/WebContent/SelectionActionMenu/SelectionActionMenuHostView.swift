@@ -13,6 +13,7 @@ final class SelectionActionMenuHostView: UIView {
     private weak var session: GeckoSession?
     private var actionId: String?
     private var availableActions = Set<String>()
+    private let onDismissed: (GeckoSession) -> Void
     
     override var canBecomeFirstResponder: Bool {
         true
@@ -60,14 +61,14 @@ final class SelectionActionMenuHostView: UIView {
     
     // MARK: - Lifecycle
     
-    override init(frame: CGRect) {
-        super.init(frame: frame)
+    init(onDismissed: @escaping (GeckoSession) -> Void) {
+        self.onDismissed = onDismissed
+        super.init(frame: .zero)
         configureAppearance()
     }
     
     required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        configureAppearance()
+        fatalError("init(coder:) has not been implemented")
     }
     
     // MARK: - Setup
@@ -103,20 +104,18 @@ final class SelectionActionMenuHostView: UIView {
             becomeFirstResponder()
         }
         
-        if #available(iOS 13.0, *) {
-            let menuController = UIMenuController.shared
-            menuController.hideMenu(from: self)
-            menuController.showMenu(from: self, rect: bounds)
-        }
+        let menuController = UIMenuController.shared
+        menuController.hideMenu(from: self)
+        menuController.arrowDirection = .down
+        menuController.showMenu(from: self, rect: bounds)
     }
     
     func hideMenu() {
-        if #available(iOS 13.0, *) {
-            if superview != nil {
-                UIMenuController.shared.hideMenu(from: self)
-            } else {
-                UIMenuController.shared.hideMenu()
-            }
+        let dismissedSession = actionId == nil ? nil : session
+        if superview != nil {
+            UIMenuController.shared.hideMenu(from: self)
+        } else {
+            UIMenuController.shared.hideMenu()
         }
 
         if isFirstResponder {
@@ -125,6 +124,9 @@ final class SelectionActionMenuHostView: UIView {
         
         actionId = nil
         availableActions.removeAll()
+        if let dismissedSession {
+            onDismissed(dismissedSession)
+        }
     }
     
     func dismissAndRemove() {

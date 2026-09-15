@@ -1,13 +1,104 @@
 diff --git a/widget/uikit/GeckoViewSwiftSupport.h b/widget/uikit/GeckoViewSwiftSupport.h
-index e68fca9134c0..a723338a8f1e 100644
+index e68fca9134c0..ffd7351f28a0 100644
 --- a/widget/uikit/GeckoViewSwiftSupport.h
 +++ b/widget/uikit/GeckoViewSwiftSupport.h
-@@ -26,6 +26,8 @@
+@@ -17,15 +17,71 @@
+ #  define MOZ_END_EXTERN_C
+ #endif
+ 
++#import <AVFoundation/AVSampleBufferDisplayLayer.h>
+ #import <Foundation/Foundation.h>
+ #import <UIKit/UIKit.h>
+ #import <xpc/xpc.h>
+ 
+ @protocol SwiftEventDispatcher;
+ 
++typedef NS_ENUM(NSInteger, GeckoInputHandling) {
++  GeckoInputHandlingUnhandled = 0,
++  GeckoInputHandlingBrowser = 1,
++  GeckoInputHandlingContent = 2,
++};
++
++typedef NS_OPTIONS(NSUInteger, GeckoScrollableEdges) {
++  GeckoScrollableEdgeTop = 1 << 0,
++  GeckoScrollableEdgeRight = 1 << 1,
++  GeckoScrollableEdgeBottom = 1 << 2,
++  GeckoScrollableEdgeLeft = 1 << 3,
++};
++
++typedef NS_OPTIONS(NSUInteger, GeckoOverscrollAxes) {
++  GeckoOverscrollAxisHorizontal = 1 << 0,
++  GeckoOverscrollAxisVertical = 1 << 1,
++};
++
++typedef NS_OPTIONS(NSUInteger, GeckoEdgeSwipeDirections) {
++  GeckoEdgeSwipeDirectionLeft = 1 << 0,
++  GeckoEdgeSwipeDirectionRight = 1 << 1,
++};
++
++typedef NS_ENUM(NSUInteger, GeckoOrientationLockResult) {
++  GeckoOrientationLockResultSuccess,
++  GeckoOrientationLockResultRejected,
++  GeckoOrientationLockResultNotSupported,
++};
++
++@protocol GeckoViewInteractionDelegate <NSObject>
++- (void)touchSequenceDidBegin:(uint64_t)sequenceId;
++- (void)touchSequence:(uint64_t)sequenceId
++    didResolveHandling:(GeckoInputHandling)handling
++       scrollableEdges:(GeckoScrollableEdges)scrollableEdges
++        overscrollAxes:(GeckoOverscrollAxes)overscrollAxes;
++- (void)touchSequenceDidEnd:(uint64_t)sequenceId;
++- (void)trackpadScrollDidBegin:(CGPoint)delta;
++- (void)trackpadScrollDidUpdate:(CGPoint)delta;
++- (void)trackpadScrollDidEnd;
++- (void)trackpadScrollDidCancel;
++- (void)compositorScrollPositionDidChange:(double)scrollY zoom:(double)zoom;
++- (GeckoEdgeSwipeDirections)allowedEdgeSwipeDirections;
++- (void)edgeSwipeDidStart:(GeckoEdgeSwipeDirections)direction;
++- (void)edgeSwipeDidUpdate:(double)progress;
++- (void)edgeSwipeDidComplete:(GeckoEdgeSwipeDirections)direction;
++- (void)edgeSwipeDidEnd;
++@end
++
  @protocol SwiftGeckoViewRuntime <NSObject>
  - (id<SwiftEventDispatcher>)runtimeDispatcher;
  - (id<SwiftEventDispatcher>)dispatcherByName:(const char*)name;
++- (void)lockScreenOrientation:(NSUInteger)orientationMask
++                   completion:
++                       (void (^)(GeckoOrientationLockResult result))completion;
++- (void)unlockScreenOrientation;
 +@optional
-+- (void)childProcessDidStartWithPID:(int32_t)pid processType:(NSString*)processType;
++- (void)childProcessDidStartWithPID:(int32_t)pid
++                        processType:(NSString*)processType;
  @end
  
  @protocol GeckoProcessExtension <NSObject>
+@@ -55,8 +111,27 @@
+ @end
+ 
+ @protocol GeckoViewWindow <NSObject>
++// Window
+ - (UIView*)view;
+ - (void)close;
++
++// Interaction
++- (void)setInteractionDelegate:(id<GeckoViewInteractionDelegate>)delegate;
++
++// PiP
++- (AVSampleBufferDisplayLayer*)pictureInPictureDisplayLayer;
++
++// Layout
++- (void)setDynamicToolbarMaxHeight:(CGFloat)height;
++- (void)setContentOffsets:(CGFloat)top
++                   bottom:(CGFloat)bottom
++                 topInset:(CGFloat)topInset
++              bottomInset:(CGFloat)bottomInset;
++- (void)updateScreenOrientation:(NSInteger)interfaceOrientation;
++
++// Keyboard
++- (BOOL)focusForHardwareKeyboard;
++- (BOOL)isInHardwareKeyboardMode;
+ @end
+ 
+ MOZ_BEGIN_EXTERN_C

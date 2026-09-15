@@ -13,12 +13,14 @@ public protocol ProgressDelegate {
     func onPageStart(session: GeckoSession, url: String)
     func onPageStop(session: GeckoSession, success: Bool)
     func onProgressChange(session: GeckoSession, progress: Int)
+    func onSessionStateChange(session: GeckoSession, sessionState: GeckoSessionState)
 }
 
 extension ProgressDelegate {
     public func onPageStart(session: GeckoSession, url: String) {}
     public func onPageStop(session: GeckoSession, success: Bool) {}
     public func onProgressChange(session: GeckoSession, progress: Int) {}
+    public func onSessionStateChange(session: GeckoSession, sessionState: GeckoSessionState) {}
 }
 
 // MARK: - Progress Events
@@ -48,19 +50,20 @@ func newProgressHandler(_ session: GeckoSession) -> GeckoSessionHandler {
         switch event {
         case .pageStart:
             if let url = message?["uri"] as? String {
-                NSLog("[PROBE] PageStart url=%@", url)
-                delegate?.onPageStart(session: session, url: url)
+                    delegate?.onPageStart(session: session, url: url)
             }
         case .pageStop:
-            NSLog("[PROBE] PageStop success=%@", String(describing: message?["success"]))
             delegate?.onPageStop(session: session, success: message?["success"] as? Bool ?? false)
         case .progressChanged:
-            NSLog("[PROBE] ProgressChanged progress=%@", String(describing: message?["progress"]))
             delegate?.onProgressChange(session: session, progress: message?["progress"] as? Int ?? 0)
         case .securityChanged:
             break
         case .stateUpdated:
-            break
+            guard session.historyDelegate == nil,
+                  let data = message?["data"] as? [String: Any] else {
+                break
+            }
+            session.handleSessionStateUpdate(data)
         }
         completion(.success(nil))
     }

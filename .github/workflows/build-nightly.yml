@@ -1,0 +1,35 @@
+name: Build Nightly
+
+on:
+  schedule:
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+    inputs:
+      build_normal_ipa:
+        description: Build normal IPA
+        required: false
+        default: true
+        type: boolean
+      build_trollstore_tipa:
+        description: Build TrollStore TIPA
+        required: false
+        default: true
+        type: boolean
+      build_jailbroken_ipa:
+        description: Build Jailbroken IPA
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      checkout_ref: ${{ github.sha }}
+      nightly: true
+      build_normal_ipa: ${{ github.event_name == 'schedule' || inputs.build_normal_ipa }}
+      build_trollstore_tipa: ${{ github.event_name == 'schedule' || inputs.build_trollstore_tipa }}
+      build_jailbroken_ipa: ${{ github.event_name == 'schedule' || inputs.build_jailbroken_ipa }}

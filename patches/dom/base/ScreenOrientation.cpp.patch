@@ -1,0 +1,14 @@
+diff --git a/dom/base/ScreenOrientation.cpp b/dom/base/ScreenOrientation.cpp
+index 79895643ec3f..e04cfa98e47a 100644
+--- a/dom/base/ScreenOrientation.cpp
++++ b/dom/base/ScreenOrientation.cpp
+@@ -553,7 +553,8 @@ already_AddRefed<Promise> ScreenOrientation::LockInternal(
+   // orientation, return a promise rejected with a "NotSupportedError"
+   // DOMException and abort these steps.
+ 
+-#if !defined(MOZ_WIDGET_ANDROID) && !defined(XP_WIN)
++#if !defined(MOZ_WIDGET_ANDROID) && !defined(XP_WIN) && \
++    !defined(MOZ_WIDGET_UIKIT)
+   // User agent does not support locking the screen orientation.
+   p->MaybeReject(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
+   return p.forget();

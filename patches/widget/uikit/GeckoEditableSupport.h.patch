@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoEditableSupport.h b/widget/uikit/GeckoEditableSupport.h
 new file mode 100644
-index 000000000000..1f1e26b48ada
+index 000000000000..49b28ff9b19e
 --- /dev/null
 +++ b/widget/uikit/GeckoEditableSupport.h
-@@ -0,0 +1,182 @@
+@@ 0,0 +1,229 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -28,6 +28,8 @@ index 000000000000..1f1e26b48ada
 +  GeckoSelectionHandleStart,
 +  GeckoSelectionHandleEnd,
 +};
++
++@protocol ChildViewCredentialDelegate;
 +
 +// MARK: - UITextInput Model Objects
 +
@@ -58,7 +60,11 @@ index 000000000000..1f1e26b48ada
 +
 +struct GeckoEditableState {
 +  UITextInputStringTokenizer* mTokenizer;
++  id mTextInputTraits;
++  BOOL mSeenHardwareKeyDownInNonEditableContent;
 +  id<UITextInputDelegate> mTextInputDelegate;
++  id<ChildViewCredentialDelegate> mCredentialDelegate;
++  BOOL mWaitingForPasswordAutofillFocus;
 +  NSDictionary* mMarkedTextStyle;
 +#pragma clang diagnostic push
 +#pragma clang diagnostic ignored "-Wunguarded-availability-new"
@@ -68,6 +74,8 @@ index 000000000000..1f1e26b48ada
 +  id mSelectionDisplayInteraction;
 +  UIPanGestureRecognizer* mSelectionHandlePanRecognizer;
 +  BOOL mTextInteractionInProgress;
++  BOOL mSelectionHandlesVisibleForTouchInput;
++  id mSelectionHandleSuppressionAssertion;
 +  BOOL mPendingSelectionGeometryRefresh;
 +  BOOL mCaretMenuActive;
 +  BOOL mPendingCaretMenu;
@@ -89,6 +97,7 @@ index 000000000000..1f1e26b48ada
 +  NSRange mVietnamesePendingDeleteRange;
 +  NSUInteger mVietnameseBufferGeckoOffset;
 +  NSUInteger mVietnameseBufferSyncAttempts;
++  NSString* mKoreanComposedText;
 +};
 +
 +// Recursively collects subviews whose class name matches aClassName.
@@ -183,6 +192,44 @@ index 000000000000..1f1e26b48ada
 +                                 selectionRectWithRect:aRect
 +                                         containsStart:aContainsStart
 +                                           containsEnd:aContainsEnd]];
++}
++
++// MARK: - Credential Utilities
++
++inline NSInteger EffectiveOriginPort(NSURLComponents* aComponents) {
++  if (aComponents.port) {
++    return aComponents.port.integerValue;
++  }
++  NSString* scheme = aComponents.scheme.lowercaseString;
++  if ([scheme isEqualToString:@"http"]) {
++    return 80;
++  }
++  if ([scheme isEqualToString:@"https"]) {
++    return 443;
++  }
++  return NSNotFound;
++}
++
++inline BOOL CredentialOriginsMatch(NSURL* aDocumentURL,
++                                   NSString* aExpectedOrigin) {
++  NSURLComponents* documentOrigin =
++      [NSURLComponents componentsWithURL:aDocumentURL
++                 resolvingAgainstBaseURL:NO];
++  NSURLComponents* expectedOrigin =
++      [NSURLComponents componentsWithString:aExpectedOrigin];
++  NSString* documentScheme = documentOrigin.scheme.lowercaseString;
++  NSString* expectedScheme = expectedOrigin.scheme.lowercaseString;
++  NSString* documentHost = documentOrigin.host.lowercaseString;
++  NSString* expectedHost = expectedOrigin.host.lowercaseString;
++  if (!documentScheme || !expectedScheme || !documentHost || !expectedHost) {
++    return NO;
++  }
++  if (![documentScheme isEqualToString:expectedScheme] ||
++      ![documentHost isEqualToString:expectedHost]) {
++    return NO;
++  }
++  return EffectiveOriginPort(documentOrigin) ==
++         EffectiveOriginPort(expectedOrigin);
 +}
 +
 +#endif  // mozilla_widget_GeckoEditableSupport_h

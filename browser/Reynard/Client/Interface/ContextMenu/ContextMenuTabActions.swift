@@ -7,17 +7,20 @@
 
 import GeckoView
 
-enum TabOpenDisposition {
+enum TabOpenDisposition: Equatable {
     case currentTab
     case newTab
     case newPrivateTab
+    case backgroundTab
 }
 
 struct ContextMenuTabActions {
     private let tabManager: TabManager
+    private let sessionManager: SessionManager
     
-    init(tabManager: TabManager) {
+    init(tabManager: TabManager, sessionManager: SessionManager) {
         self.tabManager = tabManager
+        self.sessionManager = sessionManager
     }
     
     func openPreviewSession(
@@ -30,25 +33,27 @@ struct ContextMenuTabActions {
         case .currentTab:
             tabManager.replaceSelectedSession(with: session, url: url, title: title)
             
-        case .newTab:
+        case .newTab, .backgroundTab:
             tabManager.addTransferredSession(
                 session,
                 url: url,
                 title: title,
-                selecting: true,
+                selecting: disposition != .backgroundTab,
                 at: tabManager.index(for: .afterSelected, mode: tabManager.selectedTabMode),
                 isPrivate: tabManager.selectedTabMode == .private
             )
             
         case .newPrivateTab:
-            tabManager.addTransferredSession(
-                session,
-                url: url,
-                title: title,
+            sessionManager.close(session)
+            let tabIndex = tabManager.createTab(
                 selecting: true,
-                at: tabManager.index(for: tabManager.selectedTabMode == .private ? .afterSelected : .end, mode: .private),
-                isPrivate: true
+                target: tabManager.selectedTabMode == .private ? .afterSelected : .end,
+                mode: .private
             )
+            guard let tab = tabManager.privateTabs[safe: tabIndex] else {
+                return
+            }
+            tabManager.browse(to: url, in: tab)
         }
     }
 }

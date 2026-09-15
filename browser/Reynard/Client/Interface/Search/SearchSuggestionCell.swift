@@ -74,6 +74,10 @@ final class SearchSuggestionCell: UITableViewCell {
         titleLabel.attributedText = attributedTitle(for: text, query: query)
     }
     
+    func setIcon(_ image: UIImage?) {
+        iconImageView.image = image
+    }
+    
     func setFilledBackgroundVisible(_ visible: Bool) {
         contentView.backgroundColor = visible ? .appSecondarySystemBackground : .clear
     }

@@ -1,0 +1,15 @@
+diff --git a/toolkit/components/geolocation/moz.build b/toolkit/components/geolocation/moz.build
+index b75eb473a9cc..230e8586f6e6 100644
+--- a/toolkit/components/geolocation/moz.build
++++ b/toolkit/components/geolocation/moz.build
+@@ -31,6 +31,10 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
+     LOCAL_INCLUDES += [
+         "/dom/system/mac",
+     ]
++elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "uikit":
++    LOCAL_INCLUDES += [
++        "/dom/system/mac",
++    ]
+ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
+     LOCAL_INCLUDES += [
+         "/dom/system/windows/location",

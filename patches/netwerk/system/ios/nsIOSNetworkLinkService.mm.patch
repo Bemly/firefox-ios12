@@ -1,9 +1,9 @@
 diff --git a/netwerk/system/ios/nsIOSNetworkLinkService.mm b/netwerk/system/ios/nsIOSNetworkLinkService.mm
 new file mode 100644
-index 000000000000..42d602588582
+index 000000000000..441b0e633e44
 --- /dev/null
 +++ b/netwerk/system/ios/nsIOSNetworkLinkService.mm
-@@ -0,0 +1,537 @@
+@@ 0,0 +1,571 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -13,9 +13,9 @@ index 000000000000..42d602588582
 +
 +#include "nsIOSNetworkLinkService.h"
 +
-+#include <algorithm>
 +#include <net/if.h>
 +#include <resolv.h>
++#include <algorithm>
 +#include <vector>
 +
 +#include <CFNetwork/CFProxySupport.h>
@@ -34,6 +34,14 @@ index 000000000000..42d602588582
 +#include "nsThreadUtils.h"
 +
 +using namespace mozilla;
++
++extern "C" {
++void nw_path_enumerate_resolver_configs(
++    nw_path_t aPath, bool (^aBlock)(nw_resolver_config_t aResolverConfig))
++    __attribute__((weak_import));
++uint32_t nw_resolver_config_get_protocol(nw_resolver_config_t aResolverConfig)
++    __attribute__((weak_import));
++}
 +
 +static LazyLogModule gNotifyAddrLog("nsIOSNetworkLinkService");
 +#define LOG(args) MOZ_LOG(gNotifyAddrLog, mozilla::LogLevel::Debug, args)
@@ -125,6 +133,9 @@ index 000000000000..42d602588582
 +  }
 +  if (mState.mProxyDetected) {
 +    indications |= nsINetworkLinkService::PROXY_DETECTED;
++  }
++  if (mState.mPrivateDNSDetected) {
++    indications |= nsINetworkLinkService::PRIVATE_DNS_DETECTED;
 +  }
 +  *aPlatformDNSIndications = indications;
 +  return NS_OK;
@@ -246,6 +257,27 @@ index 000000000000..42d602588582
 +  return vpnDetected;
 +}
 +
++bool nsIOSNetworkLinkService::PrivateDNSDetectedForPath(nw_path_t aPath) {
++  if (!nw_path_enumerate_resolver_configs || !nw_resolver_config_get_protocol) {
++    return false;
++  }
++
++  static constexpr uint32_t kTLSResolverProtocol = 1;
++  static constexpr uint32_t kHTTPSResolverProtocol = 2;
++  __block bool privateDNSDetected = false;
++  nw_path_enumerate_resolver_configs(
++      aPath, ^bool(nw_resolver_config_t aResolverConfig) {
++        uint32_t protocol = nw_resolver_config_get_protocol(aResolverConfig);
++        if (protocol == kTLSResolverProtocol ||
++            protocol == kHTTPSResolverProtocol) {
++          privateDNSDetected = true;
++          return false;
++        }
++        return true;
++      });
++  return privateDNSDetected;
++}
++
 +static bool ProxySettingEnabled(CFDictionaryRef aSettings, CFStringRef aKey) {
 +  CFTypeRef value = CFDictionaryGetValue(aSettings, aKey);
 +  if (!value) {
@@ -362,6 +394,7 @@ index 000000000000..42d602588582
 +  newState.mHasIPv4 = nw_path_has_ipv4(aPath);
 +  newState.mHasIPv6 = nw_path_has_ipv6(aPath);
 +  newState.mVPNDetected = VPNDetectedForPath(aPath);
++  newState.mPrivateDNSDetected = PrivateDNSDetectedForPath(aPath);
 +  newState.mProxyDetected =
 +      StaticPrefs::network_notify_checkForProxies() && ProxyDetected();
 +  newState.mLinkType = LinkTypeForPath(aPath);
@@ -386,6 +419,7 @@ index 000000000000..42d602588582
 +                  mState.mHasIPv6 != newState.mHasIPv6 ||
 +                  mState.mVPNDetected != newState.mVPNDetected ||
 +                  mState.mProxyDetected != newState.mProxyDetected ||
++                  mState.mPrivateDNSDetected != newState.mPrivateDNSDetected ||
 +                  mState.mLinkType != newState.mLinkType ||
 +                  mState.mNetworkID != newState.mNetworkID;
 +    linkTypeChanged = mState.mLinkType != newState.mLinkType;

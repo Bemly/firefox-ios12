@@ -1,0 +1,96 @@
+diff --git a/docshell/base/BrowsingContext.cpp b/docshell/base/BrowsingContext.cpp
+index 6662d0e72000..b75179788e1f 100644
+--- a/docshell/base/BrowsingContext.cpp
++++ b/docshell/base/BrowsingContext.cpp
+@@ -3693,6 +3693,54 @@ void BrowsingContext::DidSet(FieldIndex<IDX_PlatformOverride>) {
+   });
+ }
+ 
++void BrowsingContext::SetCustomAppVersion(const nsAString& aAppVersion,
++                                          ErrorResult& aRv) {
++  Top()->SetAppVersionOverride(aAppVersion, aRv);
++}
++
++void BrowsingContext::DidSet(FieldIndex<IDX_AppVersionOverride>) {
++  MOZ_ASSERT(IsTop());
++
++  PreOrderWalk([&](BrowsingContext* aContext) {
++    nsIDocShell* shell = aContext->GetDocShell();
++    if (shell) {
++      shell->ClearCachedAppVersion();
++    }
++  });
++}
++
++void BrowsingContext::SetCustomOscpu(const nsAString& aOscpu,
++                                     ErrorResult& aRv) {
++  Top()->SetOscpuOverride(aOscpu, aRv);
++}
++
++void BrowsingContext::DidSet(FieldIndex<IDX_OscpuOverride>) {
++  MOZ_ASSERT(IsTop());
++
++  PreOrderWalk([&](BrowsingContext* aContext) {
++    nsIDocShell* shell = aContext->GetDocShell();
++    if (shell) {
++      shell->ClearCachedOscpu();
++    }
++  });
++}
++
++void BrowsingContext::SetCustomBuildID(const nsAString& aBuildID,
++                                       ErrorResult& aRv) {
++  Top()->SetBuildIDOverride(aBuildID, aRv);
++}
++
++void BrowsingContext::DidSet(FieldIndex<IDX_BuildIDOverride>) {
++  MOZ_ASSERT(IsTop());
++
++  PreOrderWalk([&](BrowsingContext* aContext) {
++    nsIDocShell* shell = aContext->GetDocShell();
++    if (shell) {
++      shell->ClearCachedBuildID();
++    }
++  });
++}
++
+ auto BrowsingContext::LegacyRevertIfNotOwningOrParentProcess(
+     ContentParent* aSource) -> CanSetResult {
+   if (aSource) {
+@@ -3932,6 +3980,36 @@ auto BrowsingContext::CanSet(FieldIndex<IDX_PlatformOverride>,
+   return LegacyRevertIfNotOwningOrParentProcess(aSource);
+ }
+ 
++auto BrowsingContext::CanSet(FieldIndex<IDX_AppVersionOverride>,
++                             const nsString& aAppVersion,
++                             ContentParent* aSource) -> CanSetResult {
++  if (!IsTop()) {
++    return CanSetResult::Deny;
++  }
++
++  return LegacyRevertIfNotOwningOrParentProcess(aSource);
++}
++
++auto BrowsingContext::CanSet(FieldIndex<IDX_OscpuOverride>,
++                             const nsString& aOscpu, ContentParent* aSource)
++    -> CanSetResult {
++  if (!IsTop()) {
++    return CanSetResult::Deny;
++  }
++
++  return LegacyRevertIfNotOwningOrParentProcess(aSource);
++}
++
++auto BrowsingContext::CanSet(FieldIndex<IDX_BuildIDOverride>,
++                             const nsString& aBuildIDOverride,
++                             ContentParent* aSource) -> CanSetResult {
++  if (!IsTop()) {
++    return CanSetResult::Deny;
++  }
++
++  return LegacyRevertIfNotOwningOrParentProcess(aSource);
++}
++
+ bool BrowsingContext::CheckOnlyEmbedderCanSet(ContentParent* aSource) {
+   if (XRE_IsParentProcess()) {
+     uint64_t childId = aSource ? aSource->ChildID() : 0;

@@ -67,7 +67,6 @@ final class DownloadItemCell: UITableViewCell {
     
     private var representedFileURL: URL?
     private var representedDownloadID: UUID?
-    private var lastStatusUpdateTime: TimeInterval = 0
     
     // MARK: - Lifecycle
     
@@ -115,7 +114,6 @@ final class DownloadItemCell: UITableViewCell {
         super.prepareForReuse()
         representedFileURL = nil
         representedDownloadID = nil
-        lastStatusUpdateTime = 0
         contentView.alpha = 1
         fileNameLabel.textColor = .appLabel
         statusLabel.textColor = .appSecondaryLabel
@@ -129,52 +127,41 @@ final class DownloadItemCell: UITableViewCell {
     func configure(with item: DownloadItemSnapshot) {
         fileNameLabel.text = item.fileName
         let isDeleted = item.state == .completed && !item.fileExists
-        contentView.alpha = isDeleted ? 0.45 : 1
-        fileNameLabel.textColor = isDeleted ? .appSecondaryLabel : .appLabel
-        statusLabel.textColor = .appSecondaryLabel
+        let isUnavailable = isDeleted || item.state == .cancelled || item.state == .failed
+        contentView.alpha = isUnavailable ? 0.45 : 1
+        fileNameLabel.textColor = isUnavailable ? .secondaryLabel : .label
+        statusLabel.textColor = .secondaryLabel
         
         switch item.state {
         case .downloading:
+            configureDownloading(item)
+            
+        case .paused:
             representedFileURL = nil
-            let previousItemID = representedDownloadID
             representedDownloadID = item.id
-            let downloadedText = Self.formattedByteCount(item.downloadedBytes)
-            let sizeText = item.totalBytes.map { Self.formattedByteCount($0) }
-            let speedText: String?
-            if item.bytesPerSecond > 0 {
-                speedText = "\(Self.formattedByteCount(item.bytesPerSecond))/sec"
-            } else {
-                speedText = nil
-            }
-            
-            var detailsText = downloadedText
-            if let sizeText {
-                detailsText += " of \(sizeText)"
-            }
-            if let speedText {
-                detailsText += " (\(speedText))"
-            }
-            
-            let now = ProcessInfo.processInfo.systemUptime
-            if previousItemID != item.id || now - lastStatusUpdateTime >= 0.5 || statusLabel.text == nil {
-                statusLabel.text = detailsText
-                lastStatusUpdateTime = now
-            }
-            progressView.isHidden = false
-            if let totalBytes = item.totalBytes, totalBytes > 0 {
-                progressView.progress = min(max(Float(item.downloadedBytes) / Float(totalBytes), 0), 1)
-            } else {
-                progressView.progress = 0
-            }
+            statusLabel.text = NSLocalizedString("Paused", comment: "Download state")
+            progressView.isHidden = true
+            progressView.progress = 0
             let placeholderIcon = Self.iconProvider.genericPlaceholderIcon()
             fileIconView.image = placeholderIcon
             fileIconView.transform = .identity
             fileIconView.tintColor = placeholderIcon == nil ? .appLabel : nil
             
+        case .cancelled, .failed:
+            representedFileURL = nil
+            representedDownloadID = item.id
+            statusLabel.text = item.state == .cancelled
+            ? NSLocalizedString("Cancelled", comment: "Download state")
+            : NSLocalizedString("Failed", comment: "Download state")
+            progressView.isHidden = true
+            progressView.progress = 0
+            fileIconView.image = Self.iconProvider.genericPlaceholderIcon()
+            fileIconView.transform = .identity
+            fileIconView.tintColor = nil
+            
         case .completed:
             representedDownloadID = item.id
-            lastStatusUpdateTime = 0
-            statusLabel.text = item.fileExists ? (item.totalBytes.map { Self.formattedByteCount($0) } ?? "Unknown size") : "Deleted"
+            statusLabel.text = item.fileExists ? (item.totalBytes.map { Self.formattedByteCount($0) } ?? NSLocalizedString("Unknown size", comment: "")) : NSLocalizedString("Deleted", comment: "")
             progressView.isHidden = true
             progressView.progress = 0
             fileIconView.transform = .identity
@@ -207,10 +194,50 @@ final class DownloadItemCell: UITableViewCell {
         }
     }
     
+    private func configureDownloading(_ item: DownloadItemSnapshot) {
+        representedFileURL = nil
+        representedDownloadID = item.id
+        let downloadedText = Self.formattedByteCount(item.downloadedBytes)
+        let sizeText = item.totalBytes.map { Self.formattedByteCount($0) }
+        
+        let speedText: String?
+        if item.bytesPerSecond > 0 {
+            speedText = String(format: NSLocalizedString("%@/sec", comment: "Download speed"), Self.formattedByteCount(item.bytesPerSecond))
+        } else {
+            speedText = nil
+        }
+        
+        var detailsText = downloadedText
+        if let sizeText {
+            detailsText += String(format: NSLocalizedString(" of %@", comment: "Total file size"), sizeText)
+        }
+        if let speedText {
+            detailsText += " (\(speedText))"
+        }
+        statusLabel.text = detailsText
+        
+        progressView.isHidden = false
+        if let totalBytes = item.totalBytes, totalBytes > 0 {
+            progressView.progress = min(max(Float(item.downloadedBytes) / Float(totalBytes), 0), 1)
+        } else {
+            progressView.progress = 0
+        }
+        let placeholderIcon = Self.iconProvider.genericPlaceholderIcon()
+        fileIconView.image = placeholderIcon
+        fileIconView.transform = .identity
+        fileIconView.tintColor = placeholderIcon == nil ? .label : nil
+    }
+    
     // MARK: - Formatting
     
     private static func formattedByteCount(_ byteCount: Int64) -> String {
-        let units = ["bytes", "KB", "MB", "GB", "TB"]
+        let units = [
+            NSLocalizedString("bytes", comment: ""),
+            "KB",
+            "MB",
+            "GB",
+            "TB",
+        ]
         var value = Double(abs(byteCount))
         var unitIndex = 0
         

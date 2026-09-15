@@ -1,5 +1,5 @@
 diff --git a/dom/geolocation/moz.build b/dom/geolocation/moz.build
-index 63dddd4de9e2..df3cf42fbdaf 100644
+index 170552ab61af..df3cf42fbdaf 100644
 --- a/dom/geolocation/moz.build
 +++ b/dom/geolocation/moz.build
 @@ -43,6 +43,10 @@ if (
@@ -13,14 +13,31 @@ index 63dddd4de9e2..df3cf42fbdaf 100644
  elif CONFIG["OS_TARGET"] == "Darwin" and CONFIG["MOZ_BUILD_APP"] == "browser":
      UNIFIED_SOURCES += [
          "GeolocationSystemMac.mm",
-@@ -77,6 +81,10 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
-     LOCAL_INCLUDES += [
-         "/dom/system/mac",
-     ]
+@@ -69,6 +73,27 @@ LOCAL_INCLUDES += [
+     "/dom/ipc",
+ ]
+ 
++if CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
++    LOCAL_INCLUDES += [
++        "/dom/system/android",
++    ]
++elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
++    LOCAL_INCLUDES += [
++        "/dom/system/mac",
++    ]
 +elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "uikit":
 +    LOCAL_INCLUDES += [
 +        "/dom/system/mac",
 +    ]
- elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
-     LOCAL_INCLUDES += [
-         "/dom/system/windows/location",
++elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
++    LOCAL_INCLUDES += [
++        "/dom/system/windows/location",
++    ]
++elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
++    if CONFIG["MOZ_ENABLE_DBUS"]:
++        LOCAL_INCLUDES += ["/dom/system/linux"]
++        CXXFLAGS += CONFIG["MOZ_GTK3_CFLAGS"]
++
+ BROWSER_CHROME_MANIFESTS += ["test/browser/browser.toml"]
+ MOCHITEST_CHROME_MANIFESTS += ["test/chrome/chrome.toml"]
+ MOCHITEST_MANIFESTS += ["test/mochitest/mochitest.toml"]

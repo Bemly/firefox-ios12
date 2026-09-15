@@ -11,12 +11,14 @@ protocol SidebarContentController: AnyObject {
     var sidebarContentViewController: UIViewController { get }
     var sidebarContentChrome: BrowserChrome { get }
     var sidebarContentLayout: BrowserLayout { get }
+    var sidebarContentIsPrivate: Bool { get }
     var isCompactPadLayout: Bool { get }
     var isSidebarOverlayLayout: Bool { get }
     
     func updateBrowserLayout(animated: Bool, duration: TimeInterval)
     func updateBrowserLayoutIfNeeded(animated: Bool, duration: TimeInterval)
     func openExternalURL(_ url: URL)
+    func sidebarDidEndEditing()
 }
 
 protocol SidebarCoordinatorHost: AnyObject {
@@ -155,8 +157,11 @@ final class SidebarCoordinator {
     
     // MARK: - Sections
     
-    func showSection(_ section: LibrarySection) {
-        (host?.sidebarSplitViewController as? SidebarViewController)?.showSection(section)
+    func showSection(_ section: LibrarySection, startsEditingBookmarks: Bool = false) {
+        (host?.sidebarSplitViewController as? SidebarViewController)?.showSection(
+            section,
+            startsEditingBookmarks: startsEditingBookmarks
+        )
     }
     
     func topInset(fallback: CGFloat) -> CGFloat {

@@ -15,13 +15,27 @@ final class TabOverviewCollection: NSObject {
         static let privateModeIntroItemSpacing: CGFloat = 10
         static let tabCardReorderMinimumPressDuration: TimeInterval = 0.35
         static let tabCardReorderStartDelay: TimeInterval = 0.06
+        static let tabCardReorderAutoScrollEdgeInset: CGFloat = 96
+        static let tabCardReorderAutoScrollMaximumSpeed: CGFloat = 620
         static let insertionPlaceholderScrollDuration: TimeInterval = 0.4
     }
     
     enum ReorderState {
         case idle
-        case pending(cell: TabOverviewCard, workItem: DispatchWorkItem)
-        case active(cell: TabOverviewCard)
+        case pending(cell: TabOverviewCard, targetOffset: CGPoint, workItem: DispatchWorkItem)
+        case active(cell: TabOverviewCard, targetOffset: CGPoint)
+    }
+    
+    enum SwipeState {
+        case idle
+        case active(
+            collectionView: UICollectionView,
+            cell: TabOverviewCard,
+            tabID: UUID,
+            mode: TabOverview.Mode,
+            offset: CGFloat,
+            progress: CGFloat
+        )
     }
     
     private final class TabChangeAnimationState {
@@ -39,6 +53,11 @@ final class TabOverviewCollection: NSObject {
     private let tabChangeAnimationState = TabChangeAnimationState()
     private var presentationVerticalOffset: CGFloat = 0
     private var reorderState: ReorderState = .idle
+    private weak var reorderAutoScrollCollectionView: UICollectionView?
+    private var reorderAutoScrollDisplayLink: CADisplayLink?
+    private var reorderAutoScrollSpeed: CGFloat = 0
+    private var reorderAutoScrollTargetPosition: CGPoint = .zero
+    private var swipeState: SwipeState = .idle
     private(set) var mode: TabOverview.Mode = .regularTabs
     
     lazy var regularTabsCollectionView = makeTabCollectionView()
@@ -84,11 +103,10 @@ final class TabOverviewCollection: NSObject {
         return nil
     }
     
-    func itemIndex(forTabAt index: Int, mode: TabOverview.Mode? = nil) -> Int? {
+    func itemIndex(forTabAt index: Int) -> Int? {
         guard let selectedMode = tabOverview?.dataSource?.selectedMode else { return nil }
-        let resolvedMode = mode ?? self.mode
-        guard selectedMode == resolvedMode.tabMode,
-              tabs(for: resolvedMode).indices.contains(index) else {
+        guard selectedMode == mode.tabMode,
+              tabs(for: mode).indices.contains(index) else {
             return nil
         }
         return index
@@ -131,7 +149,34 @@ final class TabOverviewCollection: NSObject {
     func reloadTabCards() {
         tabChangeAnimationState.insertionPlaceholderMode = nil
         allCollectionViews.forEach { $0.reloadData() }
+        restoreActiveTabCardCloseSwipeIfNeeded()
         refreshTabIdentitySnapshot()
+    }
+    
+    func restoreActiveTabCardCloseSwipeIfNeeded() {
+        guard case .active(let collectionView, let previousCell, let tabID, let mode, let offset, let progress) = swipeState else {
+            return
+        }
+        
+        previousCell.layer.zPosition = 0
+        previousCell.setSwipeOffset(0, progress: 0)
+        collectionView.layoutIfNeeded()
+        
+        guard let cell = tabCard(withID: tabID, mode: mode, in: collectionView) else {
+            swipeState = .idle
+            return
+        }
+        
+        cell.layer.zPosition = 1
+        cell.setSwipeOffset(offset, progress: progress)
+        swipeState = .active(
+            collectionView: collectionView,
+            cell: cell,
+            tabID: tabID,
+            mode: mode,
+            offset: offset,
+            progress: progress
+        )
     }
     
     func refreshTabIdentitySnapshot() {
@@ -147,7 +192,14 @@ final class TabOverviewCollection: NSObject {
               let cell = collectionView(for: mode).cellForItem(at: IndexPath(item: index, section: 0)) as? TabOverviewCard else {
             return
         }
-        cell.configure(with: modeTabs[index])
+        configureTabCard(cell, with: modeTabs[index])
+    }
+    
+    func configureTabCard(_ card: TabOverviewCard, with tab: Tab) {
+        card.configure(
+            with: tab,
+            visiblePreviewCropRect: tabOverview?.visiblePreviewCropRect
+        )
     }
     
     func prepareInsertionPlaceholder(for mode: TabOverview.Mode, completion: @escaping () -> Void) {
@@ -248,6 +300,10 @@ final class TabOverviewCollection: NSObject {
         reorderGesture.minimumPressDuration = UX.tabCardReorderMinimumPressDuration
         reorderGesture.delegate = self
         view.addGestureRecognizer(reorderGesture)
+        let closeSwipeGesture = UIPanGestureRecognizer(target: self, action: #selector(handleTabCardCloseSwipe(_:)))
+        closeSwipeGesture.delegate = self
+        view.addGestureRecognizer(closeSwipeGesture)
+        view.panGestureRecognizer.require(toFail: closeSwipeGesture)
         view.register(UICollectionViewCell.self, forCellWithReuseIdentifier: Self.insertionPlaceholderReuseIdentifier)
         view.register(TabOverviewCard.self, forCellWithReuseIdentifier: TabOverviewCard.reuseIdentifier)
         return view
@@ -262,13 +318,13 @@ final class TabOverviewCollection: NSObject {
         imageView.contentMode = .scaleAspectFit
         imageView.tintColor = .appSecondaryLabel
         let titleLabel = UILabel()
-        titleLabel.text = "Private Browsing"
+        titleLabel.text = NSLocalizedString("Private Browsing", comment: "")
         titleLabel.textAlignment = .center
         titleLabel.textColor = .appSecondaryLabel
         titleLabel.font = .preferredFont(forTextStyle: .title2)
         titleLabel.adjustsFontForContentSizeCategory = true
         let subtitleLabel = UILabel()
-        subtitleLabel.text = "Reynard won't remember any of your browsing history or cookies. However, downloads and new bookmarks will be saved."
+        subtitleLabel.text = NSLocalizedString("Reynard won’t remember any of your browsing history or cookies. However, downloads and new bookmarks will be saved.", comment: "")
         subtitleLabel.textAlignment = .center
         subtitleLabel.textColor = .appSecondaryLabel
         subtitleLabel.font = .preferredFont(forTextStyle: .subheadline)
@@ -371,22 +427,31 @@ final class TabOverviewCollection: NSObject {
             guard let indexPath = collectionView.indexPathForItem(at: location),
                   let cell = collectionView.cellForItem(at: indexPath) as? TabOverviewCard,
                   !cell.isCloseButton(at: collectionView.convert(location, to: cell)) else { return }
+            let targetOffset = CGPoint(x: cell.center.x - location.x, y: cell.center.y - location.y)
             cell.setReorderState(.lifted, animated: true)
-            let workItem = DispatchWorkItem { [weak self, weak collectionView, weak cell] in
-                guard let self, let collectionView, let cell,
-                      case .pending(let pendingCell, _) = self.reorderState,
+            let workItem = DispatchWorkItem { [weak self, weak collectionView, weak cell, weak gestureRecognizer] in
+                guard let self, let collectionView, let cell, let gestureRecognizer,
+                      case .pending(let pendingCell, let targetOffset, _) = self.reorderState,
                       pendingCell === cell else { return }
                 if collectionView.beginInteractiveMovementForItem(at: indexPath) {
-                    self.reorderState = .active(cell: cell)
+                    let location = gestureRecognizer.location(in: collectionView)
+                    let targetPosition = CGPoint(x: location.x + targetOffset.x, y: location.y + targetOffset.y)
+                    collectionView.updateInteractiveMovementTargetPosition(targetPosition)
+                    self.updateTabCardReorderAutoScroll(at: location, targetPosition: targetPosition, in: collectionView)
+                    self.reorderState = .active(cell: cell, targetOffset: targetOffset)
                 } else {
                     cell.setReorderState(.resting, animated: true)
                     self.reorderState = .idle
                 }
             }
-            reorderState = .pending(cell: cell, workItem: workItem)
+            reorderState = .pending(cell: cell, targetOffset: targetOffset, workItem: workItem)
             DispatchQueue.main.asyncAfter(deadline: .now() + UX.tabCardReorderStartDelay, execute: workItem)
         case .changed:
-            if case .active = reorderState { collectionView.updateInteractiveMovementTargetPosition(location) }
+            if case .active(_, let targetOffset) = reorderState {
+                let targetPosition = CGPoint(x: location.x + targetOffset.x, y: location.y + targetOffset.y)
+                collectionView.updateInteractiveMovementTargetPosition(targetPosition)
+                updateTabCardReorderAutoScroll(at: location, targetPosition: targetPosition, in: collectionView)
+            }
         case .ended:
             finishTabCardReordering(in: collectionView, cancelled: false)
         default:
@@ -396,15 +461,234 @@ final class TabOverviewCollection: NSObject {
     
     private func finishTabCardReordering(in collectionView: UICollectionView, cancelled: Bool) {
         switch reorderState {
-        case .pending(let cell, let workItem):
+        case .pending(let cell, _, let workItem):
             workItem.cancel()
             cell.setReorderState(.resting, animated: true)
-        case .active(let cell):
+        case .active(let cell, _):
             cancelled ? collectionView.cancelInteractiveMovement() : collectionView.endInteractiveMovement()
             cell.setReorderState(.resting, animated: true)
         case .idle:
             break
         }
+        stopTabCardReorderAutoScroll()
         reorderState = .idle
+    }
+    
+    private func updateTabCardReorderAutoScroll(
+        at location: CGPoint,
+        targetPosition: CGPoint,
+        in collectionView: UICollectionView
+    ) {
+        reorderAutoScrollCollectionView = collectionView
+        reorderAutoScrollTargetPosition = targetPosition
+        
+        let visibleY = location.y - collectionView.bounds.minY
+        let topDistance = visibleY - collectionView.adjustedContentInset.top
+        let bottomDistance = collectionView.bounds.height - collectionView.adjustedContentInset.bottom - visibleY
+        if topDistance < UX.tabCardReorderAutoScrollEdgeInset {
+            let progress = 1 - (max(topDistance, 0) / UX.tabCardReorderAutoScrollEdgeInset)
+            reorderAutoScrollSpeed = -UX.tabCardReorderAutoScrollMaximumSpeed * progress
+        } else if bottomDistance < UX.tabCardReorderAutoScrollEdgeInset {
+            let progress = 1 - (max(bottomDistance, 0) / UX.tabCardReorderAutoScrollEdgeInset)
+            reorderAutoScrollSpeed = UX.tabCardReorderAutoScrollMaximumSpeed * progress
+        } else {
+            stopTabCardReorderAutoScroll()
+            return
+        }
+        
+        if reorderAutoScrollDisplayLink == nil {
+            let displayLink = CADisplayLink(target: self, selector: #selector(handleTabCardReorderAutoScroll))
+            displayLink.add(to: .main, forMode: .common)
+            reorderAutoScrollDisplayLink = displayLink
+        }
+    }
+    
+    private func stopTabCardReorderAutoScroll() {
+        reorderAutoScrollDisplayLink?.invalidate()
+        reorderAutoScrollDisplayLink = nil
+        reorderAutoScrollCollectionView = nil
+        reorderAutoScrollSpeed = 0
+    }
+    
+    @objc private func handleTabCardReorderAutoScroll(_ displayLink: CADisplayLink) {
+        guard case .active = reorderState,
+              let collectionView = reorderAutoScrollCollectionView else {
+            stopTabCardReorderAutoScroll()
+            return
+        }
+        
+        let minimumY = -collectionView.adjustedContentInset.top
+        let maximumY = max(minimumY, collectionView.contentSize.height - collectionView.bounds.height + collectionView.adjustedContentInset.bottom)
+        let duration = max(displayLink.targetTimestamp - displayLink.timestamp, 0)
+        let currentY = collectionView.contentOffset.y
+        let nextY = min(max(currentY + (reorderAutoScrollSpeed * duration), minimumY), maximumY)
+        guard nextY != currentY else {
+            return
+        }
+        
+        collectionView.contentOffset.y = nextY
+        reorderAutoScrollTargetPosition.y += nextY - currentY
+        collectionView.updateInteractiveMovementTargetPosition(reorderAutoScrollTargetPosition)
+    }
+    
+    // MARK: - Swipe to Close
+    
+    @objc private func handleTabCardCloseSwipe(_ gestureRecognizer: UIPanGestureRecognizer) {
+        guard let collectionView = gestureRecognizer.view as? UICollectionView else { return }
+        switch gestureRecognizer.state {
+        case .began:
+            beginTabCardCloseSwipe(gestureRecognizer, in: collectionView)
+        case .changed:
+            updateTabCardCloseSwipe(gestureRecognizer)
+        case .ended:
+            finishTabCardCloseSwipe(gestureRecognizer, cancelled: false)
+        default:
+            finishTabCardCloseSwipe(gestureRecognizer, cancelled: true)
+        }
+    }
+    
+    private func beginTabCardCloseSwipe(_ gestureRecognizer: UIPanGestureRecognizer, in collectionView: UICollectionView) {
+        let location = gestureRecognizer.location(in: collectionView)
+        guard let tabMode = tabMode(for: collectionView),
+              let indexPath = collectionView.indexPathForItem(at: location),
+              !isInsertionPlaceholder(in: collectionView, at: indexPath),
+              tabs(for: tabMode).indices.contains(indexPath.item),
+              let cell = collectionView.cellForItem(at: indexPath) as? TabOverviewCard else {
+            swipeState = .idle
+            return
+        }
+        
+        let tabID = tabs(for: tabMode)[indexPath.item].id
+        cell.layer.zPosition = 1
+        swipeState = .active(
+            collectionView: collectionView,
+            cell: cell,
+            tabID: tabID,
+            mode: tabMode,
+            offset: 0,
+            progress: 0
+        )
+        updateTabCardCloseSwipe(gestureRecognizer)
+    }
+    
+    private func updateTabCardCloseSwipe(_ gestureRecognizer: UIPanGestureRecognizer) {
+        guard case .active(let collectionView, let currentCell, let tabID, let mode, _, _) = swipeState,
+              let cell = activeTabCardCloseSwipeCell(
+                currentCell: currentCell,
+                tabID: tabID,
+                mode: mode,
+                in: collectionView
+              ) else {
+            return
+        }
+        
+        let offset = min(0, gestureRecognizer.translation(in: cell).x)
+        let progress = abs(offset) / max(cell.bounds.width, 1)
+        cell.setSwipeOffset(offset, progress: progress)
+        swipeState = .active(
+            collectionView: collectionView,
+            cell: cell,
+            tabID: tabID,
+            mode: mode,
+            offset: offset,
+            progress: progress
+        )
+    }
+    
+    private func finishTabCardCloseSwipe(_ gestureRecognizer: UIPanGestureRecognizer, cancelled: Bool) {
+        guard case .active(let collectionView, let currentCell, let tabID, let mode, _, _) = swipeState,
+              let cell = activeTabCardCloseSwipeCell(
+                currentCell: currentCell,
+                tabID: tabID,
+                mode: mode,
+                in: collectionView
+              ) else {
+            swipeState = .idle
+            return
+        }
+        
+        swipeState = .idle
+        
+        let offset = min(0, gestureRecognizer.translation(in: cell).x)
+        let projectedOffset = offset + (gestureRecognizer.velocity(in: cell).x * 0.2)
+        let shouldClose = !cancelled && projectedOffset < -(cell.bounds.width * 0.425)
+        
+        if shouldClose {
+            UIView.animate(
+                withDuration: 0.2,
+                delay: 0,
+                options: [.curveEaseOut, .beginFromCurrentState],
+                animations: {
+                    cell.setSwipeOffset(-max(collectionView.bounds.width, cell.bounds.width), progress: 1)
+                },
+                completion: { [weak self, weak cell] _ in
+                    guard let self, let cell else { return }
+                    cell.layer.zPosition = 0
+                    cell.isHidden = true
+                    self.closeTab(withID: tabID, mode: mode)
+                }
+            )
+        } else {
+            UIView.animate(
+                withDuration: 0.3,
+                delay: 0,
+                usingSpringWithDamping: 0.82,
+                initialSpringVelocity: 0,
+                options: [.curveEaseOut, .beginFromCurrentState],
+                animations: {
+                    cell.setSwipeOffset(0, progress: 0)
+                },
+                completion: { _ in
+                    cell.layer.zPosition = 0
+                }
+            )
+        }
+    }
+    
+    private func activeTabCardCloseSwipeCell(
+        currentCell: TabOverviewCard,
+        tabID: UUID,
+        mode: TabOverview.Mode,
+        in collectionView: UICollectionView
+    ) -> TabOverviewCard? {
+        if currentCell.tabID == tabID {
+            return currentCell
+        }
+        
+        currentCell.layer.zPosition = 0
+        currentCell.setSwipeOffset(0, progress: 0)
+        guard let cell = tabCard(withID: tabID, mode: mode, in: collectionView) else {
+            return nil
+        }
+        cell.layer.zPosition = 1
+        return cell
+    }
+    
+    private func tabCard(withID tabID: UUID, mode: TabOverview.Mode, in collectionView: UICollectionView) -> TabOverviewCard? {
+        guard let index = tabs(for: mode).firstIndex(where: { $0.id == tabID }) else {
+            return nil
+        }
+        return collectionView.cellForItem(at: IndexPath(item: index, section: 0)) as? TabOverviewCard
+    }
+    
+    private func closeTab(withID tabID: UUID, mode: TabOverview.Mode) {
+        guard let index = tabs(for: mode).firstIndex(where: { $0.id == tabID }),
+              let tabOverview else {
+            return
+        }
+        
+        tabOverview.delegate?.tabOverviewDidRequestClearPendingTabExpansion(tabOverview)
+        tabOverview.dataSource?.closeTab(at: index, mode: mode.tabMode)
+    }
+    
+    func closeTab(for cell: TabOverviewCard, in collectionView: UICollectionView) {
+        guard let indexPath = collectionView.indexPath(for: cell),
+              let tabMode = tabMode(for: collectionView),
+              let tabOverview else {
+            return
+        }
+        
+        tabOverview.delegate?.tabOverviewDidRequestClearPendingTabExpansion(tabOverview)
+        tabOverview.dataSource?.closeTab(at: indexPath.item, mode: tabMode.tabMode)
     }
 }

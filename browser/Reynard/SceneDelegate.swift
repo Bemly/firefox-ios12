@@ -15,6 +15,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let windowScene = (scene as? UIWindowScene) else { return }
         
         let browserViewController = BrowserViewController()
+        browserViewController.sessionManager.setApplicationForeground(scene.activationState != .background)
+        
         let window = UIWindow(windowScene: windowScene)
         window.overrideUserInterfaceStyle = AppAppearanceController.userInterfaceStyle(for: Prefs.AppearanceSettings.appAppearance)
         window.rootViewController = browserViewController
@@ -30,13 +32,45 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     
     func sceneDidDisconnect(_ scene: UIScene) {}
     
-    func sceneDidBecomeActive(_ scene: UIScene) {}
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        guard let browserViewController = window?.rootViewController as? BrowserViewController else {
+            return
+        }
+        
+        browserViewController.startScreenOrientationHandling()
+        browserViewController.sessionManager.applicationDidBecomeActive()
+        browserViewController.tabManager.applicationDidBecomeActive()
+    }
     
-    func sceneWillResignActive(_ scene: UIScene) {}
+    func sceneWillResignActive(_ scene: UIScene) {
+        guard let browserViewController = window?.rootViewController as? BrowserViewController else {
+            return
+        }
+        
+        browserViewController.stopScreenOrientationHandling()
+        browserViewController.tabManager.applicationWillResignActive()
+        browserViewController.sessionManager.applicationWillResignActive()
+    }
     
-    func sceneWillEnterForeground(_ scene: UIScene) {}
+    func windowScene(
+        _ windowScene: UIWindowScene,
+        didUpdate previousCoordinateSpace: UICoordinateSpace,
+        interfaceOrientation previousInterfaceOrientation: UIInterfaceOrientation,
+        traitCollection previousTraitCollection: UITraitCollection
+    ) {
+        (window?.rootViewController as? BrowserViewController)?
+            .screenOrientationChanged(to: windowScene.interfaceOrientation)
+    }
     
-    func sceneDidEnterBackground(_ scene: UIScene) {}
+    func sceneWillEnterForeground(_ scene: UIScene) {
+        (window?.rootViewController as? BrowserViewController)?
+            .sessionManager.setApplicationForeground(true)
+    }
+    
+    func sceneDidEnterBackground(_ scene: UIScene) {
+        (window?.rootViewController as? BrowserViewController)?
+            .sessionManager.setApplicationForeground(false)
+    }
     
     private func handleIncomingURLContexts(_ urlContexts: Set<UIOpenURLContext>) {
         guard let incomingURL = urlContexts.first?.url else {

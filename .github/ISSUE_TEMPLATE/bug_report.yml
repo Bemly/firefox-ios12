@@ -13,6 +13,7 @@ body:
     label: Before continuing, please confirm the following
     options:
       - label: I have read the FAQ and searched for my issue.
+        required: true
   validations:
     required: true
 
@@ -74,8 +75,11 @@ body:
     label: Verify steps
     options:
       - label: I have the latest version of Reynard Browser.
+        required: true
       - label: I use the official build of Reynard Browser from GitHub releases.
+        required: true
       - label: I have read the installation instructions and have followed all of the steps to install Reynard Browser correctly.
+        required: true
   validations:
     required: true
 

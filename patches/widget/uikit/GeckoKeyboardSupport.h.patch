@@ -1,0 +1,127 @@
+diff --git a/widget/uikit/GeckoKeyboardSupport.h b/widget/uikit/GeckoKeyboardSupport.h
+new file mode 100644
+index 000000000000..e36569c7018b
+--- /dev/null
++++ b/widget/uikit/GeckoKeyboardSupport.h
+@@ -0,0 +1,121 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#ifndef mozilla_widget_GeckoKeyboardSupport_h
++#define mozilla_widget_GeckoKeyboardSupport_h
++
++#import <UIKit/UIKit.h>
++
++#include "mozilla/EventForwards.h"
++#include "mozilla/UniquePtr.h"
++#include "nsStringFwd.h"
++#include "nsTArray.h"
++
++typedef NS_ENUM(NSInteger, WebEventType) {
++  WebEventMouseDown,
++  WebEventMouseUp,
++  WebEventMouseMoved,
++  WebEventScrollWheel,
++  WebEventKeyDown,
++  WebEventKeyUp,
++};
++
++typedef NSUInteger WebEventFlags;
++typedef NSUInteger WebKeyboardInputFlags;
++
++enum : WebEventFlags {
++  WebEventFlagMaskLeftCommandKey = 1 << 16,
++  WebEventFlagMaskLeftShiftKey = 1 << 17,
++  WebEventFlagMaskLeftCapsLockKey = 1 << 18,
++  WebEventFlagMaskLeftOptionKey = 1 << 19,
++  WebEventFlagMaskLeftControlKey = 1 << 20,
++  WebEventFlagMaskRightShiftKey = 1 << 21,
++  WebEventFlagMaskRightOptionKey = 1 << 22,
++  WebEventFlagMaskRightControlKey = 1 << 23,
++  WebEventFlagMaskRightCommandKey = 1 << 24,
++  WebEventFlagMaskCommandKey = WebEventFlagMaskLeftCommandKey |
++      WebEventFlagMaskRightCommandKey,
++  WebEventFlagMaskShiftKey = WebEventFlagMaskLeftShiftKey |
++      WebEventFlagMaskRightShiftKey,
++  WebEventFlagMaskOptionKey = WebEventFlagMaskLeftOptionKey |
++      WebEventFlagMaskRightOptionKey,
++  WebEventFlagMaskControlKey = WebEventFlagMaskLeftControlKey |
++      WebEventFlagMaskRightControlKey,
++};
++
++enum : WebKeyboardInputFlags {
++  WebEventKeyboardInputRepeat = 1 << 0,
++  WebEventKeyboardInputModifierFlagsChanged = 1 << 5,
++};
++
++@interface WebEvent : NSObject
++@property(nonatomic, readonly) WebEventType type;
++@property(nonatomic, readonly) CFTimeInterval timestamp;
++@property(nonatomic, readonly, retain) NSString* characters;
++@property(nonatomic, readonly, retain) NSString* charactersIgnoringModifiers;
++@property(nonatomic, readonly) WebEventFlags modifierFlags;
++@property(nonatomic, readonly, getter=isKeyRepeating) BOOL keyRepeating;
++@property(nonatomic, readonly, retain) NSString* inputManagerHint;
++@property(nonatomic, readonly) WebKeyboardInputFlags keyboardFlags;
++@property(nonatomic, readonly) uint16_t keyCode;
++@property(nonatomic, readonly, getter=isTabKey) BOOL tabKey;
++@property(nonatomic, assign) BOOL wasHandled;
++@end
++
++namespace mozilla::widget {
++
++class TextInputHandler;
++
++Modifiers GeckoModifiersForUIKitModifiers(UIKeyModifierFlags aModifiers);
++
++class GeckoKeyboardSupport final {
++ public:
++  explicit GeckoKeyboardSupport(TextInputHandler* aHandler);
++  ~GeckoKeyboardSupport();
++
++  bool HandleKeyEvent(WebEvent* aEvent);
++  void HandleModifierFlagsChanged(UIKeyModifierFlags aOldFlags,
++                                  UIKeyModifierFlags aNewFlags);
++  void ReleasePhysicalKey(uint16_t aNativeKeyCode);
++  void ReleasePhysicalKeys();
++
++ private:
++  friend class TextInputHandler;
++
++  struct HeldKey;
++
++  GeckoKeyboardSupport() = delete;
++  GeckoKeyboardSupport(const GeckoKeyboardSupport&) = delete;
++  GeckoKeyboardSupport& operator=(const GeckoKeyboardSupport&) = delete;
++
++  void InitKeyEvent(WebEvent* aNativeEvent, WidgetKeyboardEvent& aEvent,
++                    uint32_t aUniqueId, bool aProcessedByIME = false,
++                    const nsAString* aInsertString = nullptr,
++                    bool aForceRepeat = false) const;
++  Modifiers CurrentModifiers() const;
++  uint32_t NextUniqueId();
++  bool DispatchKeyUp(WebEvent* aEvent);
++  bool DispatchHeldKeyUp(const HeldKey& aHeldKey, Modifiers aModifiers);
++  void RememberKeyDown(WebEvent* aEvent);
++  void ForgetKeyUp(WebEvent* aEvent);
++  void StartKeyRepeat(WebEvent* aEvent);
++  void StopKeyRepeat();
++  void RepeatKey();
++  static void KeyRepeatTimerFired(CFRunLoopTimerRef aTimer, void* aInfo);
++  bool Destroyed() const;
++
++  TextInputHandler* mHandler;
++  nsTArray<UniquePtr<HeldKey>> mHeldKeys;
++  CFRunLoopTimerRef mKeyRepeatTimer = nullptr;
++  WebEvent* mRepeatingEvent = nil;
++  Modifiers mCurrentModifiers = {};
++  uint32_t mNextEventId = 0;
++};
++
++}  // namespace mozilla::widget
++
++#endif

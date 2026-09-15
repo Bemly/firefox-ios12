@@ -1,0 +1,62 @@
+diff --git a/xpcom/base/MemoryPressureMonitorIOS.h b/xpcom/base/MemoryPressureMonitorIOS.h
+new file mode 100644
+index 000000000000..127a74fc77b1
+--- /dev/null
++++ b/xpcom/base/MemoryPressureMonitorIOS.h
+@@ -0,0 +1,56 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#ifndef mozilla_MemoryPressureMonitorIOS_h
++#define mozilla_MemoryPressureMonitorIOS_h
++
++#include <dispatch/dispatch.h>
++#include <stdint.h>
++
++#include "mozilla/TimeStamp.h"
++
++namespace mozilla {
++
++class MemoryPressureMonitorIOS final {
++ public:
++  static void Initialize();
++  static void Shutdown();
++
++  MemoryPressureMonitorIOS();
++  ~MemoryPressureMonitorIOS();
++
++  MemoryPressureMonitorIOS(const MemoryPressureMonitorIOS&) = delete;
++  MemoryPressureMonitorIOS& operator=(const MemoryPressureMonitorIOS&) = delete;
++
++ private:
++  enum class Level : uint8_t { Normal, Warning, Critical };
++
++  static void HandleMemoryPressureEvent(void* aContext);
++  static void HandleMeasurementTimer(void* aContext);
++  static void HandleSourceCancellation(void* aContext);
++
++  void MemoryPressureEvent();
++  void MeasurementTimerFired();
++  void UpdateFootprintLevel();
++  void ApplyLevel(Level aLevel);
++
++  static Level MaxLevel(Level aFirst, Level aSecond);
++  static Level LevelForFootprint(double aUsage);
++
++  dispatch_queue_t mQueue;
++  dispatch_group_t mCancellationGroup;
++  dispatch_source_t mMemoryPressureSource;
++  dispatch_source_t mMeasurementTimer;
++  Level mSystemLevel;
++  Level mFootprintLevel;
++  Level mLevel;
++  TimeStamp mLastFullMemoryPressure;
++};
++
++}  // namespace mozilla
++
++#endif  // mozilla_MemoryPressureMonitorIOS_h

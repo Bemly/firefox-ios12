@@ -93,18 +93,31 @@ public class MediaSession {
         session?.dispatcher.dispatch(type: "GeckoView:MediaSession:PrevTrack")
     }
     
-    public func seekForward() {
-        session?.dispatcher.dispatch(type: "GeckoView:MediaSession:SeekForward")
+    public func seekForward(offset: Double = 0) {
+        session?.dispatcher.dispatch(
+            type: "GeckoView:MediaSession:SeekForward",
+            message: ["offset": offset]
+        )
     }
     
-    public func seekBackward() {
-        session?.dispatcher.dispatch(type: "GeckoView:MediaSession:SeekBackward")
+    public func seekBackward(offset: Double = 0) {
+        session?.dispatcher.dispatch(
+            type: "GeckoView:MediaSession:SeekBackward",
+            message: ["offset": offset]
+        )
     }
     
     public func seekTo(time: Double, fast: Bool = false) {
         session?.dispatcher.dispatch(
             type: "GeckoView:MediaSession:SeekTo",
             message: ["time": time, "fast": fast]
+        )
+    }
+    
+    public func muteAudio(_ mute: Bool) {
+        session?.dispatcher.dispatch(
+            type: "GeckoView:MediaSession:MuteAudio",
+            message: ["mute": mute]
         )
     }
 }

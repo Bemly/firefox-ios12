@@ -11,6 +11,7 @@ public enum GeckoStorageClearFlags {
     public static let cookies: Int64 = 1 << 0
     public static let networkCache: Int64 = 1 << 1
     public static let imageCache: Int64 = 1 << 2
+    public static let history: Int64 = 1 << 3
     public static let domStorages: Int64 = 1 << 4
     public static let authSessions: Int64 = 1 << 5
     public static let allCaches: Int64 = networkCache | imageCache
@@ -26,8 +27,37 @@ public enum GeckoStorageController {
         }
     }
 
-    public static func clearTranslationModelCache(completion: @escaping () -> Void = {}) {
+    public static func clearData(forHost host: String, flags: Int64, completion: @escaping () -> Void = {}) {
         GeckoEventDispatcherWrapper.runtimeInstance.query(
+            type: "GeckoView:ClearHostData",
+            message: [
+                "host": host,
+                "flags": flags,
+            ]
+        ) { _ in
+            completion()
+        }
+    }
+
+    public static func clearHistory(since startDate: Date?, completion: @escaping () -> Void = {}) {
+        if let startDate {
+            GeckoEventDispatcherWrapper.runtimeInstance.query(
+                type: "GeckoView:ClearData",
+                message: [
+                    "flags": GeckoStorageClearFlags.history,
+                    "from": prTime(from: startDate),
+                    "to": prTime(from: Date()),
+                ]
+            ) { _ in
+                completion()
+            }
+            return
+        }
+        clearData(flags: GeckoStorageClearFlags.history) { _ in completion() }
+    }
+
+    public static func clearTranslationModelCache(completion: @escaping () -> Void = {}) {
+        GeckoEventDispatcherWrapper.runtimeInstance.query
             type: "GeckoView:Translations:ManageModel",
             message: [
                 "operation": "delete",
@@ -36,5 +66,9 @@ public enum GeckoStorageController {
         ) { _ in
             completion()
         }
+    }
+    
+    private static func prTime(from date: Date) -> Int64 {
+        return Int64(date.timeIntervalSince1970 * 1_000_000)
     }
 }

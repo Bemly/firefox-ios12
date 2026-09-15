@@ -21,6 +21,7 @@ protocol TabOverviewDataSource: AnyObject {
 
 protocol TabOverviewDelegate: AnyObject {
     func tabOverviewDidRequestClearTabs(_ tabOverview: TabOverview)
+    func tabOverviewDidRequestClearTabsOlderThan(_ tabOverview: TabOverview, age: TabOverviewClearTabsMenu.Age)
     func tabOverviewDidRequestNewTab(_ tabOverview: TabOverview)
     func tabOverviewDidRequestDone(_ tabOverview: TabOverview)
     func tabOverviewDidRequestDismiss(_ tabOverview: TabOverview, animated: Bool)
@@ -37,6 +38,8 @@ protocol TabOverviewPresentationContext: AnyObject {
     func setSearchFocused(_ focused: Bool, animated: Bool)
     func endEditing()
     func updateLayout(animated: Bool, duration: TimeInterval)
+    func prepareTabOverviewPresentation()
+    func tabOverviewDidFinishDismissal()
 }
 
 final class TabOverview: UIView {
@@ -93,9 +96,24 @@ final class TabOverview: UIView {
         return max(contentView.bounds.height, 1) / width
     }
     
+    var visiblePreviewCropRect: CGRect? {
+        guard let context = presentationContext else {
+            return nil
+        }
+        return context.contentView
+            .thumbnailGeometry(in: context.containerView)?
+            .cropRect
+    }
+    
     let collection: TabOverviewCollection
     let topToolbar = TabOverviewTopToolbar()
     let bottomToolbar = TabOverviewBottomToolbar()
+    private let statusBarBlurView: VariableBlurView = {
+        let view = VariableBlurView()
+        view.direction = .down
+        view.dimmingTintColor = nil
+        return view
+    }()
     private(set) lazy var presentation = TabOverviewPresentation(tabOverview: self)
     
     private var regularTabsCollectionTopToContainerConstraint: NSLayoutConstraint!
@@ -110,6 +128,14 @@ final class TabOverview: UIView {
     private var appliesNextTabChangesWithoutAnimation = false
     
     // MARK: - Lifecycle
+    
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        statusBarBlurView.frame = CGRect(
+            origin: .zero,
+            size: CGSize(width: bounds.width, height: safeAreaInsets.top)
+        )
+    }
     
     override init(frame: CGRect) {
         collection = TabOverviewCollection(
@@ -231,12 +257,17 @@ final class TabOverview: UIView {
         collection.collectionView(for: mode)
     }
     
-    func itemIndex(forTabAt index: Int, mode: Mode? = nil) -> Int? {
-        collection.itemIndex(forTabAt: index, mode: mode)
+    func itemIndex(forTabAt index: Int) -> Int? {
+        collection.itemIndex(forTabAt: index)
     }
     
     func prepareDismissSelection(to index: Int, mode: TabMode, previewImage: UIImage?) {
         presentation.prepareDismissSelection(to: index, mode: mode, previewImage: previewImage)
+    }
+    
+    func prepareDismissSelectionForCurrentTab() {
+        guard let dataSource else { return }
+        presentation.prepareDismissSelection(to: dataSource.selectedIndex, mode: dataSource.selectedMode, previewImage: nil)
     }
     
     // MARK: - View Setup
@@ -251,6 +282,7 @@ final class TabOverview: UIView {
     private func configureHierarchy() {
         addSubview(collection.privateTabsCollectionView)
         addSubview(collection.regularTabsCollectionView)
+        addSubview(statusBarBlurView)
         addSubview(bottomToolbar)
         addSubview(topToolbar)
     }
@@ -264,7 +296,6 @@ final class TabOverview: UIView {
         privateTabsCollectionTopToToolbarConstraint = collection.privateTabsCollectionView.topAnchor.constraint(equalTo: topToolbar.bottomAnchor)
         privateTabsCollectionBottomToContainerConstraint = collection.privateTabsCollectionView.bottomAnchor.constraint(equalTo: bottomAnchor)
         privateTabsCollectionBottomToToolbarConstraint = collection.privateTabsCollectionView.bottomAnchor.constraint(equalTo: bottomToolbar.topAnchor)
-        
         NSLayoutConstraint.activate([
             collection.regularTabsCollectionView.leadingAnchor.constraint(equalTo: safeAreaLayoutGuide.leadingAnchor),
             collection.regularTabsCollectionView.trailingAnchor.constraint(equalTo: safeAreaLayoutGuide.trailingAnchor),
@@ -289,6 +320,8 @@ final class TabOverview: UIView {
         bottomToolbar.onTabModeChange = { [weak self] mode in self?.handleTabModeChange(mode) }
         topToolbar.onClearTabs = { [weak self] in self?.requestClearTabs() }
         bottomToolbar.onClearTabs = { [weak self] in self?.requestClearTabs() }
+        topToolbar.onClearTabsOlderThan = { [weak self] age in self?.requestClearTabsOlderThan(age) }
+        bottomToolbar.onClearTabsOlderThan = { [weak self] age in self?.requestClearTabsOlderThan(age) }
         topToolbar.onAddTab = { [weak self] in self?.requestNewTab() }
         bottomToolbar.onAddTab = { [weak self] in self?.requestNewTab() }
         topToolbar.onDone = { [weak self] in self?.requestDone() }
@@ -299,6 +332,10 @@ final class TabOverview: UIView {
     
     private func requestClearTabs() {
         delegate?.tabOverviewDidRequestClearTabs(self)
+    }
+    
+    private func requestClearTabsOlderThan(_ age: TabOverviewClearTabsMenu.Age) {
+        delegate?.tabOverviewDidRequestClearTabsOlderThan(self, age: age)
     }
     
     private func handleTabModeChange(_ mode: Mode) {
@@ -319,7 +356,7 @@ final class TabOverview: UIView {
         let visibleCount = mode == .privateTabs
         ? dataSource?.privateTabs.count ?? 0
         : regularCount
-        topToolbar.apply(tabCount: regularCount, hasVisibleTab: visibleCount > 0)
-        bottomToolbar.apply(tabCount: regularCount, hasVisibleTab: visibleCount > 0)
+        topToolbar.apply(tabCount: regularCount, visibleTabCount: visibleCount, hasVisibleTab: visibleCount > 0)
+        bottomToolbar.apply(tabCount: regularCount, visibleTabCount: visibleCount, hasVisibleTab: visibleCount > 0)
     }
 }

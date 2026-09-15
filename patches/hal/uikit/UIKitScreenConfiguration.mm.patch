@@ -1,0 +1,117 @@
+diff --git a/hal/uikit/UIKitScreenConfiguration.mm b/hal/uikit/UIKitScreenConfiguration.mm
+new file mode 100644
+index 000000000000..227774cb96c7
+--- /dev/null
++++ b/hal/uikit/UIKitScreenConfiguration.mm
+@@ -0,0 +1,111 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#include "HalImpl.h"
++
++#include "mozilla/widget/GeckoViewSupport.h"
++#include "mozilla/widget/Screen.h"
++#include "mozilla/widget/ScreenManager.h"
++
++namespace mozilla::hal_impl {
++
++static bool IsSupportedScreenOrientation(
++    const hal::ScreenOrientation& aOrientation) {
++  static constexpr hal::ScreenOrientation kSupportedOrientations[] = {
++      hal::ScreenOrientation::PortraitPrimary,
++      hal::ScreenOrientation::PortraitSecondary,
++      hal::ScreenOrientation::PortraitPrimary |
++          hal::ScreenOrientation::PortraitSecondary,
++      hal::ScreenOrientation::LandscapePrimary,
++      hal::ScreenOrientation::LandscapeSecondary,
++      hal::ScreenOrientation::LandscapePrimary |
++          hal::ScreenOrientation::LandscapeSecondary,
++      hal::ScreenOrientation::PortraitPrimary |
++          hal::ScreenOrientation::PortraitSecondary |
++          hal::ScreenOrientation::LandscapePrimary |
++          hal::ScreenOrientation::LandscapeSecondary,
++      hal::ScreenOrientation::Default,
++  };
++
++  for (const auto supportedOrientation : kSupportedOrientations) {
++    if (aOrientation == supportedOrientation) {
++      return true;
++    }
++  }
++  return false;
++}
++
++static UIInterfaceOrientationMask ToInterfaceOrientationMask(
++    const hal::ScreenOrientation& aOrientation) {
++  UIInterfaceOrientationMask orientationMask = 0;
++
++  if (aOrientation & hal::ScreenOrientation::PortraitPrimary) {
++    orientationMask |= UIInterfaceOrientationMaskPortrait;
++  }
++  if (aOrientation & hal::ScreenOrientation::PortraitSecondary) {
++    orientationMask |= UIInterfaceOrientationMaskPortraitUpsideDown;
++  }
++  if (aOrientation & hal::ScreenOrientation::LandscapePrimary) {
++    orientationMask |= UIInterfaceOrientationMaskLandscapeRight;
++  }
++  if (aOrientation & hal::ScreenOrientation::LandscapeSecondary) {
++    orientationMask |= UIInterfaceOrientationMaskLandscapeLeft;
++  }
++
++  return orientationMask;
++}
++
++RefPtr<GenericNonExclusivePromise> LockScreenOrientation(
++    const hal::ScreenOrientation& aOrientation) {
++  if (!IsSupportedScreenOrientation(aOrientation)) {
++    NS_WARNING("Unsupported screen orientation type");
++    return GenericNonExclusivePromise::CreateAndReject(
++        NS_ERROR_DOM_NOT_SUPPORTED_ERR, __func__);
++  }
++
++  id<SwiftGeckoViewRuntime> runtime = widget::GetSwiftRuntime();
++  if (!runtime) {
++    return GenericNonExclusivePromise::CreateAndReject(NS_ERROR_DOM_ABORT_ERR,
++                                                       __func__);
++  }
++
++  hal::ScreenOrientation orientation = aOrientation;
++  if (orientation == hal::ScreenOrientation::Default) {
++    RefPtr<widget::Screen> screen =
++        widget::ScreenManager::GetSingleton().GetPrimaryScreen();
++    orientation = screen->GetDefaultOrientationType();
++  }
++
++  UIInterfaceOrientationMask orientationMask =
++      ToInterfaceOrientationMask(orientation);
++  RefPtr<GenericNonExclusivePromise::Private> promise =
++      new GenericNonExclusivePromise::Private(__func__);
++  [runtime lockScreenOrientation:orientationMask
++                      completion:^(GeckoOrientationLockResult result) {
++                        switch (result) {
++                          case GeckoOrientationLockResultSuccess:
++                            promise->Resolve(true, __func__);
++                            break;
++                          case GeckoOrientationLockResultRejected:
++                            promise->Reject(NS_ERROR_DOM_ABORT_ERR, __func__);
++                            break;
++                          case GeckoOrientationLockResultNotSupported:
++                            promise->Reject(NS_ERROR_DOM_NOT_SUPPORTED_ERR,
++                                            __func__);
++                            break;
++                        }
++                      }];
++  return promise;
++}
++
++void UnlockScreenOrientation() {
++  if (id<SwiftGeckoViewRuntime> runtime = widget::GetSwiftRuntime()) {
++    [runtime unlockScreenOrientation];
++  }
++}
++
++}  // namespace mozilla::hal_impl

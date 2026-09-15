@@ -32,7 +32,11 @@ enum HomepageSection: CaseIterable, Hashable {
 
 protocol HomepageSectionDelegate: AnyObject {
     func homepageSection(_ viewController: UIViewController, didRequestOpenURL url: URL, disposition: TabOpenDisposition)
-    func homepageSection(_ viewController: UIViewController, didRequestShareURL url: URL)
+    func homepageSection(
+        _ viewController: UIViewController,
+        didRequestShareURL url: URL,
+        sourceView: UIView
+    )
     func homepageSection(_ viewController: UIViewController, didRequestHideFromSuggestions siteID: Int64)
     func homepageSection(_ viewController: UIViewController, didSelectRecentlyClosedTab id: UUID)
     func homepageSectionDidSelectSettings(_ viewController: UIViewController)

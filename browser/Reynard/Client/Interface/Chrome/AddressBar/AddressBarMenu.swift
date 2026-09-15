@@ -25,8 +25,10 @@ enum AddressBarMenu {
         usesDesktopWebsite: Bool?,
         addonItems: [AddonItem],
         onAddonSelected: @escaping (AddonMenuItem) -> Void,
+        onFindInPage: @escaping () -> Void,
         onPageZoom: @escaping () -> Void,
         onChangeWebsiteMode: @escaping () -> Void,
+        onHideToolbar: @escaping () -> Void,
         onWebsiteSettings: @escaping () -> Void,
         onBookmark: @escaping (Bool) -> Void
     ) -> UIMenu {
@@ -34,13 +36,13 @@ enum AddressBarMenu {
         
         let url = selectedURL.flatMap(URL.init(string:))
         if let url, url.host != nil {
-            let title = BookmarkStore.shared.bookmark(savedFor: url) == nil ? "Add Bookmark" : "Edit Bookmark"
+            let title = BookmarkStore.shared.bookmark(savedFor: url) == nil ? NSLocalizedString("Add Bookmark", comment: "") : NSLocalizedString("Edit Bookmark", comment: "")
             tabActions.append(UIAction(title: title, image: UIImage(named: "reynard.book")) { _ in
                 onBookmark(false)
             })
             
             if !BookmarkStore.shared.isSavedInFavorites(url) {
-                tabActions.append(UIAction(title: "Add to Favorites", image: UIImage(named: "reynard.star")) { _ in
+                tabActions.append(UIAction(title: NSLocalizedString("Add to Favorites", comment: ""), image: UIImage(named: "reynard.star")) { _ in
                     onBookmark(true)
                 })
             }
@@ -50,7 +52,7 @@ enum AddressBarMenu {
         if addonItems.isEmpty {
             addonsChildren = [
                 UIAction(
-                    title: "No Add-ons",
+                    title: NSLocalizedString("No Add-ons", comment: ""),
                     image: UIImage(named: "reynard.puzzlepiece.extension"),
                     attributes: .disabled
                 ) { _ in }
@@ -65,7 +67,7 @@ enum AddressBarMenu {
         
         var pageActions: [UIMenuElement] = [
             UIMenu(
-                title: "Add-ons",
+                title: NSLocalizedString("Add-ons", comment: ""),
                 image: UIImage(named: "reynard.puzzlepiece.extension"),
                 identifier: Identifier.manageAddonsMenu,
                 children: addonsChildren
@@ -73,22 +75,29 @@ enum AddressBarMenu {
         ]
         
         if url?.host != nil {
-            pageActions.append(UIAction(title: "Page Zoom", image: UIImage(named: "reynard.textformat.size")) { _ in
+            pageActions.append(UIAction(title: NSLocalizedString("Page Zoom", comment: ""), image: UIImage(named: "reynard.textformat.size")) { _ in
                 onPageZoom()
+            })
+            pageActions.append(UIAction(title: NSLocalizedString("Find in Page", comment: ""), image: UIImage(named: "reynard.magnifyingglass")) { _ in
+                onFindInPage()
             })
         }
         
         if let isDesktop = usesDesktopWebsite {
-            let title = isDesktop ? "Request Mobile Website" : "Request Desktop Website"
+            let title = isDesktop ? NSLocalizedString("Request Mobile Website", comment: "") : NSLocalizedString("Request Desktop Website", comment: "")
             let imageName = isDesktop ? "reynard.smartphone" : "reynard.desktopcomputer"
             pageActions.append(UIAction(title: title, image: UIImage(named: imageName)) { _ in
                 onChangeWebsiteMode()
             })
         }
         
-        var settingsActions: [UIMenuElement] = []
+        var settingsActions: [UIMenuElement] = [
+            UIAction(title: NSLocalizedString("Hide Toolbar", comment: ""), image: UIImage(named: "reynard.arrow.up.left.and.arrow.down.right")) { _ in
+                onHideToolbar()
+            }
+        ]
         if url?.host != nil {
-            settingsActions.append(UIAction(title: "Website Settings", image: UIImage(named: "reynard.gear")) { _ in
+            settingsActions.append(UIAction(title: NSLocalizedString("Website Settings", comment: ""), image: UIImage(named: "reynard.gear")) { _ in
                 onWebsiteSettings()
             })
         }

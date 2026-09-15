@@ -9,7 +9,7 @@ import UIKit
 
 protocol SearchViewControllerDelegate: AnyObject {
     func searchViewController(_ controller: SearchViewController, didSelectSuggestion suggestion: String, result: UserDataSearchResult?)
-    func searchViewController(_ controller: SearchViewController, didUpdateAutocompleteFor query: String, result: UserDataSearchResult?)
+    func searchViewController(_ controller: SearchViewController, didUpdateAutocompleteFor query: String, result: UserDataSearchResult?, topDomain: String?)
     func searchViewControllerDidStartScrolling(_ controller: SearchViewController)
 }
 
@@ -29,6 +29,7 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
     
     private enum SuggestionSection: Int, CaseIterable {
         case primarySuggestion
+        case topDomainCompletions
         case typedQuery
         case completions
         case userDataResults
@@ -36,9 +37,17 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
     
     private enum SuggestionRow {
         case bestMatch(UserDataSearchResult)
+        case topDomain(String)
         case autocomplete(query: String)
         case completion(String)
         case userDataResult(UserDataSearchResult)
+    }
+    
+    private enum SuggestionIdentity: Equatable {
+        case userData(UserDataSearchResult)
+        case topDomain(String)
+        case autocomplete(String)
+        case completion(String)
     }
     
     weak var delegate: SearchViewControllerDelegate?
@@ -48,6 +57,7 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
     private var results = SearchResults.empty
     private var chromeMode: BrowserChromeMode = .phone
     private var lastReportedOverlayContentHeight: CGFloat = -1
+    private var selectedSuggestionIdentity: SuggestionIdentity?
     
     private let tableView: UITableView = {
         let tableView = UITableView(frame: .zero, style: .appGrouped)
@@ -70,7 +80,7 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
         return view
     }()
     
-    private lazy var userDataHeaderView = makeSectionHeaderView(title: "Bookmarks, History, and Tabs")
+    private lazy var userDataHeaderView = makeSectionHeaderView(title: NSLocalizedString("Bookmarks, History, and Tabs", comment: ""))
     
     // MARK: - Lifecycle
     
@@ -125,6 +135,40 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
         reportOverlayContentHeightIfNeeded()
     }
     
+    var hasSuggestions: Bool {
+        return !suggestionIndexPaths.isEmpty
+    }
+    
+    func moveSuggestionSelection(by offset: Int) {
+        let indexPaths = suggestionIndexPaths
+        guard !indexPaths.isEmpty,
+              offset != 0 else {
+            return
+        }
+        
+        let currentIndex = selectedSuggestionIndexPath.flatMap {
+            indexPaths.firstIndex(of: $0)
+        } ?? 0
+        let selectedIndex = (currentIndex + offset + indexPaths.count) % indexPaths.count
+        guard let row = suggestionRow(at: indexPaths[selectedIndex]) else {
+            return
+        }
+        
+        selectedSuggestionIdentity = suggestionIdentity(for: row)
+        updateVisibleSuggestionHighlights()
+        scrollToSuggestionIfNeeded(at: indexPaths[selectedIndex], offset: offset)
+    }
+    
+    @discardableResult
+    func submitSelectedSuggestion() -> Bool {
+        guard let selectedSuggestionIndexPath,
+              let suggestionRow = suggestionRow(at: selectedSuggestionIndexPath) else {
+            return false
+        }
+        selectSuggestion(suggestionRow)
+        return true
+    }
+    
     // MARK: - UITableViewDataSource
     
     func numberOfSections(in tableView: UITableView) -> Int {
@@ -135,7 +179,9 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
         guard let sectionKind = SuggestionSection(rawValue: section) else { return 0 }
         switch sectionKind {
         case .primarySuggestion:
-            return hasQuery && results.bestMatch != nil ? 1 : 0
+            return primarySuggestion == nil ? 0 : 1
+        case .topDomainCompletions:
+            return secondaryTopDomainCompletions.count
         case .typedQuery:
             return hasQuery ? 1 : 0
         case .completions:
@@ -157,7 +203,18 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
                 for: indexPath
             ) as! UserDataSuggestionCell
             cell.apply(result: result, showsFavicon: true)
-            cell.setFilledBackgroundVisible(true)
+            cell.setFilledBackgroundVisible(isSuggestionHighlighted(at: indexPath))
+            return cell
+        case let .topDomain(domain):
+            let cell = tableView.dequeueReusableCell(
+                withIdentifier: SearchSuggestionCell.reuseIdentifier,
+                for: indexPath
+            ) as! SearchSuggestionCell
+            cell.apply(text: domain, query: results.query)
+            cell.setIcon(UIImage(named: "reynard.globe"))
+            cell.setTrailingIconVisible(true)
+            cell.setTrailingIconDirection(upward: chromeMode != .phone)
+            cell.setFilledBackgroundVisible(isSuggestionHighlighted(at: indexPath))
             return cell
         case let .autocomplete(query):
             let cell = tableView.dequeueReusableCell(
@@ -165,8 +222,9 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
                 for: indexPath
             ) as! SearchSuggestionCell
             cell.apply(text: query, query: query)
+            cell.setIcon(UIImage(named: "reynard.magnifyingglass"))
             cell.setTrailingIconVisible(false)
-            cell.setFilledBackgroundVisible(results.bestMatch == nil)
+            cell.setFilledBackgroundVisible(isSuggestionHighlighted(at: indexPath))
             return cell
         case let .completion(completion):
             let cell = tableView.dequeueReusableCell(
@@ -174,9 +232,10 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
                 for: indexPath
             ) as! SearchSuggestionCell
             cell.apply(text: completion, query: results.query)
+            cell.setIcon(UIImage(named: "reynard.magnifyingglass"))
             cell.setTrailingIconVisible(true)
             cell.setTrailingIconDirection(upward: chromeMode != .phone)
-            cell.setFilledBackgroundVisible(false)
+            cell.setFilledBackgroundVisible(isSuggestionHighlighted(at: indexPath))
             return cell
         case let .userDataResult(result):
             let cell = tableView.dequeueReusableCell(
@@ -184,7 +243,7 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
                 for: indexPath
             ) as! UserDataSuggestionCell
             cell.apply(result: result)
-            cell.setFilledBackgroundVisible(false)
+            cell.setFilledBackgroundVisible(isSuggestionHighlighted(at: indexPath))
             return cell
         }
     }
@@ -199,8 +258,10 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
         switch sectionKind {
         case .primarySuggestion:
             return results.bestMatch == nil ? nil : bestMatchSpacerView
+        case .topDomainCompletions:
+            return nil
         case .typedQuery:
-            return hasQuery ? makeSectionHeaderView(title: "\(viewModel.searchSuggestionProvider.name) Suggestions") : nil
+            return hasQuery ? makeSectionHeaderView(title: String(format: NSLocalizedString("%@ Suggestions", comment: "Search provider name"), viewModel.searchSuggestionProvider.name)) : nil
         case .completions:
             return nil
         case .userDataResults:
@@ -216,6 +277,8 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
         switch sectionKind {
         case .primarySuggestion:
             return results.bestMatch == nil ? .leastNormalMagnitude : UX.bestMatchHeaderHeight
+        case .topDomainCompletions:
+            return .leastNormalMagnitude
         case .typedQuery:
             return hasQuery ? UX.sectionHeaderHeight : .leastNormalMagnitude
         case .completions:
@@ -228,7 +291,7 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
     func tableView(_ tableView: UITableView, viewForFooterInSection section: Int) -> UIView? {
         guard let sectionKind = SuggestionSection(rawValue: section),
               sectionKind == .primarySuggestion,
-              results.bestMatch != nil else {
+              results.bestMatch != nil || visibleTopDomainCompletions.count == 1 else {
             return nil
         }
         return UIView()
@@ -237,7 +300,7 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
     func tableView(_ tableView: UITableView, heightForFooterInSection section: Int) -> CGFloat {
         guard let sectionKind = SuggestionSection(rawValue: section),
               sectionKind == .primarySuggestion,
-              results.bestMatch != nil else {
+              results.bestMatch != nil || visibleTopDomainCompletions.count == 1 else {
             return .leastNormalMagnitude
         }
         return UX.bestMatchHeaderHeight
@@ -248,12 +311,17 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
         guard let suggestionRow = suggestionRow(at: indexPath) else {
             return
         }
-        
+        selectSuggestion(suggestionRow)
+    }
+    
+    private func selectSuggestion(_ suggestionRow: SuggestionRow) {
         switch suggestionRow {
         case let .bestMatch(result), let .userDataResult(result):
             delegate?.searchViewController(self, didSelectSuggestion: result.url.absoluteString, result: result)
-        case let .autocomplete(query), let .completion(query):
-            delegate?.searchViewController(self, didSelectSuggestion: query, result: nil)
+        case let .topDomain(domain):
+            delegate?.searchViewController(self, didSelectSuggestion: "https://\(domain)", result: nil)
+        case let .autocomplete(domain), let .completion(domain):
+            delegate?.searchViewController(self, didSelectSuggestion: domain, result: nil)
         }
     }
     
@@ -270,12 +338,17 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
     }
     
     private func applyResults(_ newResults: SearchResults) {
+        let queryChanged = results.query != newResults.query
         results = newResults
+        if queryChanged || selectedSuggestionIndexPath == nil {
+            self.selectedSuggestionIdentity = nil
+        }
         tableView.reloadData()
         delegate?.searchViewController(
             self,
             didUpdateAutocompleteFor: newResults.query,
-            result: hasQuery ? newResults.bestMatch : nil
+            result: hasQuery ? newResults.bestMatch : nil,
+            topDomain: hasQuery ? visibleTopDomainCompletions.first : nil
         )
         reportOverlayContentHeightIfNeeded()
     }
@@ -340,12 +413,98 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
         return hasQuery && !results.userDataResults.isEmpty
     }
     
+    private var visibleTopDomainCompletions: [String] {
+        guard results.bestMatch == nil else {
+            return []
+        }
+        
+        return results.topDomainCompletions
+    }
+    
+    private var primarySuggestion: SuggestionRow? {
+        if let bestMatch = results.bestMatch {
+            return .bestMatch(bestMatch)
+        }
+        
+        guard let topDomain = visibleTopDomainCompletions.first else {
+            return nil
+        }
+        
+        return .topDomain(topDomain)
+    }
+    
+    private var secondaryTopDomainCompletions: [String] {
+        return Array(visibleTopDomainCompletions.dropFirst())
+    }
+    
     private var visibleCompletions: [String] {
         guard showsUserDataResults else {
             return results.completions
         }
         
         return Array(results.completions.prefix(UX.limitedCompletionCountWithUserData))
+    }
+    
+    private var suggestionIndexPaths: [IndexPath] {
+        return SuggestionSection.allCases.flatMap { section in
+            let sectionIndex = section.rawValue
+            return (0..<tableView(tableView, numberOfRowsInSection: sectionIndex)).map {
+                IndexPath(row: $0, section: sectionIndex)
+            }
+        }
+    }
+    
+    private var selectedSuggestionIndexPath: IndexPath? {
+        guard let selectedSuggestionIdentity else {
+            return nil
+        }
+        return suggestionIndexPaths.first { indexPath in
+            suggestionRow(at: indexPath).map { suggestionIdentity(for: $0) } == selectedSuggestionIdentity
+        }
+    }
+    
+    private func suggestionIdentity(for row: SuggestionRow) -> SuggestionIdentity {
+        switch row {
+        case let .bestMatch(result), let .userDataResult(result):
+            return .userData(result)
+        case let .topDomain(domain):
+            return .topDomain(domain)
+        case let .autocomplete(query):
+            return .autocomplete(query)
+        case let .completion(completion):
+            return .completion(completion)
+        }
+    }
+    
+    private func isSuggestionHighlighted(at indexPath: IndexPath) -> Bool {
+        if let selectedSuggestionIndexPath {
+            return indexPath == selectedSuggestionIndexPath
+        }
+        return indexPath == suggestionIndexPaths.first
+    }
+    
+    private func updateVisibleSuggestionHighlights() {
+        tableView.indexPathsForVisibleRows?.forEach { indexPath in
+            let isHighlighted = isSuggestionHighlighted(at: indexPath)
+            if let cell = tableView.cellForRow(at: indexPath) as? SearchSuggestionCell {
+                cell.setFilledBackgroundVisible(isHighlighted)
+            } else if let cell = tableView.cellForRow(at: indexPath) as? UserDataSuggestionCell {
+                cell.setFilledBackgroundVisible(isHighlighted)
+            }
+        }
+    }
+    
+    private func scrollToSuggestionIfNeeded(at indexPath: IndexPath, offset: Int) {
+        tableView.layoutIfNeeded()
+        let visibleBounds = tableView.bounds.inset(by: tableView.adjustedContentInset)
+        guard !visibleBounds.contains(tableView.rectForRow(at: indexPath)) else {
+            return
+        }
+        tableView.scrollToRow(
+            at: indexPath,
+            at: offset > 0 ? .bottom : .top,
+            animated: false
+        )
     }
     
     private func suggestionRow(at indexPath: IndexPath) -> SuggestionRow? {
@@ -355,13 +514,17 @@ final class SearchViewController: UIViewController, UITableViewDataSource, UITab
         
         switch sectionKind {
         case .primarySuggestion:
-            guard indexPath.row == 0,
-                  hasQuery,
-                  let bestMatch = results.bestMatch else {
+            guard indexPath.row == 0, hasQuery else {
                 return nil
             }
             
-            return .bestMatch(bestMatch)
+            return primarySuggestion
+        case .topDomainCompletions:
+            guard secondaryTopDomainCompletions.indices.contains(indexPath.row) else {
+                return nil
+            }
+            
+            return .topDomain(secondaryTopDomainCompletions[indexPath.row])
         case .typedQuery:
             guard indexPath.row == 0, hasQuery else {
                 return nil

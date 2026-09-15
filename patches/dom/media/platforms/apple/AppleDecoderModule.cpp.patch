@@ -1,5 +1,5 @@
 diff --git a/dom/media/platforms/apple/AppleDecoderModule.cpp b/dom/media/platforms/apple/AppleDecoderModule.cpp
-index 951deeb83e1c..3b5169c11fd4 100644
+index 27c25b050d7e..dd379444766c 100644
 --- a/dom/media/platforms/apple/AppleDecoderModule.cpp
 +++ b/dom/media/platforms/apple/AppleDecoderModule.cpp
 @@ -109,8 +109,9 @@ DecodeSupportSet AppleDecoderModule::SupportsMimeType(

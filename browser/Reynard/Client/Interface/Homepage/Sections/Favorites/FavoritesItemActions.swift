@@ -20,27 +20,27 @@ struct FavoritesItemActions {
         return UIContextMenuConfiguration(identifier: bookmark.guid as NSString, previewProvider: nil) { _ in
             UIMenu(title: "", children: [
                 UIMenu(title: "", options: .displayInline, children: [
-                    UIAction(title: "Open in New Tab", image: UIImage(named: "reynard.plus.square.on.square")) { _ in
+                    UIAction(title: NSLocalizedString("Open in New Tab", comment: ""), image: UIImage(named: "reynard.plus.square.on.square")) { _ in
                         openInNewTab()
                     },
-                    UIAction(title: "Open in New Private Tab", image: UIImage(named: "reynard.plus.square.on.square")) { _ in
+                    UIAction(title: NSLocalizedString("Open in New Private Tab", comment: ""), image: UIImage(named: "reynard.plus.square.fill.on.square.fill")) { _ in
                         openInNewPrivateTab()
                     },
                 ]),
                 UIMenu(title: "", options: .displayInline, children: [
-                    UIAction(title: "Copy Link", image: UIImage(named: "reynard.document.on.document")) { _ in
+                    UIAction(title: NSLocalizedString("Copy Link", comment: ""), image: UIImage(named: "reynard.document.on.document")) { _ in
                         UIPasteboard.general.string = bookmark.url.absoluteString
                     },
-                    UIAction(title: "Share Link", image: UIImage(named: "reynard.square.and.arrow.up")) { _ in
+                    UIAction(title: NSLocalizedString("Share Link", comment: ""), image: UIImage(named: "reynard.square.and.arrow.up")) { _ in
                         shareLink(bookmark.url)
                     },
                 ]),
                 UIMenu(title: "", options: .displayInline, children: [
-                    UIAction(title: "Edit Bookmark", image: UIImage(named: "reynard.pencil")) { _ in
+                    UIAction(title: NSLocalizedString("Edit Bookmark", comment: ""), image: UIImage(named: "reynard.pencil")) { _ in
                         editBookmark()
                     },
                     UIAction(
-                        title: "Delete Bookmark",
+                        title: NSLocalizedString("Delete Bookmark", comment: ""),
                         image: UIImage(named: "reynard.trash"),
                         attributes: .destructive
                     ) { _ in
@@ -58,7 +58,7 @@ struct FavoritesItemActions {
         return UIContextMenuConfiguration(identifier: folder.guid as NSString, previewProvider: nil) { _ in
             UIMenu(title: "", children: [
                 UIAction(
-                    title: "Delete Folder",
+                    title: NSLocalizedString("Delete Folder", comment: ""),
                     image: UIImage(named: "reynard.trash"),
                     attributes: .destructive
                 ) { _ in
@@ -98,12 +98,17 @@ extension FavoritesSectionViewController: UIContextMenuInteractionDelegate {
                     
                     self.delegate?.homepageSection(self, didRequestOpenURL: bookmark.url, disposition: .newPrivateTab)
                 },
-                shareLink: { [weak self] url in
-                    guard let self else {
+                shareLink: { [weak self, weak anchorView] url in
+                    guard let self,
+                          let anchorView else {
                         return
                     }
                     
-                    self.delegate?.homepageSection(self, didRequestShareURL: url)
+                    self.delegate?.homepageSection(
+                        self,
+                        didRequestShareURL: url,
+                        sourceView: anchorView
+                    )
                 },
                 editBookmark: { [weak self] in
                     self?.presentBookmarkEditor(for: bookmark)

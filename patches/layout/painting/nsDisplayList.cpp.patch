@@ -1,0 +1,26 @@
+diff --git a/layout/painting/nsDisplayList.cpp b/layout/painting/nsDisplayList.cpp
+index 9aed0b184131..fb1163f0ff51 100644
+--- a/layout/painting/nsDisplayList.cpp
++++ b/layout/painting/nsDisplayList.cpp
+@@ -6174,6 +6174,21 @@ nsDisplayAsyncZoom::nsDisplayAsyncZoom(
+   MOZ_COUNT_CTOR(nsDisplayAsyncZoom);
+ }
+ 
++nsRect nsDisplayAsyncZoom::GetBounds(nsDisplayListBuilder* aBuilder,
++                                     bool* aSnap) const {
++  nsRect bounds = nsDisplayOwnLayer::GetBounds(aBuilder, aSnap);
++  if (aBuilder->IsForEventDelivery()) {
++    // Bounds are checked before HitTest converts events to layout coordinates.
++    const nsPoint topLeft =
++        ViewportUtils::LayoutToVisual(bounds.TopLeft(), mFrame->PresShell());
++    const nsPoint bottomRight =
++        ViewportUtils::LayoutToVisual(bounds.BottomRight(), mFrame->PresShell());
++    bounds = nsRect(topLeft, nsSize(bottomRight.x - topLeft.x,
++                                   bottomRight.y - topLeft.y));
++  }
++  return bounds;
++}
++
+ void nsDisplayAsyncZoom::HitTest(nsDisplayListBuilder* aBuilder,
+                                  const nsRect& aRect, HitTestState* aState,
+                                  nsTArray<nsIFrame*>* aOutFrames) {

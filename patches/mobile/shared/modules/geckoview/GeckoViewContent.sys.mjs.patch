@@ -1,29 +1,54 @@
 diff --git a/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs b/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs
-index c850b03ad280..fa4689abf2ad 100644
+index 635806ea1724..5e035fd94e13 100644
 --- a/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs
 +++ b/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs
-@@ -14,6 +14,7 @@ export class GeckoViewContent extends GeckoViewModule {
-       "GeckoView:HasCookieBannerRuleForBrowsingContextTree",
+@@ -3,6 +3,7 @@
+  * You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ import { GeckoViewModule } from "resource://gre/modules/GeckoViewModule.sys.mjs";
++import { gAutofillManager } from "resource://gre/modules/GeckoViewAutofill.sys.mjs";
+ 
+ export class GeckoViewContent extends GeckoViewModule {
+   onInit() {
+@@ -13,6 +14,8 @@ export class GeckoViewContent extends GeckoViewModule {
+       "GeckoView:FindInPage",
        "GeckoView:RestoreState",
        "GeckoView:ContainsFormData",
 +      "GeckoView:GetFocusedInputMetrics",
++      "GeckoView:Autofill:FillOneTimeCode",
        "GeckoView:ProcessBackPressed",
        "GeckoView:ScrollBy",
        "GeckoView:ScrollTo",
-@@ -279,6 +280,9 @@ export class GeckoViewContent extends GeckoViewModule {
-       case "GeckoView:ContainsFormData":
-         this._containsFormData(aCallback);
+@@ -277,6 +280,12 @@ export class GeckoViewContent extends GeckoViewModule {
+       case "GeckoView:GetBrokenSiteReport":
+         this._getBrokenSiteReport(aCallback);
          break;
++      case "GeckoView:Autofill:FillOneTimeCode":
++        this._fillOneTimeCode(aData, aCallback);
++        break;
 +      case "GeckoView:GetFocusedInputMetrics":
 +        this._getFocusedInputMetrics(aCallback);
 +        break;
        case "GeckoView:GetWebCompatInfo":
          this._getWebCompatInfo(aCallback);
          break;
-@@ -455,6 +459,26 @@ export class GeckoViewContent extends GeckoViewModule {
+@@ -491,6 +500,41 @@ export class GeckoViewContent extends GeckoViewModule {
      aCallback.onSuccess(await this.actor.containsFormData());
    }
  
++  async _fillOneTimeCode(aData, aCallback) {
++    try {
++      const result = await gAutofillManager.fillOneTimeCode(
++        aData.sessionId,
++        aData.fieldUuid,
++        aData.value
++      );
++      aCallback.onSuccess(result ?? false);
++    } catch (error) {
++      aCallback.onError(`Cannot fill one-time code, error: ${error}`);
++    }
++  }
++
 +  async _getFocusedInputMetrics(aCallback) {
 +    try {
 +      if (this.window.windowUtils.isMozAfterPaintPending) {
@@ -34,16 +59,18 @@ index c850b03ad280..fa4689abf2ad 100644
 +          });
 +        });
 +      }
-+      const actor =
-+        Services.focus.focusedContentBrowsingContext?.currentWindowGlobal?.getActor(
-+          "GeckoViewContent"
-+        );
++      const focusedContext = Services.focus.focusedContentBrowsingContext;
++      if (focusedContext?.top !== this.browser.browsingContext) {
++        aCallback.onSuccess(null);
++        return;
++      }
++      const actor = focusedContext.currentWindowGlobal?.getActor("GeckoViewContent");
 +      aCallback.onSuccess(actor ? await actor.sendQuery("GetFocusedInputMetrics") : null);
 +    } catch (error) {
 +      aCallback.onError(`Cannot get focused input metrics, error: ${error}`);
 +    }
 +  }
 +
-   async _hasCookieBannerRuleForBrowsingContextTree(aCallback) {
-     const { browsingContext } = this.actor;
-     aCallback.onSuccess(
+   _findInPage(aData, aCallback) {
+     debug`findInPage: data=${aData} callback=${aCallback && "non-null"}`;
+ 

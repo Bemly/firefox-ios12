@@ -6,11 +6,20 @@
 //
 
 import CryptoKit
+import Darwin
 import Foundation
+import ObjectiveC.runtime
 import SQLite3
 import UIKit
 
 final class FaviconStore {
+    private typealias TransparencyAnalysisFunction = @convention(c) (AnyObject, Selector) -> Int
+    
+    struct FaviconPresentation {
+        let image: UIImage
+        let shouldInset: Bool
+    }
+    
     static let shared = FaviconStore()
     
     private static let expirationDays = 30
@@ -19,6 +28,12 @@ final class FaviconStore {
     private static let maxHTMLBytes = 768 * 1024
     private static let maxImageBytes = 2 * 1024 * 1024
     private static let maxRedirectDepth = 3
+    private static let minimumTouchIconSideLength = 57
+    private static let safariSharedUIFramework = dlopen(
+        "/System/Library/PrivateFrameworks/SafariSharedUI.framework/SafariSharedUI",
+        RTLD_LAZY
+    )
+    private static let transparencyAnalysisSelector = NSSelectorFromString("safari_transparencyAnalysisResult")
     
     private struct StorageURLs {
         let directoryURL: URL
@@ -33,6 +48,35 @@ final class FaviconStore {
     private struct HTMLDocument {
         let html: String
         let url: URL
+    }
+    
+    private enum IconKind {
+        case favicon
+        case touch
+        case touchPrecomposed
+        
+        var isTouchIcon: Bool {
+            return self != .favicon
+        }
+    }
+    
+    private struct IconCandidate {
+        let url: URL
+        let kind: IconKind
+        let declaredSize: Int
+        let documentOrder: Int
+    }
+    
+    private struct FetchCandidate {
+        let url: URL
+        let requiresTouchIconSize: Bool
+    }
+    
+    private struct ManifestIcon {
+        let url: URL
+        let declaredSize: Int
+        let purposes: Set<String>
+        let documentOrder: Int
     }
     
     private struct RemoteImage {
@@ -53,6 +97,13 @@ final class FaviconStore {
         configuration.timeoutIntervalForRequest = 5
         configuration.timeoutIntervalForResource = 10
         return URLSession(configuration: configuration)
+    }()
+    private lazy var metadataUserAgent: String = {
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        let operatingSystemVersion = "\(version.majorVersion)_\(version.minorVersion)"
+        let safariVersion = "\(version.majorVersion).\(version.minorVersion)"
+        let device = UIDevice.current.userInterfaceIdiom == .pad ? "iPad; CPU OS" : "iPhone; CPU iPhone OS"
+        return "Mozilla/5.0 (\(device) \(operatingSystemVersion) like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(safariVersion) Mobile/15E148 Safari/604.1"
     }()
     
     private lazy var linkTagExpression = try! NSRegularExpression(
@@ -112,10 +163,35 @@ final class FaviconStore {
     
     func cachedFavicon(for pageURL: URL) -> UIImage? {
         stateQueue.sync {
-            cachedImageLocked(for: pageURL, now: Date())
+            cachedAssociationImageLocked(for: pageURL, now: Date())?.image
         }
     }
     
+    func cachedFaviconPresentation(for pageURL: URL) -> FaviconPresentation? {
+        stateQueue.sync {
+            guard let cached = cachedAssociationImageLocked(for: pageURL, now: Date()) else {
+                return nil
+            }
+
+            let analysisResult = transparencyAnalysisResultLocked(
+                for: cached.image,
+                imageKey: cached.association.imageKey
+            )
+            return FaviconPresentation(
+                image: cached.image,
+                shouldInset: Self.shouldInsetIcon(forTransparencyAnalysisResult: analysisResult)
+            )
+        }
+    }
+
+    func faviconPresentation(for image: UIImage) -> FaviconPresentation {
+        let analysisResult = Self.transparencyAnalysisResult(for: image)
+        return FaviconPresentation(
+            image: image,
+            shouldInset: Self.shouldInsetIcon(forTransparencyAnalysisResult: analysisResult)
+        )
+    }
+
     func favicon(for pageURL: URL, completion: @escaping (UIImage?) -> Void) {
         guard URLUtils.isWebURL(pageURL) else {
             completion(nil)
@@ -158,7 +234,22 @@ final class FaviconStore {
             }
         }
     }
+    
+    func favicon(for pageURL: URL, webAppManifest: Any, completion: @escaping (UIImage?) -> Void) {
+        let manifestURLs = manifestIconURLs(from: webAppManifest, baseURL: pageURL)
+        let candidates = manifestURLs.map {
+            FetchCandidate(url: $0, requiresTouchIconSize: true)
+        }
 
+        fetchAndCacheFirstCandidate(candidates, for: pageURL) { [weak self] image in
+            if let image {
+                completion(image)
+                return
+            }
+            self?.favicon(for: pageURL, completion: completion)
+        }
+    }
+    
     func clearCache() {
         stateQueue.async {
             self.pendingCompletions.removeAll()
@@ -221,7 +312,8 @@ final class FaviconStore {
         let sql = """
         CREATE TABLE IF NOT EXISTS favicon_images (
             image_key TEXT PRIMARY KEY,
-            updated_at REAL NOT NULL
+            updated_at REAL NOT NULL,
+            transparency_analysis_result INTEGER
         );
         
         CREATE TABLE IF NOT EXISTS favicon_sources (
@@ -243,11 +335,38 @@ final class FaviconStore {
         """
         
         _ = executeLocked(sql)
+        ensureColumnLocked(name: "transparency_analysis_result", table: "favicon_images", definition: "INTEGER")
+    }
+    
+    // MARK: - Schema Migration
+    
+    private func ensureColumnLocked(name: String, table: String, definition: String) {
+        guard let statement = prepareStatementLocked("PRAGMA table_info(\(table));") else {
+            return
+        }
+        
+        var hasColumn = false
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if string(from: statement, at: 1) == name {
+                hasColumn = true
+                break
+            }
+        }
+        sqlite3_finalize(statement)
+        
+        guard !hasColumn else {
+            return
+        }
+        
+        _ = executeLocked("ALTER TABLE \(table) ADD COLUMN \(name) \(definition);")
     }
     
     // MARK: - Cache Lookup
     
-    private func cachedImageLocked(for pageURL: URL, now: Date) -> UIImage? {
+    private func cachedAssociationImageLocked(
+        for pageURL: URL,
+        now: Date
+    ) -> (association: SiteAssociation, image: UIImage)? {
         pruneExpiredEntriesLocked(now: now)
         
         guard let association = lookupAssociationLocked(for: pageURL),
@@ -256,7 +375,58 @@ final class FaviconStore {
         }
         
         _ = updateTimestampsLocked(scopeKey: association.scopeKey, imageKey: association.imageKey, now: now)
-        return image
+        return (association: association, image: image)
+    }
+    
+    private func transparencyAnalysisResultLocked(for image: UIImage, imageKey: String) -> Int {
+        var storedAnalysisResult: Int?
+        if let statement = prepareStatementLocked(
+            "SELECT transparency_analysis_result FROM favicon_images WHERE image_key = ? LIMIT 1;"
+        ) {
+            bind(imageKey, to: statement, at: 1)
+            if sqlite3_step(statement) == SQLITE_ROW,
+               sqlite3_column_type(statement, 0) != SQLITE_NULL {
+                storedAnalysisResult = Int(sqlite3_column_int64(statement, 0))
+            }
+            sqlite3_finalize(statement)
+        }
+        
+        if let storedAnalysisResult {
+            return storedAnalysisResult
+        }
+        
+        let analysisResult = Self.transparencyAnalysisResult(for: image)
+        guard let statement = prepareStatementLocked(
+            "UPDATE favicon_images SET transparency_analysis_result = ? WHERE image_key = ?;"
+        ) else {
+            return analysisResult
+        }
+        
+        defer {
+            sqlite3_finalize(statement)
+        }
+        
+        sqlite3_bind_int64(statement, 1, sqlite3_int64(analysisResult))
+        bind(imageKey, to: statement, at: 2)
+        _ = sqlite3_step(statement)
+        return analysisResult
+    }
+    
+    private static func transparencyAnalysisResult(for image: UIImage) -> Int {
+        _ = safariSharedUIFramework
+        let selector = transparencyAnalysisSelector
+        guard image.responds(to: selector),
+              let method = class_getInstanceMethod(UIImage.self, selector) else {
+            assertionFailure("SafariSharedUI transparency analysis is unavailable")
+            return 1
+        }
+        
+        let function = unsafeBitCast(method_getImplementation(method), to: TransparencyAnalysisFunction.self)
+        return function(image, selector)
+    }
+    
+    private static func shouldInsetIcon(forTransparencyAnalysisResult result: Int) -> Bool {
+        return result == 0 || result == 2
     }
     
     private func fetchAndCacheFavicon(for pageURL: URL, completion: @escaping (UIImage?) -> Void) {
@@ -266,67 +436,110 @@ final class FaviconStore {
                 return
             }
 
-            var candidates: [URL] = []
+            var declaredCandidates: [IconCandidate] = []
+            var fallbackPageURL = pageURL
             if let document {
-                candidates.append(contentsOf: self.iconURLs(in: document.html, baseURL: document.url))
-            }
-            if let fallbackURL = self.defaultFaviconURL(for: pageURL) {
-                candidates.append(fallbackURL)
+                declaredCandidates = self.iconCandidates(in: document.html, baseURL: document.url)
+                fallbackPageURL = document.url
             }
 
-            self.tryNextCandidate(candidates, index: 0, seen: [], for: pageURL, completion: completion)
+            let finishBuilding: ([URL]) -> Void = { [weak self] manifestURLs in
+                guard let self else {
+                    completion(nil)
+                    return
+                }
+                var candidates: [FetchCandidate] = []
+                candidates.append(contentsOf: manifestURLs.map {
+                    FetchCandidate(url: $0, requiresTouchIconSize: true)
+                })
+                candidates.append(contentsOf: declaredCandidates.filter(\.kind.isTouchIcon).map {
+                    FetchCandidate(url: $0.url, requiresTouchIconSize: true)
+                })
+                candidates.append(contentsOf: self.deviceTouchIconURLs(for: fallbackPageURL).map {
+                    FetchCandidate(url: $0, requiresTouchIconSize: true)
+                })
+                candidates.append(contentsOf: self.defaultTouchIconURLs(for: fallbackPageURL).map {
+                    FetchCandidate(url: $0, requiresTouchIconSize: true)
+                })
+                candidates.append(contentsOf: declaredCandidates.filter { !$0.kind.isTouchIcon }.map {
+                    FetchCandidate(url: $0.url, requiresTouchIconSize: false)
+                })
+                if let fallbackURL = self.defaultIconURL(path: "/favicon.ico", for: fallbackPageURL) {
+                    candidates.append(FetchCandidate(url: fallbackURL, requiresTouchIconSize: false))
+                }
+                self.fetchAndCacheFirstCandidate(candidates, for: pageURL, completion: completion)
+            }
+
+            if let document,
+               let manifestURL = self.manifestURL(in: document.html, baseURL: document.url) {
+                self.manifestIconURLs(from: manifestURL, completion: finishBuilding)
+            } else {
+                finishBuilding([])
+            }
         }
     }
 
-    private func tryNextCandidate(
-        _ candidates: [URL],
-        index: Int,
-        seen: Set<String>,
+    private func fetchAndCacheFirstCandidate(
+        _ candidates: [FetchCandidate],
         for pageURL: URL,
         completion: @escaping (UIImage?) -> Void
     ) {
-        guard index < candidates.count else {
-            completion(nil)
-            return
-        }
+        var seenCandidateURLs = Set<String>()
 
-        let candidateURL = candidates[index]
-        var seen = seen
-        let normalizedCandidateURL = candidateURL.absoluteString.lowercased()
-        guard seen.insert(normalizedCandidateURL).inserted else {
-            tryNextCandidate(candidates, index: index + 1, seen: seen, for: pageURL, completion: completion)
-            return
-        }
-
-        if let cachedImage = associateExistingIconIfPresent(candidateURL, with: pageURL) {
-            completion(cachedImage)
-            return
-        }
-
-        fetchRemoteImage(from: candidateURL) { [weak self] remoteImage in
-            guard let self else {
+        func tryCandidate(_ index: Int) {
+            guard index < candidates.count else {
                 completion(nil)
                 return
             }
-            guard let remoteImage else {
-                self.tryNextCandidate(candidates, index: index + 1, seen: seen, for: pageURL, completion: completion)
+            let candidate = candidates[index]
+            let normalizedCandidateURL = candidate.url.absoluteString.lowercased()
+            guard seenCandidateURLs.insert(normalizedCandidateURL).inserted else {
+                tryCandidate(index + 1)
                 return
             }
 
-            self.stateQueue.sync {
-                self.storeLocked(remoteImage: remoteImage, for: pageURL, now: Date())
+            if let cachedImage = associateExistingIconIfPresent(
+                candidate.url,
+                with: pageURL,
+                requiringTouchIconSize: candidate.requiresTouchIconSize
+            ) {
+                completion(cachedImage)
+                return
             }
-            completion(remoteImage.image)
+
+            fetchRemoteImage(from: candidate.url) { [weak self] remoteImage in
+                guard let self else {
+                    completion(nil)
+                    return
+                }
+                guard let remoteImage,
+                      !candidate.requiresTouchIconSize || self.isAcceptableTouchIcon(remoteImage.image) else {
+                    tryCandidate(index + 1)
+                    return
+                }
+
+                self.stateQueue.sync {
+                    self.storeLocked(remoteImage: remoteImage, for: pageURL, now: Date())
+                }
+                completion(remoteImage.image)
+            }
         }
+
+        tryCandidate(0)
     }
-    
-    private func associateExistingIconIfPresent(_ iconURL: URL, with pageURL: URL) -> UIImage? {
+
+    private func associateExistingIconIfPresent(
+        _ iconURL: URL,
+        with pageURL: URL,
+        requiringTouchIconSize: Bool
+    ) -> UIImage? {
         stateQueue.sync {
             let now = Date()
             pruneExpiredEntriesLocked(now: now)
             
             guard let imageKey = imageKeyLocked(forSourceURL: iconURL.absoluteString),
-                  let image = loadImageLocked(for: imageKey) else {
+                  let image = loadImageLocked(for: imageKey),
+                  !requiringTouchIconSize || isAcceptableTouchIcon(image) else {
                 return nil
             }
             
@@ -345,6 +558,7 @@ final class FaviconStore {
     private func storeLocked(remoteImage: RemoteImage, for pageURL: URL, now: Date) {
         let imageKey = Self.sha256(remoteImage.data)
         let imageURL = imageFileURL(for: imageKey)
+        let transparencyAnalysisResult = Self.transparencyAnalysisResult(for: remoteImage.image)
         
         if !fileManager.fileExists(atPath: imageURL.path) {
             try? remoteImage.data.write(to: imageURL, options: .atomic)
@@ -355,7 +569,11 @@ final class FaviconStore {
             return
         }
         
-        guard upsertImageLocked(imageKey: imageKey, now: now),
+        guard upsertImageLocked(
+            imageKey: imageKey,
+            transparencyAnalysisResult: transparencyAnalysisResult,
+            now: now
+        ),
               upsertSourceURLLocked(remoteImage.url.absoluteString, imageKey: imageKey),
               upsertAssociationLocked(scopeKey: scopeKey, imageKey: imageKey, iconURL: remoteImage.url.absoluteString, now: now) else {
             _ = executeLocked("ROLLBACK TRANSACTION;")
@@ -490,13 +708,14 @@ final class FaviconStore {
         }
     }
     
-    private func upsertImageLocked(imageKey: String, now: Date) -> Bool {
+    private func upsertImageLocked(imageKey: String, transparencyAnalysisResult: Int, now: Date) -> Bool {
         guard let statement = prepareStatementLocked(
             """
-            INSERT INTO favicon_images (image_key, updated_at)
-            VALUES (?, ?)
+            INSERT INTO favicon_images (image_key, updated_at, transparency_analysis_result)
+            VALUES (?, ?, ?)
             ON CONFLICT(image_key) DO UPDATE SET
-                updated_at = excluded.updated_at;
+                updated_at = excluded.updated_at,
+                transparency_analysis_result = excluded.transparency_analysis_result;
             """
         ) else {
             return false
@@ -508,6 +727,7 @@ final class FaviconStore {
         
         bind(imageKey, to: statement, at: 1)
         sqlite3_bind_double(statement, 2, now.timeIntervalSince1970)
+        sqlite3_bind_int64(statement, 3, sqlite3_int64(transparencyAnalysisResult))
         return sqlite3_step(statement) == SQLITE_DONE
     }
     
@@ -709,12 +929,37 @@ final class FaviconStore {
         return sharedPath.isEmpty ? origin : origin + "/" + sharedPath.joined(separator: "/")
     }
     
-    private func defaultFaviconURL(for pageURL: URL) -> URL? {
+    private func defaultTouchIconURLs(for pageURL: URL) -> [URL] {
+        [
+            defaultIconURL(path: "/apple-touch-icon-precomposed.png", for: pageURL),
+            defaultIconURL(path: "/apple-touch-icon.png", for: pageURL),
+        ].compactMap { $0 }
+    }
+    
+    private func deviceTouchIconURLs(for pageURL: URL) -> [URL] {
+        let sideLength: Int
+        switch UIDevice.current.userInterfaceIdiom {
+        case .phone:
+            sideLength = UIScreen.main.scale == 1 ? 57 : 120
+        case .pad:
+            sideLength = UIScreen.main.scale == 1 ? 76 : 152
+        default:
+            sideLength = 57
+        }
+        
+        let size = "\(sideLength)x\(sideLength)"
+        return [
+            defaultIconURL(path: "/apple-touch-icon-\(size)-precomposed.png", for: pageURL),
+            defaultIconURL(path: "/apple-touch-icon-\(size).png", for: pageURL),
+        ].compactMap { $0 }
+    }
+    
+    private func defaultIconURL(path: String, for pageURL: URL) -> URL? {
         guard var components = URLComponents(url: pageURL, resolvingAgainstBaseURL: false) else {
             return nil
         }
         
-        components.path = "/favicon.ico"
+        components.path = path
         components.query = nil
         components.fragment = nil
         return components.url
@@ -726,6 +971,8 @@ final class FaviconStore {
         var request = URLRequest(url: pageURL)
         request.httpMethod = "GET"
         request.setValue("text/html,application/xhtml+xml", forHTTPHeaderField: "Accept")
+
+        request.setValue(metadataUserAgent, forHTTPHeaderField: "User-Agent")
 
         data(for: request) { [weak self] result in
             guard let self else {
@@ -767,6 +1014,8 @@ final class FaviconStore {
         request.httpMethod = "GET"
         request.setValue("image/*,*/*;q=0.8", forHTTPHeaderField: "Accept")
 
+        request.setValue(metadataUserAgent, forHTTPHeaderField: "User-Agent")
+
         data(for: request) { result in
             guard let (data, response) = result,
                   data.count <= Self.maxImageBytes,
@@ -777,6 +1026,79 @@ final class FaviconStore {
 
             completion(RemoteImage(image: image, data: data, url: response.url ?? url))
         }
+    }
+
+    private func manifestIconURLs(
+        from manifestURL: URL,
+        completion: @escaping ([URL]) -> Void
+    ) {
+        var request = URLRequest(url: manifestURL)
+        request.httpMethod = "GET"
+        request.setValue("application/manifest+json,application/json", forHTTPHeaderField: "Accept")
+        request.setValue(metadataUserAgent, forHTTPHeaderField: "User-Agent")
+
+        data(for: request) { [weak self] result in
+            guard let (data, response) = result,
+                  data.count <= Self.maxHTMLBytes,
+                  let manifest = try? JSONSerialization.jsonObject(with: data) else {
+                completion([])
+                return
+            }
+
+            let baseURL = response.url ?? manifestURL
+            completion(self?.manifestIconURLs(from: manifest, baseURL: baseURL) ?? [])
+        }
+    }
+
+    private func manifestIconURLs(from manifestObject: Any, baseURL: URL) -> [URL] {
+        guard let manifest = manifestObject as? [String: Any],
+              let icons = manifest["icons"] as? [[String: Any]] else {
+            return []
+        }
+
+        let candidates = icons.enumerated().compactMap { documentOrder, icon -> ManifestIcon? in
+            guard let source = icon["src"] as? String,
+                  let url = URL(string: source, relativeTo: baseURL)?.absoluteURL else {
+                return nil
+            }
+
+            let purposes = Set(manifestTokens(from: icon["purpose"], defaultValue: "any"))
+            return ManifestIcon(
+                url: url,
+                declaredSize: declaredManifestIconSize(from: icon["sizes"]),
+                purposes: purposes,
+                documentOrder: documentOrder
+            )
+        }
+
+        guard !candidates.isEmpty else {
+            return []
+        }
+
+        let preferredPurpose = candidates.max {
+            if $0.declaredSize != $1.declaredSize {
+                return $0.declaredSize < $1.declaredSize
+            }
+            return manifestPurposeRank($0.purposes) > manifestPurposeRank($1.purposes)
+        }.map { primaryManifestPurpose($0.purposes) } ?? "any"
+
+        let preferredCandidates = candidates.filter {
+            $0.purposes.contains(preferredPurpose)
+            || ($0.purposes.isEmpty && preferredPurpose == "any")
+        }
+        let filteredCandidates = preferredCandidates.isEmpty ? candidates : preferredCandidates
+        return filteredCandidates.sorted {
+            if $0.declaredSize != $1.declaredSize {
+                return $0.declaredSize > $1.declaredSize
+            }
+            return $0.documentOrder < $1.documentOrder
+        }.map(\.url)
+    }
+
+    private func isAcceptableTouchIcon(_ image: UIImage) -> Bool {
+        let pixelWidth = image.cgImage?.width ?? Int(image.size.width * image.scale)
+        let pixelHeight = image.cgImage?.height ?? Int(image.size.height * image.scale)
+        return min(pixelWidth, pixelHeight) >= Self.minimumTouchIconSideLength
     }
 
     private func data(for request: URLRequest, completion: @escaping ((Data, URLResponse)?) -> Void) {
@@ -801,28 +1123,147 @@ final class FaviconStore {
     
     // MARK: - HTML Parsing
     
-    private func iconURLs(in html: String, baseURL: URL) -> [URL] {
+    private func manifestURL(in html: String, baseURL: URL) -> URL? {
         let nsHTML = html as NSString
         let matches = linkTagExpression.matches(in: html, range: NSRange(location: 0, length: nsHTML.length))
-        var candidates: [URL] = []
         
         for match in matches {
             let tag = nsHTML.substring(with: match.range)
             let attributes = attributes(in: tag)
-            let rel = attributes["rel"]?.lowercased() ?? ""
-            let href = attributes["href"] ?? ""
+            let relTokens = Set((attributes["rel"]?.lowercased() ?? "").split(whereSeparator: \.isWhitespace).map(String.init))
             
-            guard !href.isEmpty,
-                  rel.contains("icon"),
-                  !rel.contains("mask-icon"),
+            guard relTokens.contains("manifest"),
+                  let href = attributes["href"],
                   let url = URL(string: decodeHTMLEntities(in: href), relativeTo: baseURL)?.absoluteURL else {
                 continue
             }
             
-            candidates.append(url)
+            return url
         }
         
-        return candidates
+        return nil
+    }
+    
+    private func iconCandidates(in html: String, baseURL: URL) -> [IconCandidate] {
+        let nsHTML = html as NSString
+        let matches = linkTagExpression.matches(in: html, range: NSRange(location: 0, length: nsHTML.length))
+        var candidates: [IconCandidate] = []
+        
+        for (documentOrder, match) in matches.enumerated() {
+            let tag = nsHTML.substring(with: match.range)
+            let attributes = attributes(in: tag)
+            let relTokens = Set((attributes["rel"]?.lowercased() ?? "").split(whereSeparator: \.isWhitespace).map(String.init))
+            let href = attributes["href"] ?? ""
+            
+            let kind: IconKind
+            if relTokens.contains("apple-touch-icon-precomposed") {
+                kind = .touchPrecomposed
+            } else if relTokens.contains("apple-touch-icon") {
+                kind = .touch
+            } else if relTokens.contains("icon") {
+                kind = .favicon
+            } else {
+                continue
+            }
+            
+            guard !href.isEmpty,
+                  let url = URL(string: decodeHTMLEntities(in: href), relativeTo: baseURL)?.absoluteURL else {
+                continue
+            }
+            
+            candidates.append(
+                IconCandidate(
+                    url: url,
+                    kind: kind,
+                    declaredSize: declaredIconSize(from: attributes["sizes"], kind: kind),
+                    documentOrder: documentOrder
+                )
+            )
+        }
+        
+        return candidates.sorted {
+            if $0.kind.isTouchIcon != $1.kind.isTouchIcon {
+                return $0.kind.isTouchIcon
+            }
+            
+            if $0.declaredSize != $1.declaredSize {
+                return $0.declaredSize > $1.declaredSize
+            }
+            
+            if $0.kind != $1.kind {
+                return $0.kind == .touchPrecomposed
+            }
+            
+            return $0.documentOrder < $1.documentOrder
+        }
+    }
+    
+    private func declaredIconSize(from sizes: String?, kind: IconKind) -> Int {
+        if let firstSize = sizes?.split(whereSeparator: \.isWhitespace).first {
+            let width = firstSize.prefix(while: \.isNumber)
+            if let size = Int(width) {
+                return size
+            }
+        }
+        
+        return kind.isTouchIcon ? 60 : 0
+    }
+    
+    private func declaredManifestIconSize(from sizes: Any?) -> Int {
+        return manifestTokens(from: sizes)
+            .compactMap { size -> Int? in
+                guard size != "any" else {
+                    return Int.max
+                }
+                
+                let dimensions = size.split(separator: "x", maxSplits: 1)
+                guard dimensions.count == 2,
+                      let width = Int(dimensions[0]),
+                      let height = Int(dimensions[1]) else {
+                    return nil
+                }
+                
+                return max(width, height)
+            }
+            .max() ?? 0
+    }
+    
+    private func manifestTokens(from value: Any?, defaultValue: String? = nil) -> [String] {
+        let values: [String]
+        if let value = value as? String {
+            values = [value]
+        } else if let value = value as? [String] {
+            values = value
+        } else if let value = value as? [Any] {
+            values = value.compactMap { $0 as? String }
+        } else {
+            values = defaultValue.map { [$0] } ?? []
+        }
+        
+        return values.flatMap {
+            $0.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+        }
+    }
+    
+    private func primaryManifestPurpose(_ purposes: Set<String>) -> String {
+        if purposes.contains("monochrome") {
+            return "monochrome"
+        }
+        if purposes.contains("maskable") {
+            return "maskable"
+        }
+        return "any"
+    }
+    
+    private func manifestPurposeRank(_ purposes: Set<String>) -> Int {
+        switch primaryManifestPurpose(purposes) {
+        case "monochrome":
+            return 4
+        case "maskable":
+            return 2
+        default:
+            return 1
+        }
     }
     
     private func attributes(in tag: String) -> [String: String] {

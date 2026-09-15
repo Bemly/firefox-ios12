@@ -12,7 +12,7 @@ func parseSelectionActionRequest(_ message: [String: Any?]?) -> SelectionActionR
     guard let actionID = message?["actionId"] as? String,
           let actions = message?["actions"] as? [String],
           let selection = message?["selection"] as? String,
-          let screenRect = parseScreenRect(message?["screenRect"] ?? nil) else {
+          let clientRect = parseClientRect(message?["clientRect"] ?? nil) else {
         return nil
     }
     
@@ -21,11 +21,11 @@ func parseSelectionActionRequest(_ message: [String: Any?]?) -> SelectionActionR
         actions: actions,
         selection: selection,
         editable: message?["editable"] as? Bool ?? false,
-        screenRect: screenRect
+        clientRect: clientRect
     )
 }
 
-private func parseScreenRect(_ value: Any?) -> CGRect? {
+private func parseClientRect(_ value: Any?) -> CGRect? {
     guard let rect = value as? [String: Any] else {
         return nil
     }

@@ -1,0 +1,12 @@
+diff --git a/dom/media/CubebUtils.h b/dom/media/CubebUtils.h
+index 1dadbdb50770..a5dec1c49c46 100644
+--- a/dom/media/CubebUtils.h
++++ b/dom/media/CubebUtils.h
+@@ -60,6 +60,7 @@ class CubebHandle {
+ // Initialize Audio Library. Some Audio backends require initializing the
+ // library before using it.
+ void InitLibrary();
++void InitAudioIPCConnection();
+ 
+ // Shutdown Audio Library. Some Audio backends require shutting down the
+ // library after using it.

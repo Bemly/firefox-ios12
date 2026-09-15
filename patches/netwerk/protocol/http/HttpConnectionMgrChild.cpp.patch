@@ -1,15 +1,15 @@
 diff --git a/netwerk/protocol/http/HttpConnectionMgrChild.cpp b/netwerk/protocol/http/HttpConnectionMgrChild.cpp
-index f48d028668b7..fe5eeb761334 100644
+index c83a6ac2ad3a..70195f14e69f 100644
 --- a/netwerk/protocol/http/HttpConnectionMgrChild.cpp
 +++ b/netwerk/protocol/http/HttpConnectionMgrChild.cpp
-@@ -9,6 +9,7 @@
+@@ -10,6 +10,7 @@
+ #include "HttpLog.h"
  #include "HttpTransactionChild.h"
- #include "AltSvcTransactionChild.h"
- #include "EventTokenBucket.h"
-+#include "mozilla/net/WebTransportHash.h"
  #include "mozilla/net/WebSocketConnectionChild.h"
++#include "mozilla/net/WebTransportHash.h"
  #include "nsHttpConnectionInfo.h"
  #include "nsHttpConnectionMgr.h"
+ #include "nsHttpHandler.h"
 @@ -97,6 +98,25 @@ mozilla::ipc::IPCResult HttpConnectionMgrChild::RecvCancelTransaction(
    return IPC_OK();
  }

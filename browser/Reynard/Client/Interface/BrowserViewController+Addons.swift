@@ -27,6 +27,10 @@ extension BrowserViewController: AddonCoordinatorDataSource, AddonCoordinatorDel
         return tabManager.selectedTabMode
     }
     
+    var shouldPresentAddonPopupAsPopover: Bool {
+        return browserLayout.chromeMode == .pad
+    }
+    
     func indexOfAddonTab(for session: GeckoSession) -> Int? {
         return tabManager.tabIndex(for: session)
     }
@@ -42,7 +46,26 @@ extension BrowserViewController: AddonCoordinatorDataSource, AddonCoordinatorDel
     }
     
     func presentAddonViewController(_ coordinator: AddonCoordinator, _ viewController: UIViewController) {
-        UIApplication.shared.topViewController(from: self).present(viewController, animated: true)
+        let presentViewController = { [weak self] in
+            guard let self else {
+                return
+            }
+            UIApplication.shared.topViewController(from: self).present(viewController, animated: true)
+        }
+        
+        if let popupViewController = viewController as? AddonPopupViewController,
+           let popover = popupViewController.popoverPresentationController {
+            toolbarController.lock(for: .addonPopover)
+            let sourceButton = browserChrome.addressBarButton
+            popover.sourceView = sourceButton
+            popover.sourceRect = sourceButton.bounds
+            popover.permittedArrowDirections = .up
+            popover.delegate = popupViewController
+            browserChrome.performAfterAddressBarMenuDismissal(presentViewController)
+            return
+        }
+        
+        presentViewController()
     }
     
     func presentAddonAlert(_ coordinator: AddonCoordinator, title: String?, message: String) {
@@ -84,7 +107,22 @@ extension BrowserViewController: AddonCoordinatorDataSource, AddonCoordinatorDel
         tabManager.removeTab(at: index, mode: mode)
     }
     
+    func confirmAddonDownload(
+        _ coordinator: AddonCoordinator,
+        options: [String: Any?],
+        completion: @escaping (DownloadStore.WebExtensionDownloadItem?) -> Void
+    ) {
+        guard let pendingDownload = DownloadStore.shared.pendingDownload(
+            from: options
+        ) else {
+            completion(nil)
+            return
+        }
+        downloadsCoordinator.confirmWebExtensionDownload(pendingDownload, completion: completion)
+    }
+    
     func restoreAddonTabInteraction(_ coordinator: AddonCoordinator) {
+        toolbarController.unlock(for: .addonPopover)
         DispatchQueue.main.async { [weak self] in
             guard let self,
                   let session = tabManager.selectedTab?.session else {
@@ -93,6 +131,7 @@ extension BrowserViewController: AddonCoordinatorDataSource, AddonCoordinatorDel
             
             contentView.restoreInteraction(for: session)
             sessionManager.activate(session)
+            requestContentKeyboardFocus(for: session)
         }
     }
 }

@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/nsClipboard.mm b/widget/uikit/nsClipboard.mm
 new file mode 100644
-index 000000000000..dbbd7971780e
+index 000000000000..c37203aff826
 --- /dev/null
 +++ b/widget/uikit/nsClipboard.mm
-@@ -0,0 +1,296 @@
+@@ -0,0 +1,374 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -13,10 +13,15 @@ index 000000000000..dbbd7971780e
 +
 +#import <UIKit/UIKit.h>
 +
++#include <algorithm>
++
 +#include "nsClipboard.h"
 +
++#include "imgIContainer.h"
++#include "imgITools.h"
 +#include "nsCOMPtr.h"
 +#include "nsComponentManagerUtils.h"
++#include "nsIInputStream.h"
 +#include "nsISupportsPrimitives.h"
 +#include "nsPrimitiveHelpers.h"
 +
@@ -27,6 +32,7 @@ index 000000000000..dbbd7971780e
 +static NSString* const kUIKitClipboardPlainTextType = @"public.utf8-plain-text";
 +static NSString* const kUIKitClipboardTextType = @"public.text";
 +static NSString* const kUIKitClipboardHTMLType = @"public.html";
++static NSString* const kUIKitClipboardPNGType = @"public.png";
 +
 +static void AssignNSStringTo(nsAString& aDestination, NSString* aSource) {
 +  if (!aSource) {
@@ -123,6 +129,65 @@ index 000000000000..dbbd7971780e
 +  return NS_OK;
 +}
 +
++static bool HasTransferableImage(nsITransferable* aTransferable) {
++  nsTArray<nsCString> flavors;
++  if (NS_FAILED(aTransferable->FlavorsTransferableCanExport(flavors))) {
++    return false;
++  }
++
++  return std::any_of(flavors.begin(), flavors.end(), [](const nsCString& flavor) {
++    return flavor.EqualsLiteral(kNativeImageMime);
++  });
++}
++
++static NSData* ReadInputStream(nsIInputStream* aInputStream) {
++  NSMutableData* data = [NSMutableData data];
++  char buffer[8192];
++
++  while (true) {
++    uint32_t bytesRead = 0;
++    nsresult rv = aInputStream->Read(buffer, sizeof(buffer), &bytesRead);
++    if (NS_FAILED(rv)) {
++      return nil;
++    }
++    if (!bytesRead) {
++      break;
++    }
++    [data appendBytes:buffer length:bytesRead];
++  }
++
++  return data;
++}
++
++static NSData* EncodeTransferableImage(nsITransferable* aTransferable) {
++  nsCOMPtr<nsISupports> supports;
++  nsresult rv = aTransferable->GetTransferData(kNativeImageMime,
++                                                getter_AddRefs(supports));
++  if (NS_FAILED(rv)) {
++    return nil;
++  }
++
++  nsCOMPtr<imgIContainer> image(do_QueryInterface(supports));
++  if (!image) {
++    return nil;
++  }
++
++  nsCOMPtr<imgITools> imageTools =
++      do_CreateInstance("@mozilla.org/image/tools;1");
++  if (!imageTools) {
++    return nil;
++  }
++
++  nsCOMPtr<nsIInputStream> inputStream;
++  rv = imageTools->EncodeImage(image, "image/png"_ns, u""_ns,
++                               getter_AddRefs(inputStream));
++  if (NS_FAILED(rv) || !inputStream) {
++    return nil;
++  }
++
++  return ReadInputStream(inputStream);
++}
++
 +static mozilla::Result<nsCOMPtr<nsISupports>, nsresult> PrimitiveFromNSString(
 +    const nsACString& aFlavor, NSString* aString) {
 +  if (!aString || ![aString length]) {
@@ -182,6 +247,12 @@ index 000000000000..dbbd7971780e
 +    return rv;
 +  }
 +
++  const bool hasImage = HasTransferableImage(aTransferable);
++  NSData* imageData = hasImage ? EncodeTransferableImage(aTransferable) : nil;
++  if (hasImage && !imageData) {
++    return NS_ERROR_FAILURE;
++  }
++
 +  NSMutableDictionary* item = [NSMutableDictionary dictionary];
 +  if (!text.IsEmpty()) {
 +    NSString* textValue = ToNSString(text);
@@ -194,6 +265,9 @@ index 000000000000..dbbd7971780e
 +    if (htmlData) {
 +      item[kUIKitClipboardHTMLType] = htmlData;
 +    }
++  }
++  if (imageData) {
++    item[kUIKitClipboardPNGType] = imageData;
 +  }
 +  if (![item count]) {
 +    return NS_OK;
@@ -217,7 +291,8 @@ index 000000000000..dbbd7971780e
 +
 +mozilla::Result<nsCOMPtr<nsISupports>, nsresult>
 +nsClipboard::GetNativeClipboardData(const nsACString& aFlavor,
-+                                    ClipboardType aWhichClipboard) {
++                                    ClipboardType aWhichClipboard,
++                                    uint64_t aThreshold) {
 +  MOZ_DIAGNOSTIC_ASSERT(
 +      nsIClipboard::IsClipboardTypeSupported(aWhichClipboard));
 +
@@ -233,6 +308,9 @@ index 000000000000..dbbd7971780e
 +    }
 +    if (!text) {
 +      text = GetStringValue(pasteboard, kUIKitClipboardTextType);
++    }
++    if (aThreshold && [text length] * 2 > aThreshold) {
++      return Err(NS_ERROR_CLIPBOARD_TOO_BIG);
 +    }
 +    return PrimitiveFromNSString(aFlavor, text);
 +  }

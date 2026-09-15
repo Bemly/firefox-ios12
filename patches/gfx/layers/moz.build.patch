@@ -1,0 +1,12 @@
+diff --git a/gfx/layers/moz.build b/gfx/layers/moz.build
+index 6ca0e1774c0a..447ccf93ef20 100644
+--- a/gfx/layers/moz.build
++++ b/gfx/layers/moz.build
+@@ -280,6 +280,7 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("cocoa", "uikit"):
+     ]
+     UNIFIED_SOURCES += [
+         "NativeLayerCA.mm",
++        "NativeLayerCAPictureInPicture.mm",
+         "NativeLayerMacSurfaceHandler.mm",
+         "NativeLayerRemoteMac.mm",
+         "NativeLayerRootRemoteMacChild.mm",

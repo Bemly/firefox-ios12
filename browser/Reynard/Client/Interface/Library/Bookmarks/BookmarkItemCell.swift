@@ -13,6 +13,7 @@ final class BookmarkItemCell: UITableViewCell {
         static let titleLeadingSpacing: CGFloat = 13
         static let titleToCountSpacing: CGFloat = 8
         static let separatorLeftInset: CGFloat = 56
+        static let faviconCornerRadius: CGFloat = 6
     }
     
     static let reuseIdentifier = "BookmarkItemCell"
@@ -23,6 +24,8 @@ final class BookmarkItemCell: UITableViewCell {
         let imageView = UIImageView()
         imageView.translatesAutoresizingMaskIntoConstraints = false
         imageView.contentMode = .scaleAspectFit
+        imageView.clipsToBounds = true
+        imageView.layer.cornerRadius = UX.faviconCornerRadius
         return imageView
     }()
     
@@ -104,7 +107,7 @@ final class BookmarkItemCell: UITableViewCell {
     func configure(folder: BookmarkFolderSnapshot) {
         representedURL = nil
         faviconLoadToken = nil
-        itemTitleLabel.text = folder.title
+        itemTitleLabel.text = folder.isProtected && folder.title == "Favorites" ? NSLocalizedString("Favorites", comment: "") : folder.title
         countLabel.text = "\(folder.childCount)"
         countLabel.isHidden = false
         

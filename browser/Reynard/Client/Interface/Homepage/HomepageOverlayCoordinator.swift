@@ -19,7 +19,7 @@ protocol HomepageOverlayCoordinatorDelegate: AnyObject {
     
     // Homepage section actions
     func openURLFromHomepage(_ url: URL, disposition: TabOpenDisposition)
-    func shareURLFromHomepage(_ url: URL)
+    func shareURLFromHomepage(_ url: URL, sourceView: UIView)
     func openSettingsFromHomepage()
     func restoreClosedTabFromHomepage(id: UUID) -> Bool
     
@@ -34,6 +34,7 @@ final class HomepageOverlayCoordinator {
     
     private weak var delegate: HomepageOverlayCoordinatorDelegate?
     private let overlayCoordinator: OverlayCoordinator
+    private unowned let toolbarController: ToolbarController
     private let homepageViewController: HomepageViewController
     private let homepageThumbnailRenderer: HomepageThumbnailRenderer
     private var presentationIntent: HomepagePresentationIntent = .inactive
@@ -46,9 +47,14 @@ final class HomepageOverlayCoordinator {
     
     // MARK: - Lifecycle
     
-    init(delegate: HomepageOverlayCoordinatorDelegate, overlayCoordinator: OverlayCoordinator) {
+    init(
+        delegate: HomepageOverlayCoordinatorDelegate,
+        overlayCoordinator: OverlayCoordinator,
+        toolbarController: ToolbarController
+    ) {
         self.delegate = delegate
         self.overlayCoordinator = overlayCoordinator
+        self.toolbarController = toolbarController
         homepageViewController = HomepageViewController()
         homepageThumbnailRenderer = HomepageThumbnailRenderer(homepageViewController: homepageViewController)
         homepageViewController.homepageDelegate = self
@@ -63,19 +69,19 @@ final class HomepageOverlayCoordinator {
             return
         }
         
+        toolbarController.lock(for: .homepageOverlay)
         presentHomepage(presentation, animated: animated)
     }
     
-    func updatePresentedLayout() {
-        guard let presentation = homepagePresentation,
+    func updateVisibleContentInsets() {
+        guard let delegate,
+              let presentation = homepagePresentation,
+              presentation.host == .embedded,
               overlayCoordinator.contains(.homepage, on: presentation.host) else {
             return
         }
         
-        homepageViewController.setPrivateBrowsing(isPrivateBrowsing)
-        homepageViewController.setContentMode(presentation.contentMode)
-        homepageViewController.setShowsBackground(presentation.showsBackground)
-        configureOverlay(for: presentation)
+        homepageViewController.setVisibleContentInsets(visibleContentInsets(in: delegate.homepageContentView))
     }
     
     func tabOverviewWillPresent() {
@@ -91,6 +97,7 @@ final class HomepageOverlayCoordinator {
     func resetPresentationSession() {
         presentationIntent = .inactive
         overlayCoordinator.clearAddressBarScrollDismissal(for: .homepage)
+        toolbarController.unlock(for: .homepageOverlay)
     }
     
     // MARK: - Thumbnails
@@ -111,17 +118,34 @@ final class HomepageOverlayCoordinator {
         )
     }
     
-    func captureHomepageThumbnail(_ tab: Tab, size: CGSize, completion: @escaping (UIImage?) -> Void) {
-        guard let delegate else {
+    func captureHomepageThumbnail(_ tab: Tab, completion: @escaping (UIImage?) -> Void) {
+        guard let delegate,
+              let geometry = delegate.homepageContentView.thumbnailCaptureGeometry else {
             completion(nil)
             return
         }
         
         homepageThumbnailRenderer.capture(
-            size: size,
+            size: geometry.size,
+            visibleRect: geometry.visibleRect,
             contentMode: embeddedContentMode(layout: delegate.homepageLayout),
             isPrivateBrowsing: tab.isPrivate,
             completion: completion
+        )
+    }
+    
+    func previewImage(for tab: Tab) -> UIImage? {
+        guard let delegate,
+              needsHomepageThumbnail(for: tab),
+              let geometry = delegate.homepageContentView.thumbnailCaptureGeometry else {
+            return nil
+        }
+        
+        return homepageThumbnailRenderer.snapshot(
+            size: geometry.size,
+            visibleRect: geometry.visibleRect,
+            contentMode: embeddedContentMode(layout: delegate.homepageLayout),
+            isPrivateBrowsing: tab.isPrivate
         )
     }
     
@@ -155,18 +179,53 @@ final class HomepageOverlayCoordinator {
     }
     
     private func dismiss(animated: Bool) {
-        overlayCoordinator.dismiss(.homepage, on: .embedded, animated: animated)
-        overlayCoordinator.dismiss(.homepage, on: .detached, animated: animated)
+        var dismissalsRemaining = 2
+        let finishDismissal = { [weak self] in
+            dismissalsRemaining -= 1
+            guard dismissalsRemaining == 0 else {
+                return
+            }
+            self?.toolbarController.unlock(for: .homepageOverlay)
+        }
+        overlayCoordinator.dismiss(
+            .homepage,
+            on: .embedded,
+            animated: animated,
+            completion: finishDismissal
+        )
+        overlayCoordinator.dismiss(
+            .homepage,
+            on: .detached,
+            animated: animated,
+            completion: finishDismissal
+        )
     }
     
     private func configureOverlay(for presentation: HomepagePresentation) {
-        guard presentation.host == .detached,
-              let delegate else {
+        guard let delegate else {
             return
         }
         
+        guard presentation.host == .detached else {
+            delegate.homepageContentView.superview?.layoutIfNeeded()
+            homepageViewController.setVisibleContentInsets(visibleContentInsets(in: delegate.homepageContentView))
+            return
+        }
+        
+        homepageViewController.setVisibleContentInsets(.zero)
         delegate.homepageChrome.setOverlayHeightMode(.default)
         delegate.homepageChrome.setOverlayAvailableContentHeight(delegate.homepageContentView.bounds.height)
+    }
+    
+    private func visibleContentInsets(in contentView: UIView) -> UIEdgeInsets {
+        let visibleFrame = contentView.convert(contentView.bounds, to: homepageViewController.view)
+        let homepageBounds = homepageViewController.view.bounds
+        return UIEdgeInsets(
+            top: max(0, visibleFrame.minY - homepageBounds.minY),
+            left: 0,
+            bottom: max(0, homepageBounds.maxY - visibleFrame.maxY),
+            right: 0
+        )
     }
     
     // MARK: - Presentation Resolution
@@ -347,8 +406,15 @@ extension HomepageOverlayCoordinator: HomepageViewControllerDelegate {
         dismiss(animated: true)
     }
     
-    func homepageViewController(_ controller: HomepageViewController, didRequestShareURL url: URL) {
-        delegate?.shareURLFromHomepage(url)
+    func homepageViewController(
+        _ controller: HomepageViewController,
+        didRequestShareURL url: URL,
+        sourceView: UIView
+    ) {
+        delegate?.shareURLFromHomepage(
+            url,
+            sourceView: sourceView
+        )
     }
     
     func homepageViewController(_ controller: HomepageViewController, didRequestHideFromSuggestions siteID: Int64) {

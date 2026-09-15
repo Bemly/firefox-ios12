@@ -13,7 +13,11 @@ body:
     label: Before continuing, please confirm the following
     options:
       - label: This is not a bug.
+        required: true
       - label: This question has not been asked before.
+        required: true
+      - label: This question has not been answered in the FAQ.
+        required: true
   validations:
     required: true
 

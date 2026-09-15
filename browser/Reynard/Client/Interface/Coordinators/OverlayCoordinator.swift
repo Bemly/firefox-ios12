@@ -277,7 +277,7 @@ final class OverlayCoordinator {
         UIView.performWithoutAnimation {
             switch host {
             case .embedded:
-                overlayHost.contentView.layoutIfNeeded()
+                overlayHost.contentView.layoutOverlayIfNeeded()
             case .detached:
                 overlayHost.browserChrome.layoutIfNeeded()
             }

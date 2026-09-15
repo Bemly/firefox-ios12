@@ -10,9 +10,10 @@ import UIKit
 struct ContextMenuContext {
     enum Target {
         case link(URL)
-        case image(URL)
+        case image(URL, linkURL: URL?)
     }
     
     let target: Target
     let point: CGPoint
+    let allowsPreview: Bool
 }

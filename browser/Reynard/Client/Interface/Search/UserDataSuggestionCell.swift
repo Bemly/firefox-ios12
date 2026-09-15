@@ -14,6 +14,7 @@ final class UserDataSuggestionCell: UITableViewCell {
         static let textTopInset: CGFloat = 11
         static let textBottomInset: CGFloat = 11
         static let subtitleTopSpacing: CGFloat = 1
+        static let faviconCornerRadius: CGFloat = 4
     }
     
     static let reuseIdentifier = "UserDataSuggestionCell"
@@ -38,6 +39,8 @@ final class UserDataSuggestionCell: UITableViewCell {
         imageView.contentMode = .scaleAspectFit
         imageView.tintColor = .appLabel
         imageView.image = UIImage(named: "reynard.globe")
+        imageView.clipsToBounds = true
+        imageView.layer.cornerRadius = UX.faviconCornerRadius
         return imageView
     }()
     
@@ -112,11 +115,11 @@ final class UserDataSuggestionCell: UITableViewCell {
             subtitleLabel.text = URLUtils.displayString(for: result.url)
             sourceIconView.image = UIImage(named: "reynard.book")
         case .history:
-            let relativeDate = Self.relativeDateString(for: result.lastVisitedAt ?? Date())
-            subtitleLabel.text = "\(URLUtils.hostDisplayString(for: result.url)) · Visited \(relativeDate)"
+            let relativeDate = Self.relativeDateFormatter.localizedString(for: result.lastVisitedAt ?? Date(), relativeTo: Date())
+            subtitleLabel.text = String(format: NSLocalizedString("%@ · Visited %@", comment: "Host and date"), URLUtils.hostDisplayString(for: result.url), relativeDate)
             sourceIconView.image = UIImage(named: "reynard.clock")
         case .tab:
-            subtitleLabel.text = "\(URLUtils.hostDisplayString(for: result.url)) · Opened Tab"
+            subtitleLabel.text = String(format: NSLocalizedString("%@ · Opened Tab", comment: "Website host"), URLUtils.hostDisplayString(for: result.url))
             sourceIconView.image = UIImage(named: "reynard.square.on.square")
         }
         

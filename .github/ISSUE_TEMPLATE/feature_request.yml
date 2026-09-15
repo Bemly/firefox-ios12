@@ -13,6 +13,7 @@ body:
     label: Before continuing, please confirm the following
     options:
       - label: This feature request has not been made before.
+        required: true
   validations:
     required: true
 

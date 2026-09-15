@@ -1,0 +1,12 @@
+diff --git a/uriloader/exthandler/moz.build b/uriloader/exthandler/moz.build
+index 2b9da3a738f4..98718f76117e 100644
+--- a/uriloader/exthandler/moz.build
++++ b/uriloader/exthandler/moz.build
+@@ -76,6 +76,7 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "uikit":
+         "uikit/nsMIMEInfoUIKit.mm",
+         "uikit/nsOSHelperAppService.mm",
+     ]
++    OS_LIBS += ["-framework MobileCoreServices"]
+ else:
+     # These files can't be built in unified mode because they redefine LOG.
+     SOURCES += [

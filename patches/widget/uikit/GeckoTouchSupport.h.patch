@@ -1,0 +1,42 @@
+diff --git a/widget/uikit/GeckoTouchSupport.h b/widget/uikit/GeckoTouchSupport.h
+new file mode 100644
+index 000000000000..55ef2d8122b5
+--- /dev/null
++++ b/widget/uikit/GeckoTouchSupport.h
+@@ -0,0 +1,36 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#ifndef mozilla_widget_GeckoTouchSupport_h
++#define mozilla_widget_GeckoTouchSupport_h
++
++#import <UIKit/UIKit.h>
++
++#include "GeckoViewSwiftSupport.h"
++
++class nsWindow;
++
++@class ChildView;
++@class GeckoPointerSupport;
++
++@interface GeckoTouchSupport : NSObject
++
++- (instancetype)initWithView:(ChildView*)view
++                  geckoChild:(nsWindow*)geckoChild
++              pointerSupport:(GeckoPointerSupport*)pointerSupport;
++- (void)setInteractionDelegate:
++    (id<GeckoViewInteractionDelegate>)interactionDelegate;
++- (void)resolveTouchSequence:(uint64_t)sequenceId
++                    handling:(GeckoInputHandling)handling
++             scrollableEdges:(GeckoScrollableEdges)scrollableEdges
++              overscrollAxes:(GeckoOverscrollAxes)overscrollAxes;
++- (void)compositorScrollPositionDidChange:(double)scrollY zoom:(double)zoom;
++- (void)widgetDestroyed;
++
++@end
++
++#endif

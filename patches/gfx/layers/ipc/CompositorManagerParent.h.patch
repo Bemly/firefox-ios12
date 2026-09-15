@@ -1,0 +1,20 @@
+diff --git a/gfx/layers/ipc/CompositorManagerParent.h b/gfx/layers/ipc/CompositorManagerParent.h
+index d80647da74ee..35de8405ea03 100644
+--- a/gfx/layers/ipc/CompositorManagerParent.h
++++ b/gfx/layers/ipc/CompositorManagerParent.h
+@@ -59,6 +59,7 @@ class CompositorManagerParent final : public PCompositorManagerParent {
+   mozilla::ipc::IPCResult RecvReportSharedSurfacesMemory(
+       ReportSharedSurfacesMemoryResolver&&);
+ 
++  static void NotifyMemoryPressure();
+   mozilla::ipc::IPCResult RecvNotifyMemoryPressure();
+ 
+   mozilla::ipc::IPCResult RecvReportMemory(ReportMemoryResolver&&);
+@@ -92,6 +93,7 @@ class CompositorManagerParent final : public PCompositorManagerParent {
+   static ManagerMap sManagers MOZ_GUARDED_BY(sMonitor);
+ 
+   static void ShutdownInternal();
++  void NotifyMemoryPressureOnCompositorThread();
+ 
+   CompositorManagerParent(dom::ContentParentId aContentId, uint32_t aNamespace);
+   virtual ~CompositorManagerParent();

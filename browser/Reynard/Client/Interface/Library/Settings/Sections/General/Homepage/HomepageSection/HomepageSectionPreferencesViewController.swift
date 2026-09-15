@@ -41,33 +41,33 @@ final class HomepageSectionPreferencesViewController: SettingsTableViewControlle
         var title: String {
             switch self {
             case .favorites:
-                return "Favorites"
+                return NSLocalizedString("Favorites", comment: "")
             case .frequentlyVisited:
-                return "Frequently Visited"
+                return NSLocalizedString("Frequently Visited", comment: "")
             case .recentlyClosedTabs:
-                return "Recently Closed Tabs"
+                return NSLocalizedString("Recently Closed Tabs", comment: "")
             }
         }
         
         var switchTitle: String {
             switch self {
             case .favorites:
-                return "Show Favorites"
+                return NSLocalizedString("Show Favorites", comment: "")
             case .frequentlyVisited:
-                return "Show Frequently Visited"
+                return NSLocalizedString("Show Frequently Visited", comment: "")
             case .recentlyClosedTabs:
-                return "Show Recently Closed Tabs"
+                return NSLocalizedString("Show Recently Closed Tabs", comment: "")
             }
         }
         
         var countTitle: String {
             switch self {
             case .favorites:
-                return "Number of Rows"
+                return NSLocalizedString("Number of Rows", comment: "")
             case .frequentlyVisited:
-                return "Number of Sites"
+                return NSLocalizedString("Number of Websites", comment: "")
             case .recentlyClosedTabs:
-                return "Number of Items"
+                return NSLocalizedString("Number of Tabs", comment: "")
             }
         }
         
@@ -224,22 +224,21 @@ final class HomepageSectionPreferencesViewController: SettingsTableViewControlle
         
         switch rows[indexPath.row] {
         case .showSection:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
             cell.textLabel?.text = preference.switchTitle
             cell.selectionStyle = .none
             cell.accessoryView = sectionSwitch
             return cell
         case .showInPrivateBrowsing:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-            cell.textLabel?.text = "Show in Private Browsing"
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = NSLocalizedString("Show in Private Browsing", comment: "")
             cell.selectionStyle = .none
             cell.accessoryView = privateBrowsingSwitch
             return cell
         case .count:
-            let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
+            let cell = SettingsTableViewCell(style: .value1, reuseIdentifier: nil)
             cell.textLabel?.text = preference.countTitle
-            cell.detailTextLabel?.text = "\(preference.selectedCount)"
-            cell.accessoryType = .disclosureIndicator
+            configureCountPickerCell(cell)
             return cell
         }
     }
@@ -256,6 +255,31 @@ final class HomepageSectionPreferencesViewController: SettingsTableViewControlle
             return
         }
         
+        handleCountSelection(at: indexPath)
+    }
+    
+    private func configureCountPickerCell(_ cell: UITableViewCell) {
+        if #available(iOS 14.0, *) {
+            cell.detailTextLabel?.text = nil
+            cell.accessoryView = countMenuButton()
+            cell.accessoryType = .none
+        } else {
+            cell.detailTextLabel?.text = "\(preference.selectedCount)"
+            cell.accessoryView = nil
+            cell.accessoryType = .disclosureIndicator
+        }
+    }
+    
+    private func handleCountSelection(at indexPath: IndexPath) {
+        if #available(iOS 14.0, *) {
+            if #available(iOS 17.4, *),
+               let cell = tableView.cellForRow(at: indexPath),
+               let button = cell.accessoryView as? UIButton {
+                button.performPrimaryAction()
+            }
+            return
+        }
+        
         let viewController = HomepageSectionItemCountPreferencesViewController(
             title: preference.countTitle,
             values: preference.countValues,
@@ -264,6 +288,11 @@ final class HomepageSectionPreferencesViewController: SettingsTableViewControlle
             preference.setSelectedCount(value)
         }
         navigationController?.pushViewController(viewController, animated: true)
+    }
+    
+    private func applyCount(_ count: Int) {
+        preference.setSelectedCount(count)
+        tableView.reloadData()
     }
     
     private func configureSwitch() {
@@ -282,5 +311,35 @@ final class HomepageSectionPreferencesViewController: SettingsTableViewControlle
     
     @objc private func privateBrowsingSwitchDidChange() {
         preference.setEnabledInPrivateBrowsing(privateBrowsingSwitch.isOn)
+    }
+    
+    @available(iOS 14.0, *)
+    private func countMenuButton() -> UIButton {
+        let button = UIButton(type: .system)
+        button.setTitle("\(preference.selectedCount)", for: .normal)
+        button.setImage(UIImage(named: "reynard.chevron.up.chevron.down"), for: .normal)
+        button.semanticContentAttribute = .forceRightToLeft
+        button.contentHorizontalAlignment = .trailing
+        button.showsMenuAsPrimaryAction = true
+        if #available(iOS 15.0, *) {
+            button.changesSelectionAsPrimaryAction = true
+        }
+        button.menu = countMenu()
+        button.sizeToFit()
+        return button
+    }
+    
+    @available(iOS 14.0, *)
+    private func countMenu() -> UIMenu {
+        let actions = preference.countValues.map { count in
+            UIAction(title: "\(count)", state: count == preference.selectedCount ? .on : .off) { [weak self] _ in
+                self?.applyCount(count)
+            }
+        }
+        
+        if #available(iOS 15.0, *) {
+            return UIMenu(title: "", options: .singleSelection, children: actions)
+        }
+        return UIMenu(title: "", children: actions)
     }
 }

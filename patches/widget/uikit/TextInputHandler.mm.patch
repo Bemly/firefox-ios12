@@ -1,8 +1,8 @@
 diff --git a/widget/uikit/TextInputHandler.mm b/widget/uikit/TextInputHandler.mm
-index e8f05ad59f6f..2c5e570238b0 100644
+index e8f05ad59f6f..d88782d134d5 100644
 --- a/widget/uikit/TextInputHandler.mm
 +++ b/widget/uikit/TextInputHandler.mm
-@@ -2,6 +2,8 @@
+@@ -2,16 +2,22 @@
   * License, v. 2.0. If a copy of the MPL was not distributed with this
   * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
  
@@ -11,17 +11,21 @@ index e8f05ad59f6f..2c5e570238b0 100644
  #include "TextInputHandler.h"
  
  #import <UIKit/UIKit.h>
-@@ -10,7 +12,9 @@
+ 
++#include "GeckoKeyboardSupport.h"
++#include "mozilla/BasicEvents.h"
+ #include "mozilla/EventForwards.h"
  #include "mozilla/Logging.h"
  #include "mozilla/MacStringHelpers.h"
  #include "mozilla/MiscEvents.h"
 +#include "mozilla/RefPtr.h"
  #include "mozilla/TextEventDispatcher.h"
-+#include "mozilla/TextRange.h"
  #include "mozilla/TextEvents.h"
++#include "mozilla/TextRange.h"
  #include "mozilla/WidgetUtils.h"
  #include "nsIWidget.h"
-@@ -20,21 +24,112 @@
+ #include "nsObjCExceptions.h"
+@@ -20,21 +26,478 @@
  
  mozilla::LazyLogModule gIMELog("TextInputHandler");
  
@@ -35,8 +39,55 @@ index e8f05ad59f6f..2c5e570238b0 100644
 +
 +@end
 +
++@interface UIKeyboardImpl : NSObject
+++ (instancetype)sharedInstance;
++- (BOOL)isInHardwareKeyboardMode;
++- (BOOL)handleKeyTextCommandForCurrentEvent;
++- (BOOL)handleKeyAppCommandForCurrentEvent;
++- (BOOL)handleKeyInputMethodCommandForCurrentEvent;
++- (void)addInputString:(NSString*)aString
++               withFlags:(NSUInteger)aFlags
++    withInputManagerHint:(NSString*)aHint;
++- (void)deleteFromInputWithFlags:(NSUInteger)aFlags;
++@end
++
  namespace mozilla::widget {
  
++enum : unichar {
++  kEnterCharacter = 0x03,
++  kBackspaceCharacter = 0x08,
++  kNewlineCharacter = 0x0A,
++  kCarriageReturnCharacter = 0x0D,
++  kDeleteCharacter = 0x7F,
++};
++
++constexpr uint16_t kReturnVirtualKeyCode = 0x0D;
++
++struct TextInputHandler::KeyEventState {
++  explicit KeyEventState(WebEvent* aEvent, uint32_t aUniqueId,
++                         bool aForceRepeat = false)
++      : mEvent([aEvent retain]),
++        mUniqueId(aUniqueId),
++        mForceRepeat(aForceRepeat) {}
++
++  ~KeyEventState() { [mEvent release]; }
++
++  WebEvent* mEvent;
++  nsString mInsertString;
++  uint32_t mUniqueId;
++  bool mForceRepeat;
++  bool mKeyDownDispatched = false;
++  bool mKeyDownHandled = false;
++  bool mKeyPressDispatched = false;
++  bool mKeyPressHandled = false;
++  bool mKeyPressPreventedByContent = false;
++  bool mInputMethodHandled = false;
++  bool mInterpretingInputMethod = false;
++  bool mCompositionDispatched = false;
++  bool mGeckoTransactionFailed = false;
++  Maybe<Command> mCommand;
++};
++
 +static NSRange ClampCompositionSelectionRange(const NSRange& aSelectedRange,
 +                                              NSUInteger aTextLength) {
 +  const NSUInteger location = std::min(aSelectedRange.location, aTextLength);
@@ -90,6 +141,29 @@ index e8f05ad59f6f..2c5e570238b0 100644
 +  return ranges.forget();
 +}
 +
++static bool IsCharacterKeyEvent(WebEvent* aEvent) {
++  if (aEvent.isTabKey || !aEvent.characters.length) {
++    return false;
++  }
++  if (aEvent.keyCode == kReturnVirtualKeyCode) {
++    return true;
++  }
++
++  const unichar character = [aEvent.characters characterAtIndex:0];
++  return character >= 0x20 && character != kDeleteCharacter &&
++         !(character >= 0xF700 && character <= 0xF8FF);
++}
++
++static bool IsSameInputString(WebEvent* aEvent, const nsAString& aString) {
++  nsString characters;
++  CopyNSStringToXPCOMString(aEvent.characters ?: @"", characters);
++  if (characters.Length() == 1 && (characters[0] == kEnterCharacter ||
++                                   characters[0] == kCarriageReturnCharacter)) {
++    characters.Assign(kNewlineCharacter);
++  }
++  return characters.Equals(aString);
++}
++
  NS_IMPL_ISUPPORTS(TextInputHandler, TextEventDispatcherListener,
                    nsISupportsWeakReference)
  
@@ -97,7 +171,301 @@ index e8f05ad59f6f..2c5e570238b0 100644
 -    : mWidget(aWidget), mDispatcher(aWidget->GetTextEventDispatcher()) {}
 +    : mWidget(aWidget),
 +      mDispatcher(aWidget->GetTextEventDispatcher()),
-+      mMarkedRange(NSMakeRange(NSNotFound, 0)) {}
++      mMarkedRange(NSMakeRange(NSNotFound, 0)),
++      mKeyboardSupport(MakeUnique<GeckoKeyboardSupport>(this)) {}
++
++TextInputHandler::~TextInputHandler() = default;
++
++bool TextInputHandler::HandleKeyEvent(WebEvent* aEvent) {
++  Class keyboardClass = NSClassFromString(@"UIKeyboardImpl");
++  MOZ_RELEASE_ASSERT(keyboardClass);
++  UIKeyboardImpl* keyboard = [keyboardClass sharedInstance];
++  MOZ_RELEASE_ASSERT(keyboard);
++  if ([keyboard isInHardwareKeyboardMode]) {
++    return mKeyboardSupport->HandleKeyEvent(aEvent);
++  }
++
++  if (!aEvent ||
++      (aEvent.type != WebEventKeyDown && aEvent.type != WebEventKeyUp)) {
++    return false;
++  }
++  if (aEvent.type == WebEventKeyUp ||
++      (aEvent.keyboardFlags & WebEventKeyboardInputModifierFlagsChanged)) {
++    return true;
++  }
++  if ([keyboard handleKeyInputMethodCommandForCurrentEvent]) {
++    return true;
++  }
++
++  const bool isCharacterEvent = IsCharacterKeyEvent(aEvent);
++  if (aEvent.modifierFlags & WebEventFlagMaskCommandKey) {
++    return false;
++  }
++
++  NSString* characters = aEvent.characters;
++  if (!characters.length) {
++    return false;
++  }
++  switch ([characters characterAtIndex:0]) {
++    case kBackspaceCharacter:
++    case kDeleteCharacter:
++      [keyboard deleteFromInputWithFlags:aEvent.keyboardFlags];
++      return true;
++    case kEnterCharacter:
++    case kCarriageReturnCharacter:
++    case kNewlineCharacter:
++      if (isCharacterEvent) {
++        [keyboard addInputString:@"\n" withFlags:0 withInputManagerHint:nil];
++        return true;
++      }
++      return false;
++    default:
++      if (isCharacterEvent) {
++        [keyboard addInputString:characters
++                       withFlags:aEvent.keyboardFlags
++            withInputManagerHint:aEvent.inputManagerHint];
++        return true;
++      }
++      return false;
++  }
++}
++
++void TextInputHandler::HandleModifierFlagsChanged(
++    UIKeyModifierFlags aOldFlags, UIKeyModifierFlags aNewFlags) {
++  mKeyboardSupport->HandleModifierFlagsChanged(aOldFlags, aNewFlags);
++}
++
++void TextInputHandler::ReleasePhysicalKey(uint16_t aNativeKeyCode) {
++  mKeyboardSupport->ReleasePhysicalKey(aNativeKeyCode);
++}
++
++void TextInputHandler::ReleasePhysicalKeys() {
++  mKeyboardSupport->ReleasePhysicalKeys();
++}
++
++void TextInputHandler::PostHandleKeyEvent(WidgetKeyboardEvent* aEvent) {
++  KeyEventState* currentKeyEvent = CurrentKeyEvent();
++  if (currentKeyEvent && aEvent && aEvent->mMessage == eKeyPress &&
++      currentKeyEvent->mUniqueId == aEvent->mUniqueId) {
++    currentKeyEvent->mKeyPressPreventedByContent |=
++        aEvent->DefaultPreventedByContent();
++  }
++}
++
++TextInputHandler::KeyEventState* TextInputHandler::CurrentKeyEvent() {
++  return mCurrentKeyEvents.IsEmpty() ? nullptr
++                                     : mCurrentKeyEvents.LastElement().get();
++}
++
++bool TextInputHandler::DispatchCurrentKeyDown(bool aProcessedByIME) {
++  KeyEventState* currentKeyEvent = CurrentKeyEvent();
++  if (!currentKeyEvent || currentKeyEvent->mKeyDownDispatched) {
++    return currentKeyEvent && !currentKeyEvent->mKeyDownHandled;
++  }
++  if (Destroyed()) {
++    return false;
++  }
++
++  nsresult rv = mDispatcher->BeginNativeInputTransaction();
++  if (NS_FAILED(rv)) {
++    currentKeyEvent->mGeckoTransactionFailed = true;
++    return false;
++  }
++
++  WidgetKeyboardEvent keydownEvent(true, eKeyDown, mWidget);
++  mKeyboardSupport->InitKeyEvent(currentKeyEvent->mEvent, keydownEvent,
++                                 currentKeyEvent->mUniqueId, aProcessedByIME,
++                                 nullptr, currentKeyEvent->mForceRepeat);
++  if (currentKeyEvent->mForceRepeat) {
++    keydownEvent.mModifiers = mKeyboardSupport->CurrentModifiers();
++  }
++  nsEventStatus status = nsEventStatus_eIgnore;
++  currentKeyEvent->mKeyDownDispatched = mDispatcher->DispatchKeyboardEvent(
++      eKeyDown, keydownEvent, status, currentKeyEvent);
++  if (!currentKeyEvent->mKeyDownDispatched) {
++    currentKeyEvent->mGeckoTransactionFailed = true;
++  }
++  currentKeyEvent->mKeyDownHandled = status == nsEventStatus_eConsumeNoDefault;
++  return currentKeyEvent->mKeyDownDispatched &&
++         !currentKeyEvent->mKeyDownHandled && !Destroyed();
++}
++
++bool TextInputHandler::DispatchCurrentKeyPress() {
++  KeyEventState* currentKeyEvent = CurrentKeyEvent();
++  if (!currentKeyEvent || currentKeyEvent->mKeyPressDispatched ||
++      currentKeyEvent->mKeyDownHandled ||
++      currentKeyEvent->mInputMethodHandled ||
++      currentKeyEvent->mCompositionDispatched || Destroyed()) {
++    return false;
++  }
++
++  nsresult rv = mDispatcher->BeginNativeInputTransaction();
++  if (NS_FAILED(rv)) {
++    currentKeyEvent->mGeckoTransactionFailed = true;
++    return false;
++  }
++
++  WidgetKeyboardEvent keypressEvent(true, eKeyPress, mWidget);
++  const nsAString* insertString = currentKeyEvent->mInsertString.IsEmpty()
++                                      ? nullptr
++                                      : &currentKeyEvent->mInsertString;
++  mKeyboardSupport->InitKeyEvent(currentKeyEvent->mEvent, keypressEvent,
++                                 currentKeyEvent->mUniqueId, false,
++                                 insertString, currentKeyEvent->mForceRepeat);
++  if (currentKeyEvent->mForceRepeat) {
++    keypressEvent.mModifiers = mKeyboardSupport->CurrentModifiers();
++  }
++  nsEventStatus status = nsEventStatus_eIgnore;
++  currentKeyEvent->mKeyPressDispatched =
++      mDispatcher->MaybeDispatchKeypressEvents(keypressEvent, status,
++                                               currentKeyEvent, true);
++  currentKeyEvent->mKeyPressHandled = status == nsEventStatus_eConsumeNoDefault;
++  return currentKeyEvent->mKeyPressDispatched;
++}
++
++bool TextInputHandler::PrepareCurrentKeyForIME() {
++  KeyEventState* currentKeyEvent = CurrentKeyEvent();
++  if (!currentKeyEvent) {
++    return true;
++  }
++  bool shouldContinue = DispatchCurrentKeyDown(true);
++  if (currentKeyEvent->mGeckoTransactionFailed) {
++    return false;
++  }
++  currentKeyEvent->mInputMethodHandled = true;
++  return shouldContinue && !currentKeyEvent->mKeyPressPreventedByContent;
++}
++
++void TextInputHandler::MarkCurrentKeyEventFailed() {
++  if (KeyEventState* currentKeyEvent = CurrentKeyEvent()) {
++    currentKeyEvent->mGeckoTransactionFailed = true;
++  }
++}
++
++bool TextInputHandler::DispatchPhysicalKeyDown(WebEvent* aEvent,
++                                               bool aForceRepeat,
++                                               bool aHasCurrentNativeEvent) {
++  if (Destroyed()) {
++    return false;
++  }
++
++  RefPtr<nsWindow> widget(mWidget);
++  auto state = MakeUnique<KeyEventState>(
++      aEvent, mKeyboardSupport->NextUniqueId(), aForceRepeat);
++  KeyEventState* currentKeyEvent = state.get();
++  mCurrentKeyEvents.AppendElement(std::move(state));
++
++  const bool useInputMethod = aHasCurrentNativeEvent &&
++                              widget->GetInputContext().mIMEState.IsEditable();
++  const bool hasShiftModifier =
++      mKeyboardSupport->CurrentModifiers() & MODIFIER_SHIFT;
++  UIKeyboardImpl* keyboard = nil;
++  if (useInputMethod) {
++    Class keyboardClass = NSClassFromString(@"UIKeyboardImpl");
++    MOZ_RELEASE_ASSERT(keyboardClass);
++    keyboard = [keyboardClass sharedInstance];
++    MOZ_RELEASE_ASSERT(keyboard);
++    if (aHasCurrentNativeEvent && !hasShiftModifier) {
++      currentKeyEvent->mInterpretingInputMethod = true;
++      const bool inputMethodHandled =
++          [keyboard handleKeyInputMethodCommandForCurrentEvent];
++      currentKeyEvent->mInterpretingInputMethod = false;
++      currentKeyEvent->mInputMethodHandled |= inputMethodHandled;
++    }
++  }
++
++  if (!currentKeyEvent->mKeyDownDispatched && !Destroyed()) {
++    DispatchCurrentKeyDown(currentKeyEvent->mInputMethodHandled);
++  }
++
++  auto dispatchInput = [&] {
++    if (currentKeyEvent->mInputMethodHandled ||
++        currentKeyEvent->mCompositionDispatched ||
++        currentKeyEvent->mKeyPressPreventedByContent ||
++        currentKeyEvent->mGeckoTransactionFailed || hasShiftModifier ||
++        (aEvent.modifierFlags & WebEventFlagMaskCommandKey)) {
++      return;
++    }
++
++    NSString* characters = aEvent.characters;
++    if (!characters.length) {
++      return;
++    }
++    switch ([characters characterAtIndex:0]) {
++      case kBackspaceCharacter:
++      case kDeleteCharacter:
++        [keyboard deleteFromInputWithFlags:aEvent.keyboardFlags];
++        currentKeyEvent->mInputMethodHandled = true;
++        break;
++      case kEnterCharacter:
++      case kCarriageReturnCharacter:
++      case kNewlineCharacter:
++        if (IsCharacterKeyEvent(aEvent)) {
++          [keyboard addInputString:@"\n" withFlags:0 withInputManagerHint:nil];
++          currentKeyEvent->mInputMethodHandled = true;
++        }
++        break;
++      default:
++        if (IsCharacterKeyEvent(aEvent)) {
++          [keyboard addInputString:characters
++                         withFlags:aEvent.keyboardFlags
++              withInputManagerHint:aEvent.inputManagerHint];
++          currentKeyEvent->mInputMethodHandled = true;
++        }
++        break;
++    }
++  };
++
++  if (useInputMethod &&
++      !(aEvent.keyboardFlags & WebEventKeyboardInputModifierFlagsChanged) &&
++      !currentKeyEvent->mInputMethodHandled &&
++      !currentKeyEvent->mCompositionDispatched &&
++      !currentKeyEvent->mKeyDownHandled && !Destroyed()) {
++    const bool isCharacterEvent = IsCharacterKeyEvent(aEvent);
++    if (aHasCurrentNativeEvent && !hasShiftModifier) {
++      currentKeyEvent->mInputMethodHandled |=
++          [keyboard handleKeyTextCommandForCurrentEvent];
++    }
++
++    if (isCharacterEvent && !hasShiftModifier && aHasCurrentNativeEvent &&
++        !currentKeyEvent->mInputMethodHandled &&
++        !currentKeyEvent->mCompositionDispatched &&
++        !currentKeyEvent->mKeyDownHandled &&
++        !currentKeyEvent->mGeckoTransactionFailed && !Destroyed()) {
++      currentKeyEvent->mInputMethodHandled |=
++          [keyboard handleKeyAppCommandForCurrentEvent];
++    }
++
++    dispatchInput();
++  }
++
++  if (!currentKeyEvent->mInputMethodHandled &&
++      !currentKeyEvent->mCompositionDispatched &&
++      !currentKeyEvent->mKeyDownHandled && !Destroyed()) {
++    DispatchCurrentKeyPress();
++  }
++
++  bool handled = !currentKeyEvent->mGeckoTransactionFailed && !Destroyed() &&
++                 (currentKeyEvent->mKeyDownDispatched ||
++                  currentKeyEvent->mKeyPressDispatched ||
++                  currentKeyEvent->mInputMethodHandled ||
++                  currentKeyEvent->mCompositionDispatched);
++  MOZ_ASSERT(mCurrentKeyEvents.LastElement().get() == currentKeyEvent);
++  mCurrentKeyEvents.RemoveLastElement();
++  return handled;
++}
++
++bool TextInputHandler::GetEditCommands(const WidgetKeyboardEvent& aEvent,
++                                       nsTArray<CommandInt>& aCommands) {
++  KeyEventState* currentKeyEvent = CurrentKeyEvent();
++  if (!currentKeyEvent || !currentKeyEvent->mCommand ||
++      currentKeyEvent->mUniqueId != aEvent.mUniqueId) {
++    return true;
++  }
++  aCommands.AppendElement(
++      static_cast<CommandInt>(currentKeyEvent->mCommand.value()));
++  return true;
++}
  
  nsresult TextInputHandler::NotifyIME(TextEventDispatcher* aTextEventDispatcher,
                                       const IMENotification& aNotification) {
@@ -115,6 +483,7 @@ index e8f05ad59f6f..2c5e570238b0 100644
 +    case NOTIFY_IME_OF_BLUR:
 +      ClearCompositionState();
 +      break;
++    case NOTIFY_IME_OF_SELECTION_CHANGE:
 +    case NOTIFY_IME_OF_POSITION_CHANGE: {
 +      ChildView* view =
 +          static_cast<ChildView*>(mWidget->GetNativeData(NS_NATIVE_WIDGET));
@@ -132,14 +501,38 @@ index e8f05ad59f6f..2c5e570238b0 100644
  
  IMENotificationRequests TextInputHandler::GetIMENotificationRequests() {
 -  return IMENotificationRequests{};
-+  return IMENotificationRequests{IMENotificationRequest::PositionChange};
++  return IMENotificationRequests{IMENotificationRequest::TextChange,
++                                 IMENotificationRequest::PositionChange};
  }
  
  void TextInputHandler::OnRemovedFrom(
-@@ -45,6 +140,16 @@
+@@ -43,7 +506,37 @@
+ void TextInputHandler::WillDispatchKeyboardEvent(
+     TextEventDispatcher* aTextEventDispatcher,
      WidgetKeyboardEvent& aKeyboardEvent, uint32_t aIndexOfKeypress,
-     void* aData) {}
- 
+-    void* aData) {}
++    void* aData) {
++  KeyEventState* keyEventState = static_cast<KeyEventState*>(aData);
++  if (!keyEventState || !keyEventState->mEvent ||
++      !(aKeyboardEvent.IsControl() || aKeyboardEvent.IsAlt() ||
++        aKeyboardEvent.IsMeta())) {
++    return;
++  }
++
++  nsString characters;
++  CopyNSStringToXPCOMString(
++      keyEventState->mEvent.charactersIgnoringModifiers ?: @"", characters);
++  if (aIndexOfKeypress >= characters.Length()) {
++    return;
++  }
++  char16_t character = characters[aIndexOfKeypress];
++  if (character < 0x20 || character == 0x7F) {
++    return;
++  }
++  aKeyboardEvent.mAlternativeCharCodes.AppendElement(
++      AlternativeCharCode(character, character));
++}
++
 +bool TextInputHandler::HasMarkedText() const {
 +  return mMarkedRange.location != NSNotFound;
 +}
@@ -149,29 +542,79 @@ index e8f05ad59f6f..2c5e570238b0 100644
 +  mSelectedRangeOverride.reset();
 +  mMarkedText.Truncate();
 +}
-+
+ 
  bool TextInputHandler::InsertText(NSString* aText) {
    nsString str;
-   CopyNSStringToXPCOMString(aText, str);
-@@ -57,6 +162,17 @@
+@@ -57,6 +550,68 @@
      return false;
    }
  
++  KeyEventState* currentKeyEvent = CurrentKeyEvent();
++  if (currentKeyEvent) {
++    currentKeyEvent->mInsertString = str;
++    if (!HasMarkedText() && currentKeyEvent->mKeyPressDispatched &&
++        !currentKeyEvent->mKeyPressPreventedByContent &&
++        IsSameInputString(currentKeyEvent->mEvent, str)) {
++      currentKeyEvent->mInputMethodHandled = true;
++      return !currentKeyEvent->mGeckoTransactionFailed && !Destroyed();
++    }
++    if (!HasMarkedText() && str.Length() == 1 &&
++        !currentKeyEvent->mInputMethodHandled &&
++        !currentKeyEvent->mInterpretingInputMethod) {
++      if (!DispatchCurrentKeyDown(false)) {
++        currentKeyEvent->mInputMethodHandled = true;
++        return false;
++      }
++      bool keyPressDispatched = DispatchCurrentKeyPress();
++      currentKeyEvent->mInputMethodHandled = true;
++      const bool textInserted =
++          keyPressDispatched && !currentKeyEvent->mKeyPressPreventedByContent &&
++          !currentKeyEvent->mGeckoTransactionFailed && !Destroyed();
++      return textInserted;
++    }
++
++    if (!PrepareCurrentKeyForIME()) {
++      return false;
++    }
++  }
++
 +  if (HasMarkedText()) {
 +    nsEventStatus status = nsEventStatus_eIgnore;
 +    nsresult rv = mDispatcher->BeginNativeInputTransaction();
 +    if (NS_FAILED(rv)) {
++      MarkCurrentKeyEventFailed();
 +      return false;
 +    }
 +    rv = mDispatcher->CommitComposition(status, &str, nullptr);
++    if (NS_FAILED(rv)) {
++      MarkCurrentKeyEventFailed();
++    } else if (currentKeyEvent) {
++      currentKeyEvent->mCompositionDispatched = true;
++    }
 +    ClearCompositionState();
++    return NS_SUCCEEDED(rv) && !Destroyed();
++  }
++
++  if (currentKeyEvent) {
++    nsEventStatus status = nsEventStatus_eIgnore;
++    nsresult rv = mDispatcher->BeginNativeInputTransaction();
++    if (NS_FAILED(rv)) {
++      MarkCurrentKeyEventFailed();
++      return false;
++    }
++    rv = mDispatcher->CommitComposition(status, &str, nullptr);
++    if (NS_FAILED(rv)) {
++      MarkCurrentKeyEventFailed();
++    } else {
++      currentKeyEvent->mCompositionDispatched = true;
++    }
 +    return NS_SUCCEEDED(rv) && !Destroyed();
 +  }
 +
    if (str.Length() == 1) {
      char16_t charCode = str[0];
      if (charCode == 0x0a) {
-@@ -91,6 +207,93 @@
+@@ -91,6 +646,129 @@
    return true;
  }
  
@@ -179,6 +622,13 @@ index e8f05ad59f6f..2c5e570238b0 100644
 +                                     const NSRange& aSelectedRange) {
 +  if (Destroyed()) {
 +    return false;
++  }
++
++  KeyEventState* currentKeyEvent = CurrentKeyEvent();
++  if (currentKeyEvent) {
++    if (!PrepareCurrentKeyForIME()) {
++      return true;
++    }
 +  }
 +
 +  nsString text;
@@ -190,12 +640,14 @@ index e8f05ad59f6f..2c5e570238b0 100644
 +  nsEventStatus status = nsEventStatus_eIgnore;
 +  nsresult rv = mDispatcher->BeginNativeInputTransaction();
 +  if (NS_FAILED(rv)) {
++    MarkCurrentKeyEventFailed();
 +    return false;
 +  }
 +
 +  if (!HasMarkedText()) {
 +    NSRange selection = NSMakeRange(NSNotFound, 0);
 +    if (!SelectedRange(selection) || selection.location == NSNotFound) {
++      MarkCurrentKeyEventFailed();
 +      return false;
 +    }
 +
@@ -203,6 +655,9 @@ index e8f05ad59f6f..2c5e570238b0 100644
 +    mSelectedRangeOverride = Some(selection);
 +    rv = mDispatcher->StartComposition(status, nullptr);
 +    if (NS_FAILED(rv) || Destroyed()) {
++      if (NS_FAILED(rv)) {
++        MarkCurrentKeyEventFailed();
++      }
 +      ClearCompositionState();
 +      return false;
 +    }
@@ -214,6 +669,11 @@ index e8f05ad59f6f..2c5e570238b0 100644
 +
 +  if (text.IsEmpty()) {
 +    rv = mDispatcher->CommitComposition(status, &text, nullptr);
++    if (NS_FAILED(rv)) {
++      MarkCurrentKeyEventFailed();
++    } else if (currentKeyEvent) {
++      currentKeyEvent->mCompositionDispatched = true;
++    }
 +    ClearCompositionState();
 +    return NS_SUCCEEDED(rv) && !Destroyed();
 +  }
@@ -222,10 +682,16 @@ index e8f05ad59f6f..2c5e570238b0 100644
 +      CreateTextRangeArrayForMarkedText(text.Length(), selectedRange);
 +  rv = mDispatcher->SetPendingComposition(text, ranges);
 +  if (NS_FAILED(rv)) {
++    MarkCurrentKeyEventFailed();
 +    return false;
 +  }
 +
 +  rv = mDispatcher->FlushPendingComposition(status, nullptr);
++  if (NS_FAILED(rv)) {
++    MarkCurrentKeyEventFailed();
++  } else if (currentKeyEvent) {
++    currentKeyEvent->mCompositionDispatched = true;
++  }
 +  return NS_SUCCEEDED(rv) && !Destroyed();
 +}
 +
@@ -234,13 +700,26 @@ index e8f05ad59f6f..2c5e570238b0 100644
 +    return false;
 +  }
 +
++  KeyEventState* currentKeyEvent = CurrentKeyEvent();
++  if (currentKeyEvent) {
++    if (!PrepareCurrentKeyForIME()) {
++      return true;
++    }
++  }
++
 +  nsEventStatus status = nsEventStatus_eIgnore;
 +  nsresult rv = mDispatcher->BeginNativeInputTransaction();
 +  if (NS_FAILED(rv)) {
++    MarkCurrentKeyEventFailed();
 +    return false;
 +  }
 +
 +  rv = mDispatcher->CommitComposition(status, nullptr, nullptr);
++  if (NS_FAILED(rv)) {
++    MarkCurrentKeyEventFailed();
++  } else if (currentKeyEvent) {
++    currentKeyEvent->mCompositionDispatched = true;
++  }
 +  ClearCompositionState();
 +  return NS_SUCCEEDED(rv) && !Destroyed();
 +}
@@ -265,12 +744,53 @@ index e8f05ad59f6f..2c5e570238b0 100644
  bool TextInputHandler::HandleCommand(Command aCommand) {
    MOZ_LOG(gIMELog, LogLevel::Info,
            ("%p   TextInputHandler::HandleCommand, aCommand=%s", this,
-@@ -233,6 +436,9 @@ static void InitKeyEvent(WidgetKeyboardEvent& aEvent, uint32_t aKeyCode,
+@@ -100,6 +778,15 @@
+     return false;
+   }
+ 
++  if (KeyEventState* currentKeyEvent = CurrentKeyEvent()) {
++    currentKeyEvent->mCommand = Some(aCommand);
++    if (DispatchCurrentKeyDown(false)) {
++      DispatchCurrentKeyPress();
++    }
++    currentKeyEvent->mInputMethodHandled = true;
++    return true;
++  }
++
+   if (aCommand != Command::DeleteCharBackward) {
+     return false;
+   }
+@@ -128,6 +815,23 @@
+   return true;
+ }
+ 
++bool TextInputHandler::HandlePhysicalDeleteBackward(
++    bool aHasIMEBuffer, bool aHasKoreanComposition) {
++  KeyEventState* currentKeyEvent = CurrentKeyEvent();
++  if (!currentKeyEvent) {
++    return false;
++  }
++  if (!aHasIMEBuffer && !aHasKoreanComposition && !HasMarkedText()) {
++    HandleCommand(Command::DeleteCharBackward);
++    return true;
++  }
++
++  if (!PrepareCurrentKeyForIME()) {
++    return true;
++  }
++  return false;
++}
++
+ static uint32_t ComputeKeyModifiers(uint32_t aCharCode) {
+   if (aCharCode >= 'A' && aCharCode <= 'Z') {
+     return MODIFIER_SHIFT;
+@@ -233,6 +937,10 @@ static void InitKeyEvent(WidgetKeyboardEvent& aEvent, uint32_t aKeyCode,
    return true;
  }
  
 -void TextInputHandler::OnDestroyed() { mWidget = nullptr; }
 +void TextInputHandler::OnDestroyed() {
++  ReleasePhysicalKeys();
 +  ClearCompositionState();
 +  mWidget = nullptr;
 +}

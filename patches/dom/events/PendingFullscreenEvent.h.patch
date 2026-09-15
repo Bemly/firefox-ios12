@@ -1,0 +1,12 @@
+diff --git a/dom/events/PendingFullscreenEvent.h b/dom/events/PendingFullscreenEvent.h
+index b4893354b8cd..be28702b11c8 100644
+--- a/dom/events/PendingFullscreenEvent.h
++++ b/dom/events/PendingFullscreenEvent.h
+@@ -52,6 +52,7 @@ class PendingFullscreenEvent {
+   void Unlink() { mTarget = nullptr; }
+ 
+   nsINode* Target() const { return mTarget.get(); }
++  FullscreenEventType Type() const { return mType; }
+ 
+  private:
+   nsCOMPtr<nsINode> mTarget;

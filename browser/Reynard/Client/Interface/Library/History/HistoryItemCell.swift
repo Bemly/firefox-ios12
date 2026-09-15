@@ -15,6 +15,7 @@ final class HistoryItemCell: UITableViewCell {
         static let labelsLeadingSpacing: CGFloat = 13
         static let labelsVerticalInset: CGFloat = 13
         static let separatorLeftInset: CGFloat = 56
+        static let faviconCornerRadius: CGFloat = 6
     }
     
     static let reuseIdentifier = "HistoryItemCell"
@@ -25,6 +26,8 @@ final class HistoryItemCell: UITableViewCell {
         let view = UIImageView()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.contentMode = .scaleAspectFit
+        view.clipsToBounds = true
+        view.layer.cornerRadius = UX.faviconCornerRadius
         return view
     }()
     

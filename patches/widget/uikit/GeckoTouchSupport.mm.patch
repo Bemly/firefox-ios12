@@ -1,0 +1,332 @@
+diff --git a/widget/uikit/GeckoTouchSupport.mm b/widget/uikit/GeckoTouchSupport.mm
+new file mode 100644
+index 000000000000..7c69b7bafbdd
+--- /dev/null
++++ b/widget/uikit/GeckoTouchSupport.mm
+@@ -0,0 +1,326 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#import "GeckoTouchSupport.h"
++
++#import <objc/message.h>
++
++#include "GeckoEditableSupport.h"
++#include "GeckoPointerSupport.h"
++#include "nsWindow.h"
++
++#include "mozilla/TouchEvents.h"
++
++using namespace mozilla;
++using namespace mozilla::widget;
++using mozilla::dom::Touch;
++
++@interface ChildView : UIView {
++ @public
++  nsWindow* mGeckoChild;
++  GeckoEditableState mEditable;
++  GeckoTouchSupport* mTouchSupport;
++}
++- (void)setSelectionHandlesVisible:(BOOL)visible;
++- (void)resolveCaretMenuIfPending;
++@end
++
++@interface GeckoTouchSupport ()
++- (NSSet<UITouch*>*)directTouchesFromTouches:(NSSet<UITouch*>*)touches;
++- (NSSet<UITouch*>*)indirectPointerTouchesFromTouches:(NSSet<UITouch*>*)touches;
++- (void)sendTouchEvent:(EventMessage)type touches:(NSSet<UITouch*>*)touches;
++- (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
++- (void)touchesCancelled:(NSSet<UITouch*>*)touches;
++- (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
++- (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
++@end
++
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wunguarded-availability-new"
++
++static bool SupportsPointerInput() {
++  NSOperatingSystemVersion version = {13, 4, 0};
++  return [NSProcessInfo.processInfo isOperatingSystemAtLeastVersion:version];
++}
++
++static bool IsIndirectPointerTouch(UITouch* aTouch) {
++  return SupportsPointerInput() && aTouch.type == UITouchTypeIndirectPointer;
++}
++
++#pragma clang diagnostic pop
++
++@implementation GeckoTouchSupport {
++  ChildView* mView;
++  nsWindow* mGeckoChild;
++  GeckoPointerSupport* mPointerSupport;
++  id<GeckoViewInteractionDelegate> mInteractionDelegate;
++  NSMapTable<UITouch*, NSNumber*>* mTouches;
++  int mNextTouchID;
++  uint64_t mTouchSequenceID;
++}
++
++- (instancetype)initWithView:(ChildView*)view
++                  geckoChild:(nsWindow*)geckoChild
++              pointerSupport:(GeckoPointerSupport*)pointerSupport {
++  self = [super init];
++  if (!self) {
++    return nil;
++  }
++
++  mView = view;
++  mGeckoChild = geckoChild;
++  mPointerSupport = pointerSupport;
++  mTouches = [[NSMapTable alloc] init];
++  mNextTouchID = 0;
++  return self;
++}
++
++- (void)setInteractionDelegate:
++    (id<GeckoViewInteractionDelegate>)interactionDelegate {
++  mInteractionDelegate = interactionDelegate;
++}
++
++- (NSSet<UITouch*>*)directTouchesFromTouches:(NSSet<UITouch*>*)touches {
++  NSMutableSet<UITouch*>* directTouches = [NSMutableSet set];
++  for (UITouch* touch in touches) {
++    if (!IsIndirectPointerTouch(touch)) {
++      [directTouches addObject:touch];
++    }
++  }
++  return directTouches;
++}
++
++- (NSSet<UITouch*>*)indirectPointerTouchesFromTouches:
++    (NSSet<UITouch*>*)touches {
++  NSMutableSet<UITouch*>* pointerTouches = [NSMutableSet set];
++  for (UITouch* touch in touches) {
++    if (IsIndirectPointerTouch(touch)) {
++      [pointerTouches addObject:touch];
++    }
++  }
++  return pointerTouches;
++}
++
++- (void)sendTouchEvent:(EventMessage)type touches:(NSSet<UITouch*>*)touches {
++  if (!mGeckoChild) {
++    return;
++  }
++
++  WidgetTouchEvent event(true, type, mGeckoChild);
++  // XXX: I think nativeEvent.timestamp * 1000 is probably usable here but
++  // I don't care that much right now.
++  event.mTouches.SetCapacity(touches.count);
++  for (UITouch* touch in touches) {
++    LayoutDeviceIntPoint location = UIKitPointsToDevPixels(
++        [touch locationInView:mView], mView.contentScaleFactor);
++    LayoutDeviceIntPoint radius = UIKitPointsToDevPixels(
++        CGPointMake(touch.majorRadius, touch.majorRadius),
++        mView.contentScaleFactor);
++    NSNumber* value = [mTouches objectForKey:touch];
++    if (!value) {
++      NS_ASSERTION(false, "Got a touch that we didn't know about");
++      continue;
++    }
++
++    int id = [value intValue];
++    auto touchPoint = MakeRefPtr<Touch>(id, location, radius, 0.0f, 1.0f);
++    event.mRefPoint = location;
++    event.mTouches.AppendElement(touchPoint);
++  }
++
++  if (type == eTouchStart) {
++    mGeckoChild->DispatchTouchStart(&event, mTouchSequenceID);
++  } else {
++    mGeckoChild->DispatchInputEvent(&event);
++  }
++}
++
++- (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
++  [mPointerSupport
++      handlePointerInputBegan:[self indirectPointerTouchesFromTouches:touches]
++                    withEvent:event];
++
++  NSSet<UITouch*>* directTouches = [self directTouchesFromTouches:touches];
++  if (directTouches.count == 0 || !mGeckoChild) {
++    return;
++  }
++
++  if (mTouches.count == 0) {
++    [mInteractionDelegate touchSequenceDidBegin:++mTouchSequenceID];
++  }
++  for (UITouch* touch in directTouches) {
++    [mTouches setObject:[NSNumber numberWithInt:mNextTouchID++] forKey:touch];
++  }
++  [self sendTouchEvent:eTouchStart
++               touches:[self directTouchesFromTouches:event.allTouches]];
++}
++
++- (void)touchesCancelled:(NSSet<UITouch*>*)touches {
++  [mPointerSupport handlePointerInputCancelled:
++                       [self indirectPointerTouchesFromTouches:touches]];
++
++  NSSet<UITouch*>* directTouches = [self directTouchesFromTouches:touches];
++  if (directTouches.count == 0 || !mGeckoChild) {
++    return;
++  }
++
++  [self sendTouchEvent:eTouchCancel touches:directTouches];
++  for (UITouch* touch in directTouches) {
++    [mTouches removeObjectForKey:touch];
++  }
++  if (mTouches.count == 0) {
++    mNextTouchID = 0;
++    [mInteractionDelegate touchSequenceDidEnd:mTouchSequenceID];
++  }
++}
++
++- (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
++  [mPointerSupport
++      handlePointerInputEnded:[self indirectPointerTouchesFromTouches:touches]
++                    withEvent:event];
++
++  NSSet<UITouch*>* directTouches = [self directTouchesFromTouches:touches];
++  if (directTouches.count == 0 || !mGeckoChild) {
++    return;
++  }
++
++  [self sendTouchEvent:eTouchEnd touches:directTouches];
++  for (UITouch* touch in directTouches) {
++    [mTouches removeObjectForKey:touch];
++  }
++  if (mTouches.count == 0) {
++    mNextTouchID = 0;
++    [mInteractionDelegate touchSequenceDidEnd:mTouchSequenceID];
++  }
++}
++
++- (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
++  [mPointerSupport
++      handlePointerInputMoved:[self indirectPointerTouchesFromTouches:touches]
++                    withEvent:event];
++
++  NSSet<UITouch*>* directTouches =
++      [self directTouchesFromTouches:event.allTouches];
++  if (directTouches.count == 0 || !mGeckoChild) {
++    return;
++  }
++
++  [self sendTouchEvent:eTouchMove touches:directTouches];
++}
++
++- (void)resolveTouchSequence:(uint64_t)sequenceId
++                    handling:(GeckoInputHandling)handling
++             scrollableEdges:(GeckoScrollableEdges)scrollableEdges
++              overscrollAxes:(GeckoOverscrollAxes)overscrollAxes {
++  if (sequenceId != mTouchSequenceID || mTouches.count == 0) {
++    return;
++  }
++
++  [mInteractionDelegate touchSequence:sequenceId
++                   didResolveHandling:handling
++                      scrollableEdges:scrollableEdges
++                       overscrollAxes:overscrollAxes];
++}
++
++- (void)compositorScrollPositionDidChange:(double)scrollY zoom:(double)zoom {
++  [mInteractionDelegate compositorScrollPositionDidChange:scrollY zoom:zoom];
++}
++
++- (void)widgetDestroyed {
++  mGeckoChild = nullptr;
++  mInteractionDelegate = nil;
++  mNextTouchID = 0;
++  [mTouches release];
++  mTouches = nil;
++}
++
++- (void)dealloc {
++  [mTouches release];
++  mView = nil;
++  mPointerSupport = nil;
++  [super dealloc];
++}
++
++@end
++
++// MARK: - ChildView (Touch)
++
++@implementation ChildView (Touch)
++
++- (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
++  NSSet<UITouch*>* directTouches =
++      [mTouchSupport directTouchesFromTouches:touches];
++  BOOL hasDirectTouch = NO;
++  for (UITouch* touch in touches) {
++    if (touch.type == UITouchTypeDirect) {
++      hasDirectTouch = YES;
++      break;
++    }
++  }
++
++  BOOL hasPrimaryPointerPress = NO;
++  if ([event respondsToSelector:@selector(buttonMask)]) {
++    UIEventButtonMask buttonMask =
++        reinterpret_cast<UIEventButtonMask (*)(id, SEL)>(objc_msgSend)(
++            event, @selector(buttonMask));
++    hasPrimaryPointerPress = buttonMask & 1;
++  }
++  const bool hasEditableInputContext =
++      mGeckoChild &&
++      mGeckoChild->GetInputContext().mIMEState.mEnabled != IMEEnabled::Disabled;
++  if ((hasDirectTouch || hasPrimaryPointerPress) && !hasEditableInputContext) {
++    [self becomeFirstResponder];
++  }
++  if (touches.count > 0) {
++    [self setSelectionHandlesVisible:directTouches.count > 0];
++  }
++
++  [super touchesBegan:touches withEvent:event];
++
++  // Dismiss the caret callout on any touch-down so that scrolling or
++  // tap-to-reposition hides it immediately. Also cancel any pending
++  // caret-menu resolution.
++  if (mEditable.mCaretMenuActive) {
++    mEditable.mCaretMenuActive = NO;
++    [[UIMenuController sharedMenuController] hideMenuFromView:self];
++  }
++  if (mEditable.mPendingCaretMenu) {
++    mEditable.mPendingCaretMenu = NO;
++    [NSObject
++        cancelPreviousPerformRequestsWithTarget:self
++                                       selector:@selector(
++                                                    resolveCaretMenuIfPending)
++                                         object:nil];
++  }
++
++  if (mGeckoChild) {
++    [mTouchSupport touchesBegan:touches withEvent:event];
++  }
++}
++
++- (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
++  [super touchesCancelled:touches withEvent:event];
++  [mTouchSupport touchesCancelled:touches];
++}
++
++- (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
++  [super touchesEnded:touches withEvent:event];
++  if (!mGeckoChild) {
++    return;
++  }
++  [mTouchSupport touchesEnded:touches withEvent:event];
++}
++
++- (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
++  [super touchesMoved:touches withEvent:event];
++  if (!mGeckoChild) {
++    return;
++  }
++  [mTouchSupport touchesMoved:touches withEvent:event];
++}
++
++@end

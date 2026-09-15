@@ -1,0 +1,25 @@
+diff --git a/mobile/shared/modules/geckoview/LoadURIDelegate.sys.mjs b/mobile/shared/modules/geckoview/LoadURIDelegate.sys.mjs
+index ada051e41f8f..73fb7ac3e6c7 100644
+--- a/mobile/shared/modules/geckoview/LoadURIDelegate.sys.mjs
++++ b/mobile/shared/modules/geckoview/LoadURIDelegate.sys.mjs
+@@ -24,13 +24,19 @@ export const LoadURIDelegate = {
+     const triggerUri =
+       aTriggeringPrincipal &&
+       (aTriggeringPrincipal.isNullPrincipal ? null : aTriggeringPrincipal.URI);
++    const hasUserGesture =
++      aWindow.document.hasValidTransientUserGestureActivation;
+ 
+     const message = {
+       uri: aUri ? aUri.displaySpec : "",
+       where: aWhere,
+       flags: aFlags,
+       triggerUri: triggerUri && triggerUri.displaySpec,
+-      hasUserGesture: aWindow.document.hasValidTransientUserGestureActivation,
++      hasUserGesture,
++      isUserInitiatedNavigation:
++        hasUserGesture &&
++        Boolean(aTriggeringPrincipal) &&
++        !aTriggeringPrincipal.isSystemPrincipal,
+     };
+ 
+     try {

@@ -1,0 +1,12 @@
+diff --git a/dom/media/DecoderTraits.cpp b/dom/media/DecoderTraits.cpp
+index 4d5e8af6072c..5d5829a2b704 100644
+--- a/dom/media/DecoderTraits.cpp
++++ b/dom/media/DecoderTraits.cpp
+@@ -282,6 +282,7 @@ bool DecoderTraits::IsSupportedInVideoDocument(const nsACString& aType) {
+                                      /* DecoderDoctorDiagnostics* */ nullptr) ||
+          MP3Decoder::IsSupportedType(*type) ||
+          ADTSDecoder::IsSupportedType(*type) ||
++         WaveDecoder::IsSupportedType(*type) ||
+          FlacDecoder::IsSupportedType(*type) ||
+          MatroskaDecoder::IsSupportedType(
+              *type,

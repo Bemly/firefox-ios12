@@ -8,6 +8,20 @@
 import UIKit
 
 public class GeckoView: UIView {
+    public weak var interactionDelegate: GeckoViewInteractionDelegate? {
+        didSet {
+            session?.window?.setInteractionDelegate(interactionDelegate)
+        }
+    }
+    
+    public var session: GeckoSession? {
+        didSet {
+            oldValue?.window?.setInteractionDelegate(nil)
+            embedSessionView()
+            session?.window?.setInteractionDelegate(interactionDelegate)
+        }
+    }
+    
     public override init(frame: CGRect) {
         super.init(frame: frame)
     }
@@ -16,10 +30,8 @@ public class GeckoView: UIView {
         super.init(coder: coder)
     }
     
-    public var session: GeckoSession? {
-        didSet {
-            embedSessionView()
-        }
+    deinit {
+        session?.window?.setInteractionDelegate(nil)
     }
     
     private func embedSessionView() {

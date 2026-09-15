@@ -1,0 +1,13 @@
+diff --git a/dom/ipc/BrowserChild.h b/dom/ipc/BrowserChild.h
+index ccca98761f22..afa9b3944c4e 100644
+--- a/dom/ipc/BrowserChild.h
++++ b/dom/ipc/BrowserChild.h
+@@ -454,7 +454,7 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+ 
+   const EffectsInfo& GetEffectsInfo() const { return mEffectsInfo; }
+ 
+-  void SetBackgroundColor(const nscolor& aColor);
++  void UpdateBackgroundColor(const nscolor& aColor);
+ 
+   MOZ_CAN_RUN_SCRIPT_BOUNDARY virtual mozilla::ipc::IPCResult RecvUpdateEffects(
+       const EffectsInfo& aEffects);

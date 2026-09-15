@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/components.conf b/widget/uikit/components.conf
-index e8f65c05c3e0..d804e0aa2253 100644
+index 385ba2f7868b..542755abe552 100644
 --- a/widget/uikit/components.conf
 +++ b/widget/uikit/components.conf
 @@ -31,6 +31,15 @@ Classes = [

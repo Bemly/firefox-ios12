@@ -1,0 +1,15 @@
+diff --git a/docshell/base/CanonicalBrowsingContext.cpp b/docshell/base/CanonicalBrowsingContext.cpp
+index 4a2127ed9b7e..a9a60408f36e 100644
+--- a/docshell/base/CanonicalBrowsingContext.cpp
++++ b/docshell/base/CanonicalBrowsingContext.cpp
+@@ -332,6 +332,10 @@ void CanonicalBrowsingContext::ReplacedBy(
+   txn.SetAllowJavascript(GetAllowJavascript());
+   txn.SetForceEnableTrackingProtection(GetForceEnableTrackingProtection());
+   txn.SetUserAgentOverride(GetUserAgentOverride());
++  txn.SetPlatformOverride(GetPlatformOverride());
++  txn.SetAppVersionOverride(GetAppVersionOverride());
++  txn.SetOscpuOverride(GetOscpuOverride());
++  txn.SetBuildIDOverride(GetBuildIDOverride());
+   txn.SetSuspendMediaWhenInactive(GetSuspendMediaWhenInactive());
+   txn.SetDisplayMode(GetDisplayMode());
+   txn.SetForceDesktopViewport(GetForceDesktopViewport());

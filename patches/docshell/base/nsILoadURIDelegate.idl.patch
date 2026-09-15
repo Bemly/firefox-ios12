@@ -1,0 +1,26 @@
+diff --git a/docshell/base/nsILoadURIDelegate.idl b/docshell/base/nsILoadURIDelegate.idl
+index c253ccaaf8a1..f4dcda36c410 100644
+--- a/docshell/base/nsILoadURIDelegate.idl
++++ b/docshell/base/nsILoadURIDelegate.idl
+@@ -15,9 +15,20 @@ interface nsIPrincipal;
+  * Used for delegating URI loads to GeckoView's application, e.g., Custom Tabs
+  * or Progressive Web Apps.
+  */
+-[scriptable, uuid(78e42d37-a34c-4d96-b901-25385669aba4)]
++[scriptable, uuid(0cbc0e21-78c0-4660-bf0d-a8879e3f3fe8)]
+ interface nsILoadURIDelegate : nsISupports
+ {
++  /**
++   * Delegates a top-level web navigation before a document load is created.
++   * Returns true when the application handled the navigation.
++   */
++  boolean
++  preNavigation(in nsIURI aURI,
++                in unsigned long aLoadFlags,
++                in nsIPrincipal aTriggeringPrincipal,
++                in boolean aHasValidUserGestureActivation,
++                in boolean aIsUserInitiatedNavigation);
++
+   /**
+    * Delegates page load error handling. This may be called for either top-level
+    * loads or subframes.

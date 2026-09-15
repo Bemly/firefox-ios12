@@ -1,8 +1,8 @@
 diff --git a/dom/ipc/ContentChild.h b/dom/ipc/ContentChild.h
-index cf09255075f0..09facbe06b28 100644
+index 8c9896a71f94..b7418b4ad0bd 100644
 --- a/dom/ipc/ContentChild.h
 +++ b/dom/ipc/ContentChild.h
-@@ -167,14 +167,14 @@ class ContentChild final : public PContentChild,
+@@ -191,14 +191,14 @@ class ContentChild final : public PContentChild,
        Endpoint<PImageBridgeChild>&& aImageBridge,
        Endpoint<PVRManagerChild>&& aVRBridge,
        Endpoint<PRemoteMediaManagerChild>&& aVideoManager,

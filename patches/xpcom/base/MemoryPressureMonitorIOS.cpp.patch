@@ -1,0 +1,223 @@
+diff --git a/xpcom/base/MemoryPressureMonitorIOS.cpp b/xpcom/base/MemoryPressureMonitorIOS.cpp
+new file mode 100644
+index 000000000000..79055ae201e2
+--- /dev/null
++++ b/xpcom/base/MemoryPressureMonitorIOS.cpp
+@@ -0,0 +1,217 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++// Referenced from
++// https://github.com/WebKit/WebKit/blob/main/Source/WTF/wtf/MemoryPressureHandler.cpp
++// https://github.com/WebKit/WebKit/blob/main/Source/WTF/wtf/cocoa/MemoryPressureHandlerCocoa.mm
++// https://github.com/WebKit/WebKit/blob/main/Source/WTF/wtf/AvailableMemory.cpp
++
++#include "mozilla/MemoryPressureMonitorIOS.h"
++
++#include <mach/mach.h>
++#include <mach/task_info.h>
++
++#include "mozilla/Assertions.h"
++#include "mozilla/UniquePtr.h"
++#include "nsMemoryPressure.h"
++#include "nsXULAppAPI.h"
++
++namespace mozilla {
++
++static constexpr dispatch_source_memorypressure_flags_t kProcessLimitWarning =
++    0x10;
++static constexpr dispatch_source_memorypressure_flags_t kProcessLimitCritical =
++    0x20;
++static constexpr double kConservativeThreshold = 0.50;
++static constexpr double kStrictThreshold = 0.65;
++static constexpr uint64_t kMeasurementIntervalNanoseconds = 30 * NSEC_PER_SEC;
++static constexpr uint32_t kFullMemoryPressureResetTimeMilliseconds = 10'000;
++static char sQueueSpecificKey;
++static UniquePtr<MemoryPressureMonitorIOS> sSingleton;
++
++void MemoryPressureMonitorIOS::Initialize() {
++  MOZ_ASSERT(!sSingleton);
++  sSingleton = MakeUnique<MemoryPressureMonitorIOS>();
++}
++
++void MemoryPressureMonitorIOS::Shutdown() { sSingleton = nullptr; }
++
++MemoryPressureMonitorIOS::MemoryPressureMonitorIOS()
++    : mQueue(
++          dispatch_queue_create("com.minh-ton.Reynard.MemoryPressureMonitorIOS",
++                                DISPATCH_QUEUE_SERIAL)),
++      mCancellationGroup(dispatch_group_create()),
++      mMemoryPressureSource(nullptr),
++      mMeasurementTimer(nullptr),
++      mSystemLevel(Level::Normal),
++      mFootprintLevel(Level::Normal),
++      mLevel(Level::Normal) {
++  MOZ_RELEASE_ASSERT(XRE_IsContentProcess() || XRE_IsGPUProcess());
++  MOZ_RELEASE_ASSERT(mQueue);
++  MOZ_RELEASE_ASSERT(mCancellationGroup);
++
++  dispatch_queue_set_specific(mQueue, &sQueueSpecificKey, this, nullptr);
++
++  const dispatch_source_memorypressure_flags_t memoryPressureFlags =
++      DISPATCH_MEMORYPRESSURE_NORMAL | DISPATCH_MEMORYPRESSURE_WARN |
++      DISPATCH_MEMORYPRESSURE_CRITICAL | kProcessLimitWarning |
++      kProcessLimitCritical;
++  mMemoryPressureSource = dispatch_source_create(
++      DISPATCH_SOURCE_TYPE_MEMORYPRESSURE, 0, memoryPressureFlags, mQueue);
++  mMeasurementTimer =
++      dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, mQueue);
++  MOZ_RELEASE_ASSERT(mMemoryPressureSource);
++  MOZ_RELEASE_ASSERT(mMeasurementTimer);
++
++  dispatch_set_context(mMemoryPressureSource, this);
++  dispatch_source_set_event_handler_f(mMemoryPressureSource,
++                                      HandleMemoryPressureEvent);
++  dispatch_group_enter(mCancellationGroup);
++  dispatch_source_set_cancel_handler_f(mMemoryPressureSource,
++                                       HandleSourceCancellation);
++
++  dispatch_set_context(mMeasurementTimer, this);
++  dispatch_source_set_event_handler_f(mMeasurementTimer,
++                                      HandleMeasurementTimer);
++  dispatch_group_enter(mCancellationGroup);
++  dispatch_source_set_cancel_handler_f(mMeasurementTimer,
++                                       HandleSourceCancellation);
++  dispatch_source_set_timer(
++      mMeasurementTimer,
++      dispatch_time(DISPATCH_TIME_NOW, kMeasurementIntervalNanoseconds),
++      kMeasurementIntervalNanoseconds, NSEC_PER_SEC);
++
++  dispatch_resume(mMemoryPressureSource);
++  dispatch_resume(mMeasurementTimer);
++}
++
++MemoryPressureMonitorIOS::~MemoryPressureMonitorIOS() {
++  MOZ_ASSERT(dispatch_get_specific(&sQueueSpecificKey) != this);
++
++  dispatch_source_cancel(mMemoryPressureSource);
++  dispatch_source_cancel(mMeasurementTimer);
++  dispatch_group_wait(mCancellationGroup, DISPATCH_TIME_FOREVER);
++
++  dispatch_release(mMemoryPressureSource);
++  dispatch_release(mMeasurementTimer);
++  dispatch_release(mCancellationGroup);
++  dispatch_release(mQueue);
++}
++
++void MemoryPressureMonitorIOS::HandleMemoryPressureEvent(void* aContext) {
++  static_cast<MemoryPressureMonitorIOS*>(aContext)->MemoryPressureEvent();
++}
++
++void MemoryPressureMonitorIOS::HandleMeasurementTimer(void* aContext) {
++  static_cast<MemoryPressureMonitorIOS*>(aContext)->MeasurementTimerFired();
++}
++
++void MemoryPressureMonitorIOS::HandleSourceCancellation(void* aContext) {
++  auto* monitor = static_cast<MemoryPressureMonitorIOS*>(aContext);
++  dispatch_group_leave(monitor->mCancellationGroup);
++}
++
++void MemoryPressureMonitorIOS::MemoryPressureEvent() {
++  MOZ_ASSERT(dispatch_get_specific(&sQueueSpecificKey) == this);
++
++  const dispatch_source_memorypressure_flags_t flags =
++      dispatch_source_get_data(mMemoryPressureSource);
++
++  if (flags & DISPATCH_MEMORYPRESSURE_CRITICAL) {
++    mSystemLevel = Level::Critical;
++  } else if (flags & DISPATCH_MEMORYPRESSURE_WARN) {
++    mSystemLevel = Level::Warning;
++  } else if (flags & DISPATCH_MEMORYPRESSURE_NORMAL) {
++    mSystemLevel = Level::Normal;
++  }
++
++  UpdateFootprintLevel();
++  Level level = MaxLevel(mSystemLevel, mFootprintLevel);
++  if (flags & kProcessLimitCritical) {
++    level = Level::Critical;
++  } else if (flags & kProcessLimitWarning) {
++    level = MaxLevel(level, Level::Warning);
++  }
++  ApplyLevel(level);
++}
++
++void MemoryPressureMonitorIOS::MeasurementTimerFired() {
++  MOZ_ASSERT(dispatch_get_specific(&sQueueSpecificKey) == this);
++
++  UpdateFootprintLevel();
++  if (mFootprintLevel != Level::Normal || mSystemLevel == Level::Normal) {
++    ApplyLevel(MaxLevel(mSystemLevel, mFootprintLevel));
++  }
++}
++
++void MemoryPressureMonitorIOS::UpdateFootprintLevel() {
++  task_vm_info_data_t information = {};
++  mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
++  const kern_return_t result =
++      task_info(mach_task_self(), TASK_VM_INFO,
++                reinterpret_cast<task_info_t>(&information), &count);
++  if (result != KERN_SUCCESS || count < TASK_VM_INFO_REV4_COUNT) {
++    return;
++  }
++
++  const double footprint = static_cast<double>(information.phys_footprint);
++  const double limit =
++      footprint + static_cast<double>(information.limit_bytes_remaining);
++  if (limit <= 0) {
++    return;
++  }
++
++  mFootprintLevel = LevelForFootprint(footprint / limit);
++}
++
++void MemoryPressureMonitorIOS::ApplyLevel(Level aLevel) {
++  MOZ_ASSERT(dispatch_get_specific(&sQueueSpecificKey) == this);
++
++  if (aLevel == Level::Normal) {
++    if (mLevel != Level::Normal) {
++      mLastFullMemoryPressure = TimeStamp();
++      NS_NotifyOfMemoryPressure(MemoryPressureState::NoPressure);
++    }
++    mLevel = aLevel;
++    return;
++  }
++
++  const TimeStamp now = TimeStamp::NowLoRes();
++  const bool isEscalating =
++      static_cast<uint8_t>(aLevel) > static_cast<uint8_t>(mLevel);
++  const bool shouldSendFullMemoryPressure =
++      mLevel == Level::Normal || isEscalating ||
++      mLastFullMemoryPressure.IsNull() ||
++      now - mLastFullMemoryPressure >=
++          TimeDuration::FromMilliseconds(
++              kFullMemoryPressureResetTimeMilliseconds);
++  if (shouldSendFullMemoryPressure) {
++    mLastFullMemoryPressure = now;
++  }
++
++  NS_NotifyOfMemoryPressure(shouldSendFullMemoryPressure
++                                ? MemoryPressureState::LowMemoryNew
++                                : MemoryPressureState::LowMemoryOngoing);
++  mLevel = aLevel;
++}
++
++MemoryPressureMonitorIOS::Level MemoryPressureMonitorIOS::MaxLevel(
++    Level aFirst, Level aSecond) {
++  return static_cast<uint8_t>(aFirst) >= static_cast<uint8_t>(aSecond)
++             ? aFirst
++             : aSecond;
++}
++
++MemoryPressureMonitorIOS::Level MemoryPressureMonitorIOS::LevelForFootprint(
++    double aUsage) {
++  if (aUsage >= kStrictThreshold) {
++    return Level::Critical;
++  }
++  return aUsage >= kConservativeThreshold ? Level::Warning : Level::Normal;
++}
++
++}  // namespace mozilla

@@ -1,36 +1,36 @@
 diff --git a/dom/media/systemservices/CamerasChild.cpp b/dom/media/systemservices/CamerasChild.cpp
-index 615eb7ddf819..d7de07071183 100644
+index 1aea3ded5809..8019816e167a 100644
 --- a/dom/media/systemservices/CamerasChild.cpp
 +++ b/dom/media/systemservices/CamerasChild.cpp
-@@ -297,7 +297,7 @@ mozilla::ipc::IPCResult CamerasChild::RecvReplyGetCaptureCapability(
+@@ -300,7 +300,7 @@ mozilla::ipc::IPCResult CamerasChild::RecvReplyGetCaptureCapability(
  int CamerasChild::GetCaptureDevice(
      CaptureEngine aCapEngine, unsigned int list_number, char* device_nameUTF8,
      const unsigned int device_nameUTF8Length, char* unique_idUTF8,
 -    const unsigned int unique_idUTF8Length, bool* scary) {
 +    const unsigned int unique_idUTF8Length, bool* scary, uint8_t* facingMode) {
-   LOG(("%s", __PRETTY_FUNCTION__));
+   LOG("{}", __PRETTY_FUNCTION__);
    nsCOMPtr<nsIRunnable> runnable =
        mozilla::NewRunnableMethod<CaptureEngine, unsigned int>(
-@@ -312,6 +312,9 @@ int CamerasChild::GetCaptureDevice(
+@@ -315,6 +315,9 @@ int CamerasChild::GetCaptureDevice(
      if (scary) {
        *scary = mReplyScary;
      }
 +    if (facingMode) {
 +      *facingMode = mReplyFacingMode;
 +    }
-     LOG(("Got %s name %s id", device_nameUTF8, unique_idUTF8));
+     LOG("Got {} name {} id", device_nameUTF8, unique_idUTF8);
    }
    return dispatcher.ReturnValue();
-@@ -319,7 +322,7 @@ int CamerasChild::GetCaptureDevice(
+@@ -322,7 +325,7 @@ int CamerasChild::GetCaptureDevice(
  
  mozilla::ipc::IPCResult CamerasChild::RecvReplyGetCaptureDevice(
      const nsACString& device_name, const nsACString& device_id,
 -    const bool& scary) {
 +    const bool& scary, const uint8_t& facingMode) {
-   LOG(("%s", __PRETTY_FUNCTION__));
+   LOG("{}", __PRETTY_FUNCTION__);
    MonitorAutoLock monitor(mReplyMonitor);
    mReceivedReply = true;
-@@ -327,6 +330,7 @@ mozilla::ipc::IPCResult CamerasChild::RecvReplyGetCaptureDevice(
+@@ -330,6 +333,7 @@ mozilla::ipc::IPCResult CamerasChild::RecvReplyGetCaptureDevice(
    mReplyDeviceName = device_name;
    mReplyDeviceID = device_id;
    mReplyScary = scary;

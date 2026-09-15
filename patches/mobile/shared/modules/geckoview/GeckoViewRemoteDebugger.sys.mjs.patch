@@ -1,0 +1,60 @@
+diff --git a/mobile/shared/modules/geckoview/GeckoViewRemoteDebugger.sys.mjs b/mobile/shared/modules/geckoview/GeckoViewRemoteDebugger.sys.mjs
+index 1afa14af433d..fd620febf612 100644
+--- a/mobile/shared/modules/geckoview/GeckoViewRemoteDebugger.sys.mjs
++++ b/mobile/shared/modules/geckoview/GeckoViewRemoteDebugger.sys.mjs
+@@ -2,6 +2,7 @@
+  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+  * You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
++import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
+ import { GeckoViewUtils } from "resource://gre/modules/GeckoViewUtils.sys.mjs";
+ 
+ const lazy = {};
+@@ -64,24 +65,31 @@ export var GeckoViewRemoteDebugger = {
+     // Force the Server to stay alive even if there are no connections at the moment.
+     lazy.DevToolsServer.keepAlive = true;
+ 
+-    // Socket address for USB remote debugger expects
++    // Android socket address for USB remote debugger expects
+     // @{package_name}/firefox-debugger-socket format.
+     // In /proc/net/unix, it will be outputed as
+     // @org.mozilla.geckoview_example/firefox-debugger-socket
+     //
+     // If package name isn't available, it will be "@firefox-debugger-socket".
+ 
+-    let packageName = Services.env.get("MOZ_ANDROID_PACKAGE_NAME");
+-    if (packageName) {
+-      packageName = packageName + "/";
++    let portOrPath;
++    if (AppConstants.platform === "ios") {
++      portOrPath = Services.prefs.getIntPref(
++        "devtools.debugger.remote-port",
++        6000
++      );
+     } else {
+-      warn`Missing env MOZ_ANDROID_PACKAGE_NAME. Unable to get package name`;
++      let packageName = Services.env.get("MOZ_ANDROID_PACKAGE_NAME");
++      if (packageName) {
++        packageName = packageName + "/";
++      } else {
++        warn`Missing env MOZ_ANDROID_PACKAGE_NAME. Unable to get package name`;
++      }
++      portOrPath = packageName + "firefox-debugger-socket";
+     }
+ 
+     this._isEnabled = true;
+     this._usbDebugger.stop();
+-
+-    const portOrPath = packageName + "firefox-debugger-socket";
+     this._usbDebugger.start(portOrPath);
+   },
+ 
+@@ -136,7 +144,7 @@ class USBRemoteDebugger {
+       return lazy.DevToolsServer.AuthenticationResult.DENY;
+     }
+ 
+-    if (aSession.server.port) {
++    if (aSession.server.port && AppConstants.platform !== "ios") {
+       return lazy.DevToolsServer.AuthenticationResult.DENY;
+     }
+     return lazy.DevToolsServer.AuthenticationResult.ALLOW;

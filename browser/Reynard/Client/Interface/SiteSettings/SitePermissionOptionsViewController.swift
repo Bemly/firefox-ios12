@@ -65,15 +65,8 @@ final class SitePermissionOptionsViewController: UITableViewController {
         tableView.deselectRow(at: indexPath, animated: true)
     }
     
-    @objc private func dismissModal() {
-        dismiss(animated: true)
-    }
-    
     private func configureView() {
         view.backgroundColor = .appSystemGroupedBackground
         navigationItem.largeTitleDisplayMode = .never
-        navigationItem.rightBarButtonItems = [
-            SiteSettingsUtils.makeDismissButton(target: self, action: #selector(dismissModal))
-        ]
     }
 }

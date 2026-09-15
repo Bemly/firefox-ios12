@@ -1,0 +1,132 @@
+diff --git a/gfx/2d/ScaledFontMac.cpp b/gfx/2d/ScaledFontMac.cpp
+index 1e440d7352fe..a85ffb67fd56 100644
+--- a/gfx/2d/ScaledFontMac.cpp
++++ b/gfx/2d/ScaledFontMac.cpp
+@@ -783,9 +783,58 @@ cairo_font_face_t* ScaledFontMac::CreateCairoFontFace(
+   return cairo_quartz_font_face_create_for_cgfont(mFont);
+ }
+ 
++static bool PostScriptNamesMatch(CGFontRef aFont, CFStringRef aRequestedName) {
++  AutoRelease<CFStringRef> cgName(CGFontCopyPostScriptName(aFont));
++  AutoRelease<CTFontRef> ctFont(
++      cgName ? CTFontCreateWithGraphicsFont(aFont, 0.0, nullptr, nullptr)
++             : nullptr);
++  AutoRelease<CFStringRef> ctName(ctFont ? CTFontCopyPostScriptName(ctFont)
++                                         : nullptr);
++  return ctName &&
++         CFStringCompare(cgName, aRequestedName, 0) == kCFCompareEqualTo &&
++         CFStringCompare(ctName, aRequestedName, 0) == kCFCompareEqualTo;
++}
++
++static already_AddRefed<UnscaledFont> CreateSystemUIUnscaledFont(
++    uint32_t aSystemFontTraits) {
++  AutoRelease<CTFontRef> systemFont(
++      CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, 0.0, nullptr));
++  if (!systemFont) {
++    gfxWarning() << "Failed creating system UI CTFont.";
++    return nullptr;
++  }
++
++  CTFontSymbolicTraits traitMask = kCTFontTraitItalic | kCTFontTraitBold |
++                                   kCTFontTraitCondensed | kCTFontTraitExpanded;
++  CTFontSymbolicTraits traitValue =
++      static_cast<CTFontSymbolicTraits>(aSystemFontTraits & traitMask);
++  if (traitValue) {
++    systemFont = CTFontCreateCopyWithSymbolicTraits(systemFont, 0.0, nullptr,
++                                                    traitValue, traitMask);
++    if (!systemFont) {
++      gfxWarning() << "Failed applying system UI font traits.";
++      return nullptr;
++    }
++  }
++
++  AutoRelease<CTFontDescriptorRef> descriptor(
++      CTFontCopyFontDescriptor(systemFont));
++  AutoRelease<CGFontRef> cgFont(CTFontCopyGraphicsFont(systemFont, nullptr));
++  if (!descriptor || !cgFont) {
++    gfxWarning() << "Failed copying system UI font descriptor or CGFont.";
++    return nullptr;
++  }
++
++  RefPtr<UnscaledFont> unscaledFont = new UnscaledFontMac(
++      descriptor, cgFont, false, UnscaledFont::DescriptorProvenance::SystemUI,
++      aSystemFontTraits);
++  return unscaledFont.forget();
++}
++
+ already_AddRefed<UnscaledFont> UnscaledFontMac::CreateFromFontDescriptor(
+-    const uint8_t* aData, uint32_t aDataLength, uint32_t aIndex) {
+-  if (aDataLength == 0 || aIndex > aDataLength) {
++    const uint8_t* aData, uint32_t aDataLength, uint32_t aIndex,
++    DescriptorProvenance aProvenance, uint32_t aSystemFontTraits) {
++  if (aDataLength == 0 || aIndex == 0 || aIndex > aDataLength) {
+     gfxWarning() << "Mac font descriptor is truncated.";
+     return nullptr;
+   }
+@@ -795,8 +844,14 @@ already_AddRefed<UnscaledFont> UnscaledFontMac::CreateFromFontDescriptor(
+   if (!name) {
+     return nullptr;
+   }
+-  CGFontRef font = CGFontCreateWithFontName(name);
++
++  if (aProvenance == DescriptorProvenance::SystemUI) {
++    return CreateSystemUIUnscaledFont(aSystemFontTraits);
++  }
++
++  AutoRelease<CGFontRef> font(CGFontCreateWithFontName(name));
+   if (!font) {
++    gfxWarning() << "Failed creating native CGFont from descriptor.";
+     return nullptr;
+   }
+ 
+@@ -806,20 +861,40 @@ already_AddRefed<UnscaledFont> UnscaledFontMac::CreateFromFontDescriptor(
+     AutoRelease<CFStringRef> path(CFStringCreateWithBytes(
+         kCFAllocatorDefault, (const UInt8*)aData + aIndex, aDataLength - aIndex,
+         kCFStringEncodingUTF8, false));
+-    AutoRelease<CFURLRef> url(CFURLCreateWithFileSystemPath(
+-        kCFAllocatorDefault, path, kCFURLPOSIXPathStyle, false));
+-    AutoRelease<CFDictionaryRef> attrs(CFDictionaryCreate(
+-        nullptr, (const void**)&kCTFontURLAttribute, (const void**)&url, 1,
+-        &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
++    AutoRelease<CFURLRef> url(
++        path ? CFURLCreateWithFileSystemPath(kCFAllocatorDefault, path,
++                                             kCFURLPOSIXPathStyle, false)
++             : nullptr);
++    AutoRelease<CFDictionaryRef> attrs(
++        url ? CFDictionaryCreate(nullptr, (const void**)&kCTFontURLAttribute,
++                                 (const void**)&url, 1,
++                                 &kCFTypeDictionaryKeyCallBacks,
++                                 &kCFTypeDictionaryValueCallBacks)
++            : nullptr);
+     AutoRelease<CTFontRef> ctFont(
+-        CTFontCreateWithGraphicsFont(font, 0.0, nullptr, nullptr));
+-    AutoRelease<CTFontDescriptorRef> desc(CTFontCopyFontDescriptor(ctFont));
++        attrs ? CTFontCreateWithGraphicsFont(font, 0.0, nullptr, nullptr)
++              : nullptr);
++    AutoRelease<CTFontDescriptorRef> desc(
++        ctFont ? CTFontCopyFontDescriptor(ctFont) : nullptr);
+     AutoRelease<CTFontDescriptorRef> newDesc(
+-        CTFontDescriptorCreateCopyWithAttributes(desc, attrs));
++        desc ? CTFontDescriptorCreateCopyWithAttributes(desc, attrs) : nullptr);
+     AutoRelease<CTFontRef> newFont(
+-        CTFontCreateWithFontDescriptor(newDesc, 0.0, nullptr));
+-    CFRelease(font);
++        newDesc ? CTFontCreateWithFontDescriptor(newDesc, 0.0, nullptr)
++                : nullptr);
++    if (!newFont) {
++      gfxWarning() << "Failed applying native font descriptor path.";
++      return nullptr;
++    }
+     font = CTFontCopyGraphicsFont(newFont, nullptr);
++    if (!font) {
++      gfxWarning() << "Failed copying native CGFont from descriptor path.";
++      return nullptr;
++    }
++  }
++
++  if (!PostScriptNamesMatch(font, name)) {
++    gfxWarning() << "Native font descriptor identity mismatch.";
++    return nullptr;
+   }
+ 
+   RefPtr unscaledFont = MakeRefPtr<UnscaledFontMac>(font);

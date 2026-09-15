@@ -45,33 +45,33 @@ final class PerformanceRecommendationViewController: UIViewController, HomepageR
         case installTrollStore
         
         var title: String {
-            return "Performance Recommendation"
+            return NSLocalizedString("Performance Recommendation", comment: "")
         }
         
         var message: String {
             switch self {
             case .enableInAppJIT:
-                return "Enable JIT to improve performance and ensure websites work properly."
+                return NSLocalizedString("Enable JIT to improve performance and ensure websites work properly.", comment: "")
             case .installTrollStore:
-                return "Install the TrollStore version of Reynard to enable JIT automatically for improved performance and to ensure websites work properly."
+                return NSLocalizedString("Install the TrollStore version of Reynard to enable JIT automatically for improved performance and to ensure websites work properly.", comment: "")
             }
         }
         
         var primaryButtonTitle: String {
             switch self {
             case .enableInAppJIT:
-                return "Learn More"
+                return NSLocalizedString("Learn More", comment: "")
             case .installTrollStore:
-                return "Install TrollStore"
+                return NSLocalizedString("Install TrollStore", comment: "")
             }
         }
         
         var secondaryButtonTitle: String {
             switch self {
             case .enableInAppJIT:
-                return "Open Settings"
+                return NSLocalizedString("Open Settings", comment: "")
             case .installTrollStore:
-                return "Download Reynard (.tipa)"
+                return NSLocalizedString("Download Reynard (.tipa)", comment: "")
             }
         }
         
@@ -106,7 +106,17 @@ final class PerformanceRecommendationViewController: UIViewController, HomepageR
         view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.cornerRadius
         view.clipsToBounds = true
-        view.backgroundColor = .appSystemGray6
+        view.backgroundColor = .clear
+        return view
+    }()
+    
+    private let backgroundView: UIVisualEffectView = {
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isUserInteractionEnabled = false
+        view.layer.cornerCurve = .continuous
+        view.layer.cornerRadius = UX.cornerRadius
+        view.clipsToBounds = true
         return view
     }()
     
@@ -125,7 +135,7 @@ final class PerformanceRecommendationViewController: UIViewController, HomepageR
         label.font = UIFontMetrics(forTextStyle: .title2).scaledFont(
             for: .systemFont(ofSize: UX.titleFontSize, weight: .bold)
         )
-        label.text = "Performance Recommendation"
+        label.text = NSLocalizedString("Performance Recommendation", comment: "")
         label.textAlignment = .left
         label.textColor = .appLabel
         label.numberOfLines = 0
@@ -136,7 +146,7 @@ final class PerformanceRecommendationViewController: UIViewController, HomepageR
     private let messageLabel: UILabel = {
         let label = UILabel()
         label.font = .preferredFont(forTextStyle: .body)
-        label.text = "Enable JIT to improve performance and ensure websites work properly."
+        label.text = NSLocalizedString("Enable JIT to improve performance and ensure websites work properly.", comment: "")
         label.textAlignment = .left
         label.textColor = .appSecondaryLabel
         label.numberOfLines = 0
@@ -162,7 +172,7 @@ final class PerformanceRecommendationViewController: UIViewController, HomepageR
     
     private lazy var primaryActionButton: UIButton = {
         return makeActionButton(
-            title: "Learn More",
+            title: NSLocalizedString("Learn More", comment: ""),
             imageName: "reynard.arrow.up.right",
             action: #selector(performPrimaryAction)
         )
@@ -170,7 +180,7 @@ final class PerformanceRecommendationViewController: UIViewController, HomepageR
     
     private lazy var secondaryActionButton: UIButton = {
         return makeActionButton(
-            title: "Open Settings",
+            title: NSLocalizedString("Open Settings", comment: ""),
             imageName: "reynard.gearshape",
             action: #selector(performSecondaryAction)
         )
@@ -237,6 +247,7 @@ final class PerformanceRecommendationViewController: UIViewController, HomepageR
     
     private func configureHierarchy() {
         view.addSubview(cardView)
+        cardView.addSubview(backgroundView)
         cardView.addSubview(textStackView)
         
         textStackView.addArrangedSubview(titleLabel)
@@ -255,6 +266,11 @@ final class PerformanceRecommendationViewController: UIViewController, HomepageR
             cardView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: UX.horizontalInset),
             cardView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -UX.horizontalInset),
             cardView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -UX.sectionBottomSpacing),
+            
+            backgroundView.topAnchor.constraint(equalTo: cardView.topAnchor),
+            backgroundView.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
+            backgroundView.trailingAnchor.constraint(equalTo: cardView.trailingAnchor),
+            backgroundView.bottomAnchor.constraint(equalTo: cardView.bottomAnchor),
             
             textStackView.topAnchor.constraint(equalTo: cardView.layoutMarginsGuide.topAnchor),
             textStackView.leadingAnchor.constraint(equalTo: cardView.layoutMarginsGuide.leadingAnchor),
@@ -383,6 +399,10 @@ final class PerformanceRecommendationViewController: UIViewController, HomepageR
     }
     
     private static func resolvedContent(isPrivateBrowsing: Bool, contentMode: HomepageContentMode) -> PerformanceRecommendationContent? {
+        guard Prefs.HomepageSettings.showsRecommendations else {
+            return nil
+        }
+        
         if isPrivateBrowsing || contentMode.isDetached {
             return nil
         }

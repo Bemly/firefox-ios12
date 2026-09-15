@@ -1,0 +1,16 @@
+diff --git a/third_party/libwebrtc/webrtc_gn/moz.build b/third_party/libwebrtc/webrtc_gn/moz.build
+index 4e3218126540..dddae578843c 100644
+--- a/third_party/libwebrtc/webrtc_gn/moz.build
++++ b/third_party/libwebrtc/webrtc_gn/moz.build
+@@ -75,8 +75,10 @@ if CONFIG["OS_TARGET"] == "Darwin":
+         "/third_party/libwebrtc/sdk/objc/base/"
+     ]
+ 
++    if CONFIG["MOZ_WIDGET_TOOLKIT"] != "uikit":
++        OS_LIBS += ["-framework AppKit"]
++
+     OS_LIBS += [
+-        "-framework AppKit",
+         "-framework AVFoundation",
+         "-framework CoreGraphics",
+         "-framework CoreMedia",

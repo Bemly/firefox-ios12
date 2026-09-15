@@ -1,8 +1,64 @@
 diff --git a/gfx/ipc/GPUProcessManager.cpp b/gfx/ipc/GPUProcessManager.cpp
-index 8429c88bf057..63b1a78fa8a6 100644
+index 004ab4ac457f..1d4ac699652d 100644
 --- a/gfx/ipc/GPUProcessManager.cpp
 +++ b/gfx/ipc/GPUProcessManager.cpp
-@@ -1384,7 +1384,9 @@ bool GPUProcessManager::CreateContentBridges(
+@@ -63,9 +63,11 @@
+ 
+ #if defined(MOZ_WIDGET_ANDROID)
+ #  include "mozilla/java/SurfaceControlManagerWrappers.h"
+-#  include "mozilla/layers/UiCompositorControllerChild.h"
+ #  include "mozilla/widget/AndroidUiThread.h"
+ #endif  // defined(MOZ_WIDGET_ANDROID)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
++#  include "mozilla/layers/UiCompositorControllerChild.h"
++#endif
+ 
+ #if defined(XP_WIN)
+ #  include "gfxWindowsPlatform.h"
+@@ -556,7 +558,7 @@ bool GPUProcessManager::EnsureVRManager() {
+   return true;
+ }
+ 
+-#if defined(MOZ_WIDGET_ANDROID)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
+ RefPtr<UiCompositorControllerChild>
+ GPUProcessManager::CreateUiCompositorController(nsIWidget* aWidget,
+                                                 const LayersId aId) {
+@@ -582,12 +584,14 @@ GPUProcessManager::CreateUiCompositorController(nsIWidget* aWidget,
+           mProcessToken, std::move(childPipe), aWidget);
+ 
+   if (result) {
++#  if defined(MOZ_WIDGET_ANDROID)
+     result->SetCompositorSurfaceManager(
+         mProcess->GetCompositorSurfaceManager());
++#  endif
+   }
+   return result;
+ }
+-#endif  // defined(MOZ_WIDGET_ANDROID)
++#endif
+ 
+ void GPUProcessManager::OnProcessLaunchComplete(GPUProcessHost* aHost) {
+   MOZ_ASSERT(mProcess && mProcess == aHost);
+@@ -1295,7 +1299,7 @@ already_AddRefed<CompositorSession> GPUProcessManager::CreateTopLevelCompositor(
+         aSurfaceSize, AllocateNamespace(), aInnerWindowId);
+   }
+ 
+-#if defined(MOZ_WIDGET_ANDROID)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
+   if (session) {
+     // Nothing to do if controller gets a nullptr
+     auto controller =
+@@ -1303,7 +1307,7 @@ already_AddRefed<CompositorSession> GPUProcessManager::CreateTopLevelCompositor(
+     MOZ_ASSERT(controller);
+     session->SetUiCompositorControllerChild(std::move(controller));
+   }
+-#endif  // defined(MOZ_WIDGET_ANDROID)
++#endif
+ 
+   *aRetryOut = false;
+   return session.forget();
+@@ -1384,7 +1388,9 @@ bool GPUProcessManager::CreateContentBridges(
      ipc::Endpoint<PImageBridgeChild>* aOutImageBridge,
      ipc::Endpoint<PVRManagerChild>* aOutVRBridge,
      ipc::Endpoint<PRemoteMediaManagerChild>* aOutVideoManager,
@@ -13,12 +69,10 @@ index 8429c88bf057..63b1a78fa8a6 100644
    const uint32_t compositorManagerNamespace = AllocateNamespace();
    const uint32_t compositorBridgeNamespace = AllocateNamespace();
    const uint32_t imageBridgeNamespace = AllocateNamespace();
-@@ -1398,6 +1400,9 @@ bool GPUProcessManager::CreateContentBridges(
+@@ -1398,6 +1404,7 @@ bool GPUProcessManager::CreateContentBridges(
                                aOutVRBridge)) {
      return false;
    }
-+  // REYNARD: Publish the current GPU process token so content can report
-+  // compositor abnormal shutdowns for the correct process instance.
 +  *aOutProcessToken = mProcessToken;
    // RemoteMediaManager is only supported in the GPU process, so we allow this
    // to be fallible.

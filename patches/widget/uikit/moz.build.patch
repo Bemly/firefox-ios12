@@ -1,8 +1,8 @@
 diff --git a/widget/uikit/moz.build b/widget/uikit/moz.build
-index f5d8821773c0..142f253635ac 100644
+index f5d8821773c0..37c5fcbd1413 100644
 --- a/widget/uikit/moz.build
 +++ b/widget/uikit/moz.build
-@@ -8,28 +8,41 @@ with Files("**"):
+@@ -8,35 +8,55 @@ with Files("**"):
  with Files("*TextInput*"):
      BUG_COMPONENT = ("Core", "DOM: UI Events & Focus Handling")
  
@@ -14,6 +14,7 @@ index f5d8821773c0..142f253635ac 100644
  ]
  
  EXPORTS.mozilla.widget += [
++    "BackgroundColor.h",
 +    "CompositorWidgetChild.h",
 +    "CompositorWidgetParent.h",
      "EventDispatcher.h",
@@ -30,11 +31,15 @@ index f5d8821773c0..142f253635ac 100644
  ]
  
  SOURCES += [
++    "BackgroundColor.mm",
 +    "CompositorWidgetChild.cpp",
 +    "CompositorWidgetParent.cpp",
      "EventDispatcher.mm",
 +    "ExternalResponseService.mm",
 +    "GeckoEditableSupport.mm",
++    "GeckoKeyboardSupport.mm",
++    "GeckoPointerSupport.mm",
++    "GeckoTouchSupport.mm",
      "GfxInfo.cpp",
      "IOSBridge.mm",
      "MediaKeysEventSourceFactory.cpp",
@@ -44,8 +49,9 @@ index f5d8821773c0..142f253635ac 100644
      "nsLookAndFeel.mm",
      "nsNativeThemeUIKit.mm",
      "nsUserIdleServiceUIKit.cpp",
-@@ -37,6 +50,7 @@ SOURCES += [
+     "nsWidgetFactory.mm",
      "nsWindow.mm",
++    "PictureInPictureSupport.mm",
      "ScreenHelperUIKit.mm",
      "TextInputHandler.mm",
 +    "UIKitCompositorWidget.cpp",

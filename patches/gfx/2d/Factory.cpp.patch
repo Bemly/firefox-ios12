@@ -1,0 +1,31 @@
+diff --git a/gfx/2d/Factory.cpp b/gfx/2d/Factory.cpp
+index d52f761dc99d..832aaabc27ad 100644
+--- a/gfx/2d/Factory.cpp
++++ b/gfx/2d/Factory.cpp
+@@ -425,8 +425,13 @@ already_AddRefed<NativeFontResource> Factory::CreateNativeFontResource(
+ }
+ 
+ already_AddRefed<UnscaledFont> Factory::CreateUnscaledFontFromFontDescriptor(
+-    FontType aType, const uint8_t* aData, uint32_t aDataLength,
+-    uint32_t aIndex) {
++    FontType aType, const uint8_t* aData, uint32_t aDataLength, uint32_t aIndex,
++    UnscaledFont::DescriptorProvenance aProvenance,
++    uint32_t aSystemFontTraits) {
++#ifndef XP_DARWIN
++  (void)aProvenance;
++  (void)aSystemFontTraits;
++#endif
+   switch (aType) {
+ #ifdef WIN32
+     case FontType::DWRITE:
+@@ -434,8 +439,8 @@ already_AddRefed<UnscaledFont> Factory::CreateUnscaledFontFromFontDescriptor(
+                                                           aIndex);
+ #elif defined(XP_DARWIN)
+     case FontType::MAC:
+-      return UnscaledFontMac::CreateFromFontDescriptor(aData, aDataLength,
+-                                                       aIndex);
++      return UnscaledFontMac::CreateFromFontDescriptor(
++          aData, aDataLength, aIndex, aProvenance, aSystemFontTraits);
+ #elif defined(MOZ_WIDGET_GTK)
+     case FontType::FONTCONFIG:
+       return UnscaledFontFontconfig::CreateFromFontDescriptor(

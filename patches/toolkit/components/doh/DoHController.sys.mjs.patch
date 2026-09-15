@@ -1,0 +1,54 @@
+diff --git a/toolkit/components/doh/DoHController.sys.mjs b/toolkit/components/doh/DoHController.sys.mjs
+index dd4441d3d0c6..90770a7ca08c 100644
+--- a/toolkit/components/doh/DoHController.sys.mjs
++++ b/toolkit/components/doh/DoHController.sys.mjs
+@@ -12,6 +12,7 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
+ const lazy = {};
+ 
+ ChromeUtils.defineESModuleGetters(lazy, {
++  AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
+   AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
+   ClientID: "resource://gre/modules/ClientID.sys.mjs",
+   DoHConfigController: "moz-src:///toolkit/components/doh/DoHConfig.sys.mjs",
+@@ -158,6 +159,14 @@ export const DoHController = {
+         Glean.networking.dohHeuristicEverTripped[key].set(false);
+       }
+ 
++      if (
++        lazy.AppConstants.platform == "ios" &&
++        Services.prefs.getIntPref(NETWORK_TRR_MODE_PREF) ==
++        Ci.nsIDNSService.MODE_NATIVEONLY
++      ) {
++        Services.prefs.clearUserPref(DISABLED_PREF);
++      }
++
+       await this.maybeEnableHeuristics();
+     } else if (Services.prefs.getBoolPref(FIRST_RUN_PREF, false)) {
+       await this.rollback();
+@@ -475,7 +484,7 @@ export const DoHController = {
+         break;
+       case "enabled":
+         if (
+-          Services.appinfo.OS === "Android" &&
++          ["android", "ios"].includes(lazy.AppConstants.platform) &&
+           Services.prefs.getBoolPref(
+             ANDROID_DOH_START_CONFIRMATION_FAILED_PREF,
+             true
+@@ -666,6 +675,17 @@ export const DoHController = {
+     switch (pref) {
+       case NETWORK_TRR_URI_PREF:
+       case NETWORK_TRR_MODE_PREF:
++        if (
++          lazy.AppConstants.platform == "ios" &&
++          pref == NETWORK_TRR_MODE_PREF &&
++          Services.prefs.getIntPref(NETWORK_TRR_MODE_PREF) ==
++          Ci.nsIDNSService.MODE_NATIVEONLY
++        ) {
++          Services.prefs.clearUserPref(DISABLED_PREF);
++          await this.maybeEnableHeuristics();
++          break;
++        }
++
+         Services.prefs.setBoolPref(DISABLED_PREF, true);
+         await this.disableHeuristics("manuallyDisabled");
+         break;

@@ -1,0 +1,80 @@
+diff --git a/mobile/shared/modules/geckoview/GeckoViewNavigation.sys.mjs b/mobile/shared/modules/geckoview/GeckoViewNavigation.sys.mjs
+index f13150bc961c..49d7c4c92e1a 100644
+--- a/mobile/shared/modules/geckoview/GeckoViewNavigation.sys.mjs
++++ b/mobile/shared/modules/geckoview/GeckoViewNavigation.sys.mjs
+@@ -41,7 +41,7 @@ const createReferrerInfo = aReferrer => {
+   let referrerUri;
+   try {
+     referrerUri = Services.io.newURI(aReferrer);
+-  } catch (ignored) {}
++  } catch (ignored) { }
+ 
+   return new lazy.ReferrerInfo(Ci.nsIReferrerInfo.EMPTY, true, referrerUri);
+ };
+@@ -254,7 +254,7 @@ export class GeckoViewNavigation extends GeckoViewModule {
+         if (originalInput) {
+           schemelessInput =
+             !originalInput.toLowerCase().startsWith("http://") &&
+-            uri.toLowerCase().startsWith("http://")
++              uri.toLowerCase().startsWith("http://")
+               ? Ci.nsILoadInfo.SchemelessInputTypeSchemeless
+               : Ci.nsILoadInfo.SchemelessInputTypeSchemeful;
+         }
+@@ -316,6 +316,7 @@ export class GeckoViewNavigation extends GeckoViewModule {
+     this._handleNewSessionAsync({
+       aUri,
+       aOpenWindowInfo,
++      aWhere,
+       aName,
+     }).then(
+       result => {
+@@ -338,6 +339,7 @@ export class GeckoViewNavigation extends GeckoViewModule {
+     return [
+       Ci.nsIBrowserDOMWindow.OPEN_NEWTAB,
+       Ci.nsIBrowserDOMWindow.OPEN_NEWTAB_BACKGROUND,
++      Ci.nsIBrowserDOMWindow.OPEN_NEWTAB_FOREGROUND,
+     ].includes(aWhere);
+   }
+ 
+@@ -345,7 +347,7 @@ export class GeckoViewNavigation extends GeckoViewModule {
+    * Similar to handleNewSession. But this returns a promise to wait for new
+    * browser.
+    */
+-  _handleNewSessionAsync({ aUri, aOpenWindowInfo, aName }) {
++  _handleNewSessionAsync({ aUri, aOpenWindowInfo, aWhere, aName }) {
+     if (!this.enabled) {
+       return Promise.reject();
+     }
+@@ -359,6 +361,7 @@ export class GeckoViewNavigation extends GeckoViewModule {
+     const message = {
+       uri: aUri ? aUri.displaySpec : "",
+       newSessionId,
++      where: aWhere,
+     };
+ 
+     // The window might be already open by the time we get the response from
+@@ -476,6 +479,7 @@ export class GeckoViewNavigation extends GeckoViewModule {
+     return await this._handleNewSessionAsync({
+       aUri,
+       aOpenWindowInfo: aParams.openWindowInfo,
++      aWhere,
+       aName,
+     });
+   }
+@@ -556,6 +560,7 @@ export class GeckoViewNavigation extends GeckoViewModule {
+         return await this._handleNewSessionAsync({
+           aUri: uri,
+           aOpenWindowInfo: openWindowInfo,
++          aWhere: where,
+           aName: name,
+         });
+       }
+@@ -693,7 +698,7 @@ export class GeckoViewNavigation extends GeckoViewModule {
+ 
+     try {
+       fixedURI = Services.io.createExposableURI(aLocationURI);
+-    } catch (ex) {}
++    } catch (ex) { }
+ 
+     // We manually fire the initial about:blank messages to make sure that we
+     // consistently send them so there's nothing to do here.

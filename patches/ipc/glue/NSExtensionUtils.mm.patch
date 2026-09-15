@@ -1,9 +1,9 @@
 diff --git a/ipc/glue/NSExtensionUtils.mm b/ipc/glue/NSExtensionUtils.mm
 new file mode 100644
-index 000000000000..42402cb7308d
+index 000000000000..518377a5f5dd
 --- /dev/null
 +++ b/ipc/glue/NSExtensionUtils.mm
-@@ -0,0 +1,559 @@
+@@ -0,0 +1,356 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -15,8 +15,6 @@ index 000000000000..42402cb7308d
 +#include "LaunchError.h"
 +
 +#import <Foundation/Foundation.h>
-+#import <objc/message.h>
-+#import <objc/runtime.h>
 +#include <memory>
 +
 +#import "mozilla/widget/GeckoViewSupport.h"
@@ -26,15 +24,14 @@ index 000000000000..42402cb7308d
 +NS_ASSUME_NONNULL_BEGIN
 +
 +@interface NSExtension : NSObject
-+- (nullable instancetype)initWithIdentifier:(NSString*)identifier
-+                                      error:
-+                                          (NSError* _Nullable* _Nullable)error;
-+- (nullable NSUUID*)beginRequestWithInputItems:
-+    (NSArray<NSExtensionItem*>*)items;
+++ (nullable instancetype)extensionWithIdentifier:(NSString*)identifier
++                                           error:(NSError* _Nullable*)error;
++- (nullable NSUUID*)
++    beginExtensionRequestWithInputItems:(NSArray<NSExtensionItem*>*)items
++                                  error:(NSError* _Nullable*)error;
++- (void)cancelExtensionRequestWithIdentifier:(NSUUID*)requestIdentifier;
 +- (void)setRequestInterruptionBlock:
 +    (void (^_Nonnull)(NSUUID* requestIdentifier))block;
-+- (pid_t)pidForRequestIdentifier:(NSUUID*)requestIdentifier;
-+- (void)_kill:(int)signal;
 +@end
 +
 +@interface NSXPCConnection (Private)
@@ -45,49 +42,11 @@ index 000000000000..42402cb7308d
 +- (void)ping;
 +@end
 +
-+@interface ExtensionBootstrapPingTarget : NSObject <ExtensionBootstrapPing>
-+- (instancetype)initWithPingHandler:(void (^_Nullable)(void))aPingHandler;
-+@end
-+
-+@implementation ExtensionBootstrapPingTarget {
-+  void (^mPingHandler)(void);
-+  bool mDidPing;
-+}
-+
-+- (instancetype)initWithPingHandler:(void (^_Nullable)(void))aPingHandler {
-+  self = [super init];
-+  if (!self) {
-+    return nil;
-+  }
-+
-+  mPingHandler = [aPingHandler copy];
-+  mDidPing = false;
-+  return self;
-+}
-+
-+- (void)dealloc {
-+  [mPingHandler release];
-+  [super dealloc];
-+}
-+
-+// REYNARD: Somehow the child must actively send an initial XPC call to trigget
-+// host listener acceptance. So the ping method here is called so that the
-+// parent can receive and retain the NSXPC connection.
-+- (void)ping {
-+  if (mDidPing) {
-+    return;
-+  }
-+  mDidPing = true;
-+  if (mPingHandler) {
-+    mPingHandler();
-+  }
-+}
-+
-+@end
-+
-+@interface ExtensionConnectionDelegate : NSObject <NSXPCListenerDelegate>
++@interface ExtensionConnectionDelegate
++    : NSObject <NSXPCListenerDelegate, ExtensionBootstrapPing>
 +@property(copy, nullable) void (^connectionHandler)(NSXPCConnection* connection)
 +    ;
++@property(copy, nullable) void (^pingHandler)(void);
 +@end
 +
 +@implementation ExtensionConnectionDelegate
@@ -101,107 +60,54 @@ index 000000000000..42402cb7308d
 +  return YES;
 +}
 +
++- (void)ping {
++  if (self.pingHandler) {
++    self.pingHandler();
++  }
++}
++
 +@end
 +
 +static dispatch_queue_t ExtensionLaunchQueue() {
 +  static dispatch_queue_t queue;
 +  static dispatch_once_t onceToken;
 +  dispatch_once(&onceToken, ^{
-+    queue = dispatch_queue_create("me.minh-ton.Reynard.ExtensionLaunchQueue",
++    queue = dispatch_queue_create("com.minh-ton.Reynard.ExtensionLaunchQueue",
 +                                  DISPATCH_QUEUE_SERIAL);
 +  });
 +  return queue;
 +}
 +
++static dispatch_queue_t ExtensionCompletionQueue() {
++  static dispatch_queue_t queue;
++  static dispatch_once_t onceToken;
++  dispatch_once(&onceToken, ^{
++    queue = dispatch_queue_create(
++        "com.minh-ton.Reynard.ExtensionCompletionQueue", DISPATCH_QUEUE_SERIAL);
++  });
++  return queue;
++}
++
++static NSError* ExtensionLaunchError(NSString* description,
++                                     NSError* _Nullable underlying = nil) {
++  NSDictionary* userInfo = underlying
++                               ? @{
++                                   NSLocalizedDescriptionKey : description,
++                                   NSUnderlyingErrorKey : underlying,
++                                 }
++                               : @{NSLocalizedDescriptionKey : description};
++  return [NSError errorWithDomain:@"ReynardExtension" code:1 userInfo:userInfo];
++}
++
 +static NSString* _Nullable GetExtensionIdentifier() {
-+  NSBundle* mainBundle = [NSBundle mainBundle];
-+  NSURL* plugInsURL = [mainBundle builtInPlugInsURL];
++  NSURL* plugInsURL = [[NSBundle mainBundle] builtInPlugInsURL];
 +  if (!plugInsURL) {
 +    return nil;
 +  }
 +
-+  NSError* listError = nil;
-+  NSArray<NSURL*>* items = [[NSFileManager defaultManager]
-+        contentsOfDirectoryAtURL:plugInsURL
-+      includingPropertiesForKeys:nil
-+                         options:NSDirectoryEnumerationSkipsHiddenFiles
-+                           error:&listError];
-+  if (!items || [items count] == 0) {
-+    return nil;
-+  }
-+
-+  NSPredicate* isAppExtension =
-+      [NSPredicate predicateWithBlock:^BOOL(NSURL* itemURL,
-+                                            NSDictionary* _Nullable bindings) {
-+        return [[itemURL pathExtension] isEqualToString:@"appex"];
-+      }];
-+  NSArray<NSURL*>* appExtensions =
-+      [items filteredArrayUsingPredicate:isAppExtension];
-+
-+  NSURL* preferredExtensionURL = nil;
-+  for (NSURL* itemURL in appExtensions) {
-+    if ([[itemURL lastPathComponent] isEqualToString:@"Reynard Helper.appex"]) {
-+      preferredExtensionURL = itemURL;
-+      break;
-+    }
-+  }
-+
-+  // This is bad, but I don't know of
-+  // a better way for this.
-+  // TODO: Report this to the parent app
-+  // for error handling?
-+  if (!preferredExtensionURL) {
-+    preferredExtensionURL = appExtensions.firstObject;
-+  }
-+
-+  NSBundle* extensionBundle = [NSBundle bundleWithURL:preferredExtensionURL];
-+  if (!extensionBundle) {
-+    return nil;
-+  }
-+
-+  return [extensionBundle bundleIdentifier];
-+}
-+
-+static NSExtension* _Nullable CreateNSExtension(
-+    NSString* identifier, NSError* _Nullable* _Nullable error) {
-+  // REYNARD: Probe private NSExtension constructors at runtime so we can
-+  // support API shape differences across OS versions.
-+  Class extensionClass = NSClassFromString(@"NSExtension");
-+  if (!extensionClass) {
-+    return nil;
-+  }
-+
-+  SEL classFactoryWithDisabledAndError = NSSelectorFromString(
-+      @"extensionWithIdentifier:excludingDisabledExtensions:error:");
-+
-+  if (!class_getClassMethod(extensionClass, classFactoryWithDisabledAndError)) {
-+    return nil;
-+  }
-+
-+  using ClassFactoryWithDisabledAndError =
-+      id (*)(id, SEL, NSString*, BOOL, NSError* _Nullable* _Nullable);
-+  return ((ClassFactoryWithDisabledAndError)objc_msgSend)(
-+      extensionClass, classFactoryWithDisabledAndError, identifier, NO, error);
-+}
-+
-+static NSUUID* _Nullable BeginExtensionRequest(
-+    NSExtension* extension, NSArray<NSExtensionItem*>* items) {
-+  SEL beginExtensionRequestWithError =
-+      NSSelectorFromString(@"beginExtensionRequestWithInputItems:error:");
-+  if (![extension respondsToSelector:beginExtensionRequestWithError]) {
-+    return nil;
-+  }
-+
-+  NSError* requestError = nil;
-+  using BeginExtensionRequestWithError = id (*)(
-+      id, SEL, NSArray<NSExtensionItem*>*, NSError* _Nullable* _Nullable);
-+  id requestId = ((BeginExtensionRequestWithError)objc_msgSend)(
-+      extension, beginExtensionRequestWithError, items, &requestError);
-+  if ([requestId isKindOfClass:[NSUUID class]]) {
-+    return requestId;
-+  }
-+
-+  return nil;
++  NSURL* extensionURL =
++      [plugInsURL URLByAppendingPathComponent:@"Reynard Helper.appex"];
++  return [[NSBundle bundleWithURL:extensionURL] bundleIdentifier];
 +}
 +
 +@interface ExtensionProcess : NSObject {
@@ -210,14 +116,11 @@ index 000000000000..42402cb7308d
 +  NSXPCListener* mListener;
 +  ExtensionConnectionDelegate* mListenerDelegate;
 +  NSXPCConnection* mConnection;
-+  ExtensionBootstrapPingTarget* mExtensionBootstrapPingTarget;
 +  NSUUID* mRequestIdentifier;
 +  xpc_connection_t mLibXPCConnection;
-+  bool mStarted;
 +  bool mInvalidated;
 +}
 +
-+- (nullable instancetype)init;
 +- (void)startWithCompletion:
 +    (void (^_Nonnull)(NSError* _Nullable error))aCompletion;
 +- (xpc_connection_t _Nullable)copyLibXPCConnection;
@@ -227,47 +130,14 @@ index 000000000000..42402cb7308d
 +
 +@implementation ExtensionProcess
 +
-+- (nullable instancetype)init {
-+  self = [super init];
-+  if (!self) {
-+    return nil;
-+  }
-+
-+  mExtension = nil;
-+  mListener = nil;
-+  mListenerDelegate = nil;
-+  mConnection = nil;
-+  mExtensionBootstrapPingTarget = nil;
-+  mRequestIdentifier = nil;
-+  mLibXPCConnection = nullptr;
-+  mStarted = false;
-+  mInvalidated = false;
-+  return self;
-+}
-+
 +- (void)startWithCompletion:
 +    (void (^_Nonnull)(NSError* _Nullable error))aCompletion {
 +  void (^completion)(NSError* _Nullable) = [aCompletion copy];
 +
-+  if (mStarted) {
-+    completion([NSError errorWithDomain:@"ReynardExtension"
-+                                   code:100
-+                               userInfo:@{
-+                                 NSLocalizedDescriptionKey :
-+                                     @"NSExtension process already started"
-+                               }]);
-+    [completion release];
-+    return;
-+  }
-+  mStarted = true;
-+
-+  // REYNARD: Run launch bootstrap on a dedicated serial queue so callback and
-+  // timeout delivery never depend on the app main thread while Gecko performs
-+  // synchronous launch waits.
 +  dispatch_async(ExtensionLaunchQueue(), ^{
 +    __block bool completed = false;
 +    void (^completeOnce)(NSError* _Nullable) = ^(NSError* _Nullable error) {
-+      dispatch_async(ExtensionLaunchQueue(), ^{
++      dispatch_async(ExtensionCompletionQueue(), ^{
 +        if (completed) {
 +          return;
 +        }
@@ -278,13 +148,8 @@ index 000000000000..42402cb7308d
 +    };
 +
 +    if (mInvalidated) {
-+      completeOnce([NSError
-+          errorWithDomain:@"ReynardExtension"
-+                     code:101
-+                 userInfo:@{
-+                   NSLocalizedDescriptionKey :
-+                       @"NSExtension process already invalidated"
-+                 }]);
++      completeOnce(
++          ExtensionLaunchError(@"NSExtension process already invalidated"));
 +      return;
 +    }
 +
@@ -299,47 +164,27 @@ index 000000000000..42402cb7308d
 +      }
 +
 +      process->mConnection = [connection retain];
-+      process->mExtensionBootstrapPingTarget =
-+          [[ExtensionBootstrapPingTarget alloc] initWithPingHandler:^{
-+            completeOnce(nil);
-+          }];
++      [process->mListenerDelegate setPingHandler:^{
++        completeOnce(nil);
++      }];
 +      [process->mConnection
 +          setExportedInterface:
 +              [NSXPCInterface
 +                  interfaceWithProtocol:@protocol(ExtensionBootstrapPing)]];
-+      [process->mConnection
-+          setExportedObject:process->mExtensionBootstrapPingTarget];
-+      [process->mConnection setInterruptionHandler:^{
-+      }];
++      [process->mConnection setExportedObject:process->mListenerDelegate];
 +      [process->mConnection setInvalidationHandler:^{
-+        if (process->mLibXPCConnection) {
-+          xpc_connection_cancel(process->mLibXPCConnection);
-+        }
-+        completeOnce([NSError
-+            errorWithDomain:@"ReynardExtension"
-+                       code:108
-+                   userInfo:@{
-+                     NSLocalizedDescriptionKey :
-+                         @"NSXPC connection invalidated before bootstrap"
-+                   }]);
++        completeOnce(ExtensionLaunchError(
++            @"NSXPC connection invalidated before bootstrap"));
 +      }];
 +
-+      SEL xpcSelector = @selector(_xpcConnection);
-+      if ([process->mConnection respondsToSelector:xpcSelector]) {
-+        xpc_connection_t libXPC = [process->mConnection _xpcConnection];
-+        if (libXPC) {
-+          process->mLibXPCConnection = xpc_retain(libXPC);
-+        }
++      xpc_connection_t libXPC = [process->mConnection _xpcConnection];
++      if (libXPC) {
++        process->mLibXPCConnection = xpc_retain(libXPC);
 +      }
 +
 +      if (!process->mLibXPCConnection) {
-+        completeOnce([NSError
-+            errorWithDomain:@"ReynardExtension"
-+                       code:102
-+                   userInfo:@{
-+                     NSLocalizedDescriptionKey :
-+                         @"Failed to get libxpc connection from NSXPCConnection"
-+                   }]);
++        completeOnce(ExtensionLaunchError(
++            @"Failed to get libxpc connection from NSXPCConnection"));
 +        return;
 +      }
 +    }];
@@ -349,85 +194,49 @@ index 000000000000..42402cb7308d
 +
 +    NSString* extensionIdentifier = GetExtensionIdentifier();
 +    if (!extensionIdentifier) {
-+      completeOnce([NSError
-+          errorWithDomain:@"ReynardExtension"
-+                     code:103
-+                 userInfo:@{
-+                   NSLocalizedDescriptionKey :
-+                       @"Unable to resolve extension bundle identifier"
-+                 }]);
++      completeOnce(ExtensionLaunchError(
++          @"Unable to resolve extension bundle identifier"));
 +      return;
 +    }
 +
 +    NSError* extensionError = nil;
-+    mExtension =
-+        [CreateNSExtension(extensionIdentifier, &extensionError) retain];
++    mExtension = [[NSExtension extensionWithIdentifier:extensionIdentifier
++                                                 error:&extensionError] retain];
 +    if (!mExtension) {
-+      completeOnce([NSError
-+          errorWithDomain:@"ReynardExtension"
-+                     code:104
-+                 userInfo:@{
-+                   NSLocalizedDescriptionKey : @"Failed to create NSExtension",
-+                   NSUnderlyingErrorKey : extensionError ?: [NSNull null],
-+                 }]);
++      completeOnce(ExtensionLaunchError(@"Failed to create NSExtension",
++                                        extensionError));
 +      return;
 +    }
 +
-+    if ([mExtension
-+            respondsToSelector:@selector(setRequestInterruptionBlock:)]) {
-+      [mExtension setRequestInterruptionBlock:^(NSUUID* requestIdentifier) {
-+        completeOnce([NSError
-+            errorWithDomain:@"ReynardExtension"
-+                       code:105
-+                   userInfo:@{
-+                     NSLocalizedDescriptionKey :
-+                         @"NSExtension request interrupted before bootstrap"
-+                   }]);
-+      }];
-+    }
++    [mExtension setRequestInterruptionBlock:^(NSUUID* requestIdentifier) {
++      completeOnce(ExtensionLaunchError(
++          @"NSExtension request interrupted before bootstrap"));
++    }];
 +
 +    NSExtensionItem* input = [[[NSExtensionItem alloc] init] autorelease];
-+    NSMutableDictionary* userInfo = [NSMutableDictionary dictionary];
-+    [userInfo setObject:[mListener endpoint]
-+                 forKey:@"ReynardXPCListenerEndpoint"];
-+    [input setUserInfo:userInfo];
++    [input setUserInfo:@{@"ReynardXPCListenerEndpoint" : [mListener endpoint]}];
 +
-+    mRequestIdentifier = [BeginExtensionRequest(mExtension, @[ input ]) retain];
++    NSError* requestError = nil;
++    mRequestIdentifier =
++        [[mExtension beginExtensionRequestWithInputItems:@[ input ]
++                                                   error:&requestError] retain];
 +    if (!mRequestIdentifier) {
-+      completeOnce([NSError errorWithDomain:@"ReynardExtension"
-+                                       code:107
-+                                   userInfo:@{
-+                                     NSLocalizedDescriptionKey :
-+                                         @"Failed to start NSExtension request"
-+                                   }]);
++      completeOnce(ExtensionLaunchError(@"Failed to start NSExtension request",
++                                        requestError));
 +      return;
 +    }
 +
 +    dispatch_after(
 +        dispatch_time(DISPATCH_TIME_NOW, 8 * NSEC_PER_SEC),
 +        ExtensionLaunchQueue(), ^{
-+          if (completed) {
-+            return;
-+          }
-+
-+          completed = true;
-+          completion([NSError errorWithDomain:@"ReynardExtension"
-+                                         code:106
-+                                     userInfo:@{
-+                                       NSLocalizedDescriptionKey :
-+                                           @"Timed out waiting for child "
-+                                           @"extension NSXPC connection"
-+                                     }]);
-+          [completion release];
++          completeOnce(ExtensionLaunchError(
++              @"Timed out waiting for child extension NSXPC connection"));
 +        });
 +  });
 +}
 +
 +- (xpc_connection_t _Nullable)copyLibXPCConnection {
-+  if (!mLibXPCConnection) {
-+    return nullptr;
-+  }
-+  return xpc_retain(mLibXPCConnection);
++  return mLibXPCConnection ? xpc_retain(mLibXPCConnection) : nullptr;
 +}
 +
 +- (void)invalidate {
@@ -445,15 +254,9 @@ index 000000000000..42402cb7308d
 +    mConnection = nil;
 +  }
 +
-+  if (mExtensionBootstrapPingTarget) {
-+    [mExtensionBootstrapPingTarget release];
-+    mExtensionBootstrapPingTarget = nil;
-+  }
-+
 +  if (mExtension) {
-+    if (mRequestIdentifier &&
-+        [mExtension respondsToSelector:@selector(_kill:)]) {
-+      [mExtension _kill:9];
++    if (mRequestIdentifier) {
++      [mExtension cancelExtensionRequestWithIdentifier:mRequestIdentifier];
 +    }
 +    [mExtension release];
 +    mExtension = nil;
@@ -473,6 +276,7 @@ index 000000000000..42402cb7308d
 +
 +  if (mListenerDelegate) {
 +    [mListenerDelegate setConnectionHandler:nil];
++    [mListenerDelegate setPingHandler:nil];
 +    [mListenerDelegate release];
 +    mListenerDelegate = nil;
 +  }
@@ -495,18 +299,11 @@ index 000000000000..42402cb7308d
 +void NSExtensionProcess::StartProcess(
 +    const std::function<void(Result<NSExtensionProcess, LaunchError>&&)>&
 +        aCompletion) {
-+  // REYNARD: Launch child process via NSExtension and bridge its
-+  // NSXPCConnection to libxpc for Gecko child bootstrap.
 +  auto ownedCompletion = std::make_shared<
 +      std::function<void(Result<NSExtensionProcess, LaunchError>&&)>>(
 +      aCompletion);
 +
 +  ExtensionProcess* process = [[ExtensionProcess alloc] init];
-+  if (!process) {
-+    (*ownedCompletion)(
-+        Err(LaunchError("NSExtensionProcess::StartProcess alloc")));
-+    return;
-+  }
 +
 +  [process startWithCompletion:^(NSError* error) {
 +    if (error) {

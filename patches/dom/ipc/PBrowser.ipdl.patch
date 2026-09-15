@@ -1,0 +1,20 @@
+diff --git a/dom/ipc/PBrowser.ipdl b/dom/ipc/PBrowser.ipdl
+index 2be0054f75be..d23c251bb829 100644
+--- a/dom/ipc/PBrowser.ipdl
++++ b/dom/ipc/PBrowser.ipdl
+@@ -44,6 +44,7 @@ include "mozilla/ipc/TransportSecurityInfoUtils.h";
+ include "mozilla/ipc/URIUtils.h";
+ 
+ using struct nsID from "nsID.h";
++using nscolor from "nsColor.h";
+ using mozilla::contentanalysis::StringHashSet from "mozilla/contentanalysis/ContentAnalysisIPCTypes.h";
+ using mozilla::gfx::Matrix4x4 from "mozilla/gfx/Matrix.h";
+ using mozilla::gfx::SurfaceFormat from "mozilla/gfx/Types.h";
+@@ -403,6 +404,7 @@ parent:
+                     IPCImage? customCursor,
+                     float resolutionX, float resolutionY,
+                     uint32_t hotspotX, uint32_t hotspotY, bool force);
++    async UpdateBackgroundColor(nscolor color);
+ 
+     /**
+      * Used to set the current text of the status tooltip.

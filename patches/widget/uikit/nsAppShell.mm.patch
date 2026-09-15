@@ -1,58 +1,341 @@
 diff --git a/widget/uikit/nsAppShell.mm b/widget/uikit/nsAppShell.mm
-index 4441c8faf625..d86068d1cba6 100644
+index 13436918ecd2..592fd9317012 100644
 --- a/widget/uikit/nsAppShell.mm
 +++ b/widget/uikit/nsAppShell.mm
-@@ -25,9 +25,11 @@
- #include "nsMemoryPressure.h"
- #include "nsServiceManagerUtils.h"
+@@ -3,17 +3,25 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ #import <UIKit/UIApplication.h>
++#import <UIKit/UIMenuBuilder.h>
++#import <UIKit/UIResponder.h>
++#import <UIKit/UIScene.h>
+ #import <UIKit/UIScreen.h>
+ #import <UIKit/UIWindow.h>
+ 
+ #include "HeadlessScreenHelper.h"
+ #include "ScreenHelperUIKit.h"
+ #include "gfxPlatform.h"
++#include "mozilla/AvailableMemoryWatcher.h"
+ #include "mozilla/Components.h"
+ #include "mozilla/Hal.h"
++#include "mozilla/MemoryPressureLevelIOS.h"
++#include "mozilla/MemoryPressureMonitorIOS.h"
+ #include "mozilla/Services.h"
+ #include "mozilla/dom/Document.h"
++#include "mozilla/ipc/GeckoChildProcessHost.h"
  #include "mozilla/widget/EventDispatcher.h"
 +#include "mozilla/widget/GeckoViewSupport.h"
  #include "mozilla/widget/ScreenManager.h"
- #include "ScreenHelperUIKit.h"
- #include "mozilla/Hal.h"
-+#include "mozilla/ipc/GeckoChildProcessHost.h"
- #include "HeadlessScreenHelper.h"
- #include "nsWindow.h"
- #include "nsXREDirProvider.h"
-@@ -42,6 +44,15 @@
+ #include "nsAppRunner.h"
+ #include "nsAppShell.h"
+@@ -42,25 +50,150 @@
    fprintf(stderr, "\n")
  
  static void ApplicationWillTerminate(bool aCallExit);
 +static bool sDidSendInitialForeground = false;
 +
-+static void NotifyObserverTopic(const char* aTopic) {
-+  nsCOMPtr<nsIObserverService> obsServ =
-+      mozilla::services::GetObserverService();
-+  if (obsServ) {
-+    obsServ->NotifyObservers(nullptr, aTopic, nullptr);
++static void NotifyObserverTopic(const char* aTopic,
++                                const char16_t* aData = nullptr) {
++  if (nsCOMPtr<nsIObserverService> observerService =
++          services::GetObserverService()) {
++    observerService->NotifyObservers(nullptr, aTopic, aData);
 +  }
++}
++
++static const char16_t* ThermalStateData(NSProcessInfoThermalState aState) {
++  switch (aState) {
++    case NSProcessInfoThermalStateNominal:
++      return u"nominal";
++    case NSProcessInfoThermalStateFair:
++      return u"fair";
++    case NSProcessInfoThermalStateSerious:
++      return u"serious";
++    case NSProcessInfoThermalStateCritical:
++      return u"critical";
++  }
++
++  MOZ_CRASH("Unexpected NSProcessInfoThermalState");
++}
++
++static void HandleMemoryPressure(
++    dispatch_source_memorypressure_flags_t aPressureFlags) {
++  MOZ_ASSERT(NS_IsMainThread());
++
++  IOSMemoryPressureLevel pressureLevel;
++  switch (aPressureFlags) {
++    case DISPATCH_MEMORYPRESSURE_NORMAL:
++      pressureLevel = IOSMemoryPressureLevel::Value::eNormal;
++      break;
++    case DISPATCH_MEMORYPRESSURE_WARN:
++      pressureLevel = IOSMemoryPressureLevel::Value::eWarning;
++      break;
++    case DISPATCH_MEMORYPRESSURE_CRITICAL:
++      pressureLevel = IOSMemoryPressureLevel::Value::eCritical;
++      break;
++    default:
++      pressureLevel = IOSMemoryPressureLevel::Value::eUnexpected;
++      break;
++  }
++
++  RefPtr<nsAvailableMemoryWatcherBase> watcher =
++      nsAvailableMemoryWatcherBase::GetSingleton();
++  watcher->OnMemoryPressureChanged(pressureLevel);
 +}
  
  // AppShellDelegate
  //
-@@ -68,10 +79,16 @@ - (void)applicationWillTerminate:(UIApplication*)application {
+ // Acts as a delegate for the UIApplication
+ 
+-@interface AppShellDelegate : NSObject <UIApplicationDelegate> {
++@interface AppShellDelegate : UIResponder <UIApplicationDelegate> {
++ @private
++  BOOL mIsForeground;
++  BOOL mIsActive;
++  BOOL mHasForegroundState;
++  BOOL mHasActiveState;
++  BOOL mIsLowPowerModeEnabled;
++  NSProcessInfoThermalState mThermalState;
++  dispatch_source_t mMemoryPressureSource;
+ }
+ @property(strong, nonatomic) UIWindow* window;
++- (void)handleForegroundTransition:(BOOL)isForeground;
++- (void)handleActiveTransition:(BOOL)isActive;
+ @end
+ 
+ @implementation AppShellDelegate
+ 
++- (void)buildMenuWithBuilder:(id<UIMenuBuilder>)builder {
++  [super buildMenuWithBuilder:builder];
++  [[NSNotificationCenter defaultCenter]
++      postNotificationName:@"GeckoView.BuildMenu"
++                    object:builder];
++}
++
+ - (BOOL)application:(UIApplication*)application
+     didFinishLaunchingWithOptions:(NSDictionary*)launchOptions {
+   ALOG("[AppShellDelegate application:didFinishLaunchingWithOptions:]");
+ 
++  mIsForeground = application.applicationState != UIApplicationStateBackground;
++
++  NSProcessInfo* processInfo = [NSProcessInfo processInfo];
++  mThermalState = processInfo.thermalState;
++  mIsLowPowerModeEnabled = processInfo.lowPowerModeEnabled;
++
++  NSNotificationCenter* notificationCenter =
++      [NSNotificationCenter defaultCenter];
++  [notificationCenter addObserver:self
++                         selector:@selector(sceneDidBecomeActive:)
++                             name:UISceneDidActivateNotification
++                           object:nil];
++  [notificationCenter addObserver:self
++                         selector:@selector(sceneWillResignActive:)
++                             name:UISceneWillDeactivateNotification
++                           object:nil];
++  [notificationCenter addObserver:self
++                         selector:@selector(sceneWillEnterForeground:)
++                             name:UISceneWillEnterForegroundNotification
++                           object:nil];
++  [notificationCenter addObserver:self
++                         selector:@selector(sceneDidEnterBackground:)
++                             name:UISceneDidEnterBackgroundNotification
++                           object:nil];
++  [notificationCenter addObserver:self
++                         selector:@selector(thermalStateDidChange:)
++                             name:NSProcessInfoThermalStateDidChangeNotification
++                           object:processInfo];
++  [notificationCenter addObserver:self
++                         selector:@selector(powerStateDidChange:)
++                             name:NSProcessInfoPowerStateDidChangeNotification
++                           object:processInfo];
++
++  mMemoryPressureSource = dispatch_source_create(
++      DISPATCH_SOURCE_TYPE_MEMORYPRESSURE, 0,
++      DISPATCH_MEMORYPRESSURE_NORMAL | DISPATCH_MEMORYPRESSURE_WARN |
++          DISPATCH_MEMORYPRESSURE_CRITICAL,
++      dispatch_get_main_queue());
++  dispatch_source_set_event_handler(mMemoryPressureSource, ^{
++    HandleMemoryPressure(dispatch_source_get_data(mMemoryPressureSource));
++  });
++  dispatch_resume(mMemoryPressureSource);
++  RefPtr<nsAvailableMemoryWatcherBase> watcher =
++      nsAvailableMemoryWatcherBase::GetSingleton();
++
++  if (!mIsForeground) {
++    [self handleForegroundTransition:NO];
++  }
++  NotifyObserverTopic("system-thermal-state-changed",
++                      ThermalStateData(mThermalState));
++  NotifyObserverTopic("system-power-state-changed",
++                      mIsLowPowerModeEnabled ? u"low-power" : u"normal");
++
+   return YES;
+ }
+ 
++- (void)dealloc {
++  [[NSNotificationCenter defaultCenter] removeObserver:self];
++  dispatch_release(mMemoryPressureSource);
++  [super dealloc];
++}
++
+ - (void)applicationWillTerminate:(UIApplication*)application {
+   ALOG("[AppShellDelegate applicationWillTerminate:]");
+   ApplicationWillTerminate(/* aCallExit */ false);
+@@ -68,15 +201,129 @@ - (void)applicationWillTerminate:(UIApplication*)application {
  
  - (void)applicationDidBecomeActive:(UIApplication*)application {
    ALOG("[AppShellDelegate applicationDidBecomeActive:]");
-+  if (!sDidSendInitialForeground) {
-+    NotifyObserverTopic("geckoview-initial-foreground");
-+    sDidSendInitialForeground = true;
-+  }
-+  NotifyObserverTopic("application-foreground");
++  [self handleForegroundTransition:YES];
++  [self handleActiveTransition:YES];
  }
  
  - (void)applicationWillResignActive:(UIApplication*)application {
    ALOG("[AppShellDelegate applicationWillResignActive:]");
-+  NotifyObserverTopic("application-background");
++  [self handleActiveTransition:NO];
++}
++
++- (void)applicationDidEnterBackground:(UIApplication*)application {
++  ALOG("[AppShellDelegate applicationDidEnterBackground:]");
++  [self handleForegroundTransition:NO];
++}
++
++- (void)applicationWillEnterForeground:(UIApplication*)application {
++  ALOG("[AppShellDelegate applicationWillEnterForeground:]");
++  [self handleForegroundTransition:YES];
  }
  
  - (void)applicationDidReceiveMemoryWarning:(UIApplication*)application {
-@@ -281,7 +298,12 @@ - (void)applicationDidReceiveMemoryWarning:(UIApplication*)application {
+   ALOG("[AppShellDelegate applicationDidReceiveMemoryWarning:]");
+-  NS_NotifyOfMemoryPressure(MemoryPressureState::LowMemory);
++  HandleMemoryPressure(DISPATCH_MEMORYPRESSURE_CRITICAL);
++}
++
++- (void)applicationSignificantTimeChange:(UIApplication*)application {
++  ALOG("[AppShellDelegate applicationSignificantTimeChange:]");
++  nsBaseAppShell::OnSystemTimezoneChange();
++  NotifyObserverTopic("application-significant-time-change");
++}
++
++- (void)applicationProtectedDataWillBecomeUnavailable:
++    (UIApplication*)application {
++  ALOG("[AppShellDelegate applicationProtectedDataWillBecomeUnavailable:]");
++  NotifyObserverTopic("application-protected-data-unavailable");
++}
++
++- (void)applicationProtectedDataDidBecomeAvailable:(UIApplication*)application {
++  ALOG("[AppShellDelegate applicationProtectedDataDidBecomeAvailable:]");
++  NotifyObserverTopic("application-protected-data-available");
++}
++
++- (void)sceneDidBecomeActive:(NSNotification*)notification {
++  [self handleForegroundTransition:YES];
++  [self handleActiveTransition:YES];
++}
++
++- (void)sceneWillResignActive:(NSNotification*)notification {
++  [self handleActiveTransition:NO];
++}
++
++- (void)sceneWillEnterForeground:(NSNotification*)notification {
++  [self handleForegroundTransition:YES];
++}
++
++- (void)sceneDidEnterBackground:(NSNotification*)notification {
++  [self handleForegroundTransition:NO];
++}
++
++- (void)thermalStateDidChange:(NSNotification*)notification {
++  if (![NSThread isMainThread]) {
++    dispatch_async(dispatch_get_main_queue(), ^{
++      [self thermalStateDidChange:nil];
++    });
++    return;
++  }
++
++  NSProcessInfoThermalState newThermalState =
++      [NSProcessInfo processInfo].thermalState;
++  if (mThermalState == newThermalState) {
++    return;
++  }
++
++  mThermalState = newThermalState;
++  NotifyObserverTopic("system-thermal-state-changed",
++                      ThermalStateData(mThermalState));
++}
++
++- (void)powerStateDidChange:(NSNotification*)notification {
++  if (![NSThread isMainThread]) {
++    dispatch_async(dispatch_get_main_queue(), ^{
++      [self powerStateDidChange:nil];
++    });
++    return;
++  }
++
++  BOOL isLowPowerModeEnabled = [NSProcessInfo processInfo].lowPowerModeEnabled;
++  if (mIsLowPowerModeEnabled == isLowPowerModeEnabled) {
++    return;
++  }
++
++  mIsLowPowerModeEnabled = isLowPowerModeEnabled;
++  NotifyObserverTopic("system-power-state-changed",
++                      mIsLowPowerModeEnabled ? u"low-power" : u"normal");
++}
++
++- (void)handleForegroundTransition:(BOOL)isForeground {
++  if (mHasForegroundState && mIsForeground == isForeground) {
++    return;
++  }
++
++  mIsForeground = isForeground;
++  mHasForegroundState = YES;
++
++  if (isForeground) {
++    if (!sDidSendInitialForeground) {
++      NotifyObserverTopic("geckoview-initial-foreground");
++      sDidSendInitialForeground = true;
++    }
++    NotifyObserverTopic("application-foreground");
++  } else {
++    NotifyObserverTopic("application-background");
++    NotifyObserverTopic("memory-pressure", u"heap-minimize");
++  }
++}
++
++- (void)handleActiveTransition:(BOOL)isActive {
++  if (mHasActiveState && mIsActive == isActive) {
++    return;
++  }
++
++  mIsActive = isActive;
++  mHasActiveState = YES;
++  NotifyObserverTopic(isActive ? "application-active" : "application-inactive");
+ }
+ @end
+ 
+@@ -112,6 +359,7 @@ - (void)applicationDidReceiveMemoryWarning:(UIApplication*)application {
+   }
+ 
+   gAppShell = NULL;
++  MemoryPressureMonitorIOS::Shutdown();
+ }
+ 
+ // Init
+@@ -154,6 +402,10 @@ - (void)applicationDidReceiveMemoryWarning:(UIApplication*)application {
+ 
+   nsresult rv = nsBaseAppShell::Init();
+ 
++  if (NS_SUCCEEDED(rv) && (XRE_IsContentProcess() || XRE_IsGPUProcess())) {
++    MemoryPressureMonitorIOS::Initialize();
++  }
++
+   nsCOMPtr<nsIObserverService> obsServ =
+       mozilla::services::GetObserverService();
+   if (obsServ) {
+@@ -281,7 +533,12 @@ - (void)applicationDidReceiveMemoryWarning:(UIApplication*)application {
    ALOG("nsAppShell::Run");
  
    nsresult rv = NS_OK;
 -  if (mUsingNativeEventLoop) {
-+  // REYNARD: Extension child processes already run under NSExtensionMain's
++  // Extension child processes already run under NSExtensionMain's
 +  // UIKit loop, so calling UIApplicationMain again crashes.
 +  const bool isExtensionChildProcess =
 +      !XRE_IsParentProcess() && GetCurrentProcessExtension();
@@ -61,7 +344,7 @@ index 4441c8faf625..d86068d1cba6 100644
      char argv[1][4] = {"app"};
      UIApplicationMain(1, (char**)argv, nil, @"AppShellDelegate");
      // UIApplicationMain doesn't exit. :-(
-@@ -298,7 +320,10 @@ - (void)applicationDidReceiveMemoryWarning:(UIApplication*)application {
+@@ -298,7 +555,10 @@ - (void)applicationDidReceiveMemoryWarning:(UIApplication*)application {
  
    mTerminated = true;
  
@@ -73,11 +356,11 @@ index 4441c8faf625..d86068d1cba6 100644
      // Dispatch a native event to the main queue to terminate. XPCOM doesn't
      // like being shut down from within an XPCOM runnable, so we cannot use
      // `NS_DispatchToMainThread` here.
-@@ -318,6 +343,11 @@ static void ApplicationWillTerminate(bool aCallExit) {
+@@ -318,6 +578,11 @@ static void ApplicationWillTerminate(bool aCallExit) {
      return;
    }
  
-+  // REYNARD: This is causing a crash in the extension child process, because
++  // This is causing a crash in the extension child process, because
 +  // the following causes them to enter a shutdown phase and cleanup while
 +  // the process is live.
 +
@@ -85,7 +368,7 @@ index 4441c8faf625..d86068d1cba6 100644
    // Perform the steps which would normally happen after nsAppShell::Run, such
    // as `~ScopedXPCOMStartup`, as UIApplicationMain will never shutdown.
    if (nsCOMPtr<nsIAppStartup> appStartup = components::AppStartup::Service()) {
-@@ -331,12 +361,20 @@ static void ApplicationWillTerminate(bool aCallExit) {
+@@ -331,12 +596,19 @@ static void ApplicationWillTerminate(bool aCallExit) {
  
    gDirServiceProvider->DoShutdown();
  
@@ -99,8 +382,7 @@ index 4441c8faf625..d86068d1cba6 100644
 -  NS_ShutdownXPCOM(servMgr);
 +  NS_ShutdownXPCOM(servMgr); */
 +
-+
-+  // REYNARD: So we skip those entirely, force invalidates these extensions
++  // So we skip those entirely, force invalidates these extensions
 +  // manually and terminate them.
 +  mozilla::ipc::GeckoChildProcessHost::GetAll(
 +      [](mozilla::ipc::GeckoChildProcessHost* aHost) {

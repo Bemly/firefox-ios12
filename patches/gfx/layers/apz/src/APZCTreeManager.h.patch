@@ -1,0 +1,115 @@
+diff --git a/gfx/layers/apz/src/APZCTreeManager.h b/gfx/layers/apz/src/APZCTreeManager.h
+index 055cbc99d1f4..b78d6ce72e5b 100644
+--- a/gfx/layers/apz/src/APZCTreeManager.h
++++ b/gfx/layers/apz/src/APZCTreeManager.h
+@@ -494,7 +494,9 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
+   /**
+    * Set fixed layer margins for dynamic toolbar.
+    */
+-  void SetFixedLayerMargins(ScreenIntCoord aTop, ScreenIntCoord aBottom);
++  void SetFixedLayerMargins(ScreenIntCoord aTop, ScreenIntCoord aBottom,
++                            ScreenIntCoord aTopInset = 0,
++                            ScreenIntCoord aBottomInset = 0);
+ 
+   /**
+    * Refer to apz::ComputeTransformForScrollThumb() for a description
+@@ -594,8 +596,8 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
+       const MutexAutoLock& aProofOfMapLock) const;
+   ScreenToParentLayerMatrix4x4 GetScreenToApzcTransform(
+       const AsyncPanZoomController* aApzc) const;
+-  ParentLayerToScreenMatrix4x4 GetApzcToGeckoTransformForHit(
+-      HitTestResult& aHitResult) const;
++  ScreenToScreenMatrix4x4 GetScreenToGeckoTransformForHit(
++      const AsyncPanZoomController* aApzc, const HitTestResult& aHit) const;
+   ParentLayerToScreenMatrix4x4 GetApzcToGeckoTransform(
+       const AsyncPanZoomController* aApzc,
+       const AsyncTransformComponents& aComponents) const;
+@@ -652,9 +654,6 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
+ 
+   ScreenMargin GetCompositorFixedLayerMargins() const;
+ 
+-  void AdjustEventPointForDynamicToolbar(ScreenIntPoint& aEventPoint,
+-                                         const HitTestResult& aHit);
+-
+   APZScrollGeneration NewAPZScrollGeneration() {
+     // In the production code this function gets only called from the sampler
+     // thread but in tests using nsIDOMWindowUtils.setAsyncScrollOffset this
+@@ -713,22 +712,14 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
+   struct FixedPositionInfo;
+   struct StickyPositionInfo;
+ 
+-  // Returns true if |aFixedInfo| represents a layer that is fixed to the root
+-  // content APZC.
+-  bool IsFixedToRootContent(const FixedPositionInfo& aFixedInfo,
+-                            const MutexAutoLock& aProofOfMapLock) const
+-      MOZ_REQUIRES(mMapLock);
++  AsyncPanZoomController* GetRootContentApzc(
++      LayersId aLayersId, ScrollableLayerGuid::ViewID aScrollId,
++      const MutexAutoLock& aProofOfMapLock) const MOZ_REQUIRES(mMapLock);
+ 
+-  // Returns the vertical sides of |aNode| that are stuck to the root content.
+-  // The map lock is required within these functions; if the map lock is already
+-  // being held by the caller, the second overload should be used. If the map
+-  // lock is not being held at the call site, the first overload should be used.
+-  SideBits SidesStuckToRootContent(const HitTestingTreeNode* aNode,
+-                                   AsyncTransformConsumer aMode) const;
+-  SideBits SidesStuckToRootContent(const StickyPositionInfo& aStickyInfo,
+-                                   AsyncTransformConsumer aMode,
+-                                   const MutexAutoLock& aProofOfMapLock) const
+-      MOZ_REQUIRES(mMapLock);
++  ScreenPoint ComputeStickyMarginsOffset(
++      const StickyPositionInfo& aStickyInfo,
++      const AsyncPanZoomController* aApzc, AsyncTransformConsumer aMode,
++      const MutexAutoLock& aProofOfMapLock) const MOZ_REQUIRES(mMapLock);
+ 
+   /**
+    * Perform hit testing for a touch-start event.
+@@ -862,6 +853,10 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
+   ScreenPoint ComputeFixedMarginsOffset(
+       const MutexAutoLock& aProofOfMapLock, SideBits aFixedSides,
+       const ScreenMargin& aGeckoFixedLayerMargins) const MOZ_REQUIRES(mMapLock);
++  ScreenPoint ComputeFixedMarginsOffset(
++      const AsyncPanZoomController* aApzc, SideBits aFixedSides,
++      AsyncTransformConsumer aMode, const MutexAutoLock& aProofOfMapLock) const
++      MOZ_REQUIRES(mMapLock);
+ 
+   // Accessors for mIsSoftwareKeyboardVisible and mInteractiveWidget which
+   // ensure that we are holding the map lock.
+@@ -1062,11 +1057,15 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
+    */
+   struct StickyPositionInfo {
+     Maybe<uint64_t> mStickyPositionAnimationId;
+-    SideBits mFixedPosSides;
+     ScrollableLayerGuid::ViewID mStickyPosTarget;
+     LayersId mLayersId;
+-    LayerRectAbsolute mStickyScrollRangeInner;
+-    LayerRectAbsolute mStickyScrollRangeOuter;
++
++    struct ScrollRange {
++      SideBits mSides;
++      LayerRectAbsolute mInner;
++      LayerRectAbsolute mOuter;
++    };
++    std::vector<ScrollRange> mScrollRanges;
+ 
+     explicit StickyPositionInfo(const HitTestingTreeNode* aNode);
+   };
+@@ -1101,7 +1100,8 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
+   /* This tracks the hit test result info for the current touch input block.
+    * In particular, it tracks the target APZC, the hit test flags, and the
+    * fixed pos sides. This is populated at the start of a touch block based
+-   * on the hit-test result, and used for subsequent touch events in the block.
++   * on the hit-test result, and used for subsequent touch events and pending
++   * tap gestures in the block. The next touch block replaces it.
+    * This allows touch points to move outside the thing they started on, but
+    * still have the touch events delivered to the same initial APZC. This will
+    * only ever be touched on the input delivery thread, and so does not require
+@@ -1142,6 +1142,8 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
+    * Acquire mMapLock before accessing this.
+    */
+   ScreenMargin mCompositorFixedLayerMargins MOZ_GUARDED_BY(mMapLock);
++  ScreenCoord mContentTopInset MOZ_GUARDED_BY(mMapLock){0};
++  ScreenCoord mContentBottomInset MOZ_GUARDED_BY(mMapLock){0};
+   /* Similar to above |mCompositorFixedLayerMargins|. But this value is the
+    * margins on the main-thread at the last time position:fixed elements were
+    * updated during the dynamic toolbar transitions.

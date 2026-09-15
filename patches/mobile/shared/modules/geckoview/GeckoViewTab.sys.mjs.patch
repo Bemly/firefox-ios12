@@ -1,0 +1,25 @@
+diff --git a/mobile/shared/modules/geckoview/GeckoViewTab.sys.mjs b/mobile/shared/modules/geckoview/GeckoViewTab.sys.mjs
+index 4dbf4022aefa..6e982bee26b1 100644
+--- a/mobile/shared/modules/geckoview/GeckoViewTab.sys.mjs
++++ b/mobile/shared/modules/geckoview/GeckoViewTab.sys.mjs
+@@ -211,7 +211,7 @@ export class GeckoViewTab extends GeckoViewModule {
+     ]);
+   }
+ 
+-  onEvent(aEvent, aData) {
++  async onEvent(aEvent, aData, aCallback) {
+     debug`onEvent: event=${aEvent}, data=${aData}`;
+ 
+     switch (aEvent) {
+@@ -222,7 +222,10 @@ export class GeckoViewTab extends GeckoViewModule {
+       }
+       case "GeckoView:FlushSessionState": {
+         if (this.browser && this.browser.frameLoader) {
+-          this.browser.frameLoader.requestTabStateFlush();
++          await this.browser.frameLoader.requestTabStateFlush();
++        }
++        if (aCallback) {
++          aCallback.onSuccess();
+         }
+         break;
+       }

@@ -1,0 +1,19 @@
+diff --git a/mobile/shared/components/extensions/ext-downloads.js b/mobile/shared/components/extensions/ext-downloads.js
+index 62f446ef4d21..45c60e2578bb 100644
+--- a/mobile/shared/components/extensions/ext-downloads.js
++++ b/mobile/shared/components/extensions/ext-downloads.js
+@@ -245,6 +245,14 @@ this.downloads = class extends ExtensionAPIPersistent {
+             .then(value => {
+               const downloadItem = new DownloadItem(value, options, extension);
+               DownloadTracker.addDownloadItem(downloadItem);
++              if (!value.localFilePath) {
++                return downloadItem.id;
++              }
++
++              void DownloadTracker.startDownload(
++                downloadItem,
++                value.localFilePath
++              );
+               return downloadItem.id;
+             });
+         },

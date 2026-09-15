@@ -8,8 +8,7 @@
 import GeckoView
 import UIKit
 
-
-final class SelectPicker {
+final class SelectPicker: NSObject, UIAdaptivePresentationControllerDelegate {
     private var mode: String
     private var choices: [PromptChoice]
     private let sourceRect: CGRect
@@ -24,6 +23,7 @@ final class SelectPicker {
         self.choices = choices
         self.sourceRect = sourceRect
         self.geckoView = geckoView
+        super.init()
     }
 
     // MARK: - Presentation
@@ -77,7 +77,13 @@ final class SelectPicker {
         button.menu = UIMenu(children: menuElements)
         button.showsMenuAsPrimaryAction = true
         
-        button.onMenuDismissed = { [weak self] in
+        if #available(iOS 16.0, *) {
+            button.onMenuWillDismiss = { [weak self] in
+                self?.finish(nil)
+            }
+        }
+        button.onMenuDismissed = { [weak self, weak button] in
+            button?.removeFromSuperview()
             self?.handleMenuDismissed()
         }
         
@@ -112,16 +118,17 @@ final class SelectPicker {
             return
         }
         
-        let alert = UIAlertController(title: "Select Option", message: nil, preferredStyle: .actionSheet)
+        let alert = PromptAlertController(title: NSLocalizedString("Select Option", comment: ""), message: nil, preferredStyle: .actionSheet)
+        alert.onDismissed = { [weak self] in
+            self?.finish(nil)
+        }
         for item in selectableChoices(from: choices) {
-            let title = item.label.isEmpty ? "Option" : item.label
+            let title = item.label.isEmpty ? NSLocalizedString("Option", comment: "") : item.label
             alert.addAction(UIAlertAction(title: title, style: .default) { [weak self] _ in
                 self?.finish([item.id])
             })
         }
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
-            self?.finish(nil)
-        })
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
         
         if let popover = alert.popoverPresentationController {
             popover.sourceView = geckoView
@@ -171,12 +178,22 @@ final class SelectPicker {
                 elements.append(submenu)
             } else {
                 let choiceId = item.id
+                var attributes: UIMenuElement.Attributes = item.disabled ? .disabled : []
+                if #available(iOS 16.0, *) {
+                    // Run the action before starting UIKit's dismissal transition.
+                    attributes.insert(.keepsMenuPresented)
+                }
                 let action = UIAction(
                     title: item.label,
-                    attributes: item.disabled ? .disabled : [],
+                    attributes: attributes,
                     state: item.selected ? .on : .off
                 ) { [weak self] _ in
-                    self?.finish([choiceId])
+                    guard let self, completion != nil else { return }
+                    finish([choiceId])
+                    if #available(iOS 16.0, *) {
+                        let interaction = anchorButton?.interactions.compactMap { $0 as? UIContextMenuInteraction }.first
+                        interaction?.dismissMenu()
+                    }
                 }
                 pendingItems.append(action)
             }
@@ -220,6 +237,7 @@ final class SelectPicker {
         }
         let navigationController = UINavigationController(rootViewController: multiSelectController)
         navigationController.modalPresentationStyle = .pageSheet
+        navigationController.presentationController?.delegate = self
         
         if let popover = navigationController.popoverPresentationController {
             popover.sourceView = geckoView
@@ -228,6 +246,11 @@ final class SelectPicker {
         
         presenter.present(navigationController, animated: true)
         presentedController = navigationController
+    }
+    
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        presentedController = nil
+        finish(nil)
     }
     
     // MARK: - Completion

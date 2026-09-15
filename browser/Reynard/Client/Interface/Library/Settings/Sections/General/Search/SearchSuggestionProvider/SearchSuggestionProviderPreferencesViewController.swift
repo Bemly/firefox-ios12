@@ -14,14 +14,14 @@ final class SearchSuggestionProviderPreferencesViewController: SettingsTableView
         var text: SettingsSectionText {
             switch self {
             case .providers:
-                return SettingsSectionText(headerTitle: "Search Suggestion Provider")
+                return SettingsSectionText(headerTitle: NSLocalizedString("Search Suggestion Provider", comment: ""))
             }
         }
     }
     
     init() {
-        super.init(style: .appGrouped)
-        title = "Search Suggestion Provider"
+        super.init(style: .insetGrouped)
+        title = NSLocalizedString("Search Suggestion Provider", comment: "")
     }
     
     required init?(coder: NSCoder) {
@@ -56,7 +56,7 @@ final class SearchSuggestionProviderPreferencesViewController: SettingsTableView
         }
         
         let provider = SearchCompletion.Provider.allCases[indexPath.row]
-        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+        let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
         cell.textLabel?.text = provider.name
         cell.accessoryType = Prefs.SearchSettings.searchSuggestionProvider == provider ? .checkmark : .none
         return cell

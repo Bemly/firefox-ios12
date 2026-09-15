@@ -1,8 +1,16 @@
 diff --git a/mobile/shared/components/geckoview/GeckoViewPrompt.sys.mjs b/mobile/shared/components/geckoview/GeckoViewPrompt.sys.mjs
-index e195b48ca75b..c8af414e3504 100644
+index 82622affebf2..ca21c52010ca 100644
 --- a/mobile/shared/components/geckoview/GeckoViewPrompt.sys.mjs
 +++ b/mobile/shared/components/geckoview/GeckoViewPrompt.sys.mjs
-@@ -73,6 +73,17 @@ export class PromptFactory {
+@@ -19,6 +19,7 @@ const { debug, warn } = GeckoViewUtils.initLogging("GeckoViewPrompt");
+ export class PromptFactory {
+   constructor() {
+     this.wrappedJSObject = this;
++    this._dateTimeInputs = new WeakSet();
+   }
+ 
+   handleEvent(aEvent) {
+@@ -73,6 +74,17 @@ export class PromptFactory {
      }
  
      const type = target.type;
@@ -20,7 +28,7 @@ index e195b48ca75b..c8af414e3504 100644
      if (type === "month" || type === "week") {
        // TODO(bug 888320, bug 1283382, bug 1283383): Remove this once we
        // support UA widgets for month/week inputs.
-@@ -82,7 +93,7 @@ export class PromptFactory {
+@@ -82,7 +94,7 @@ export class PromptFactory {
    }
  
    _generateSelectItems(aElement) {
@@ -29,7 +37,7 @@ index e195b48ca75b..c8af414e3504 100644
      let id = 0;
      const map = {};
  
-@@ -119,7 +130,7 @@ export class PromptFactory {
+@@ -119,7 +131,7 @@ export class PromptFactory {
    }
  
    _handleSelect(aElement, aIsDropDown) {
@@ -38,7 +46,7 @@ index e195b48ca75b..c8af414e3504 100644
      const [items] = this._generateSelectItems(aElement);
  
      if (aIsDropDown) {
-@@ -160,11 +171,22 @@ export class PromptFactory {
+@@ -160,11 +172,22 @@ export class PromptFactory {
        mozSystemGroup: true,
      });
  
@@ -61,11 +69,16 @@ index e195b48ca75b..c8af414e3504 100644
        },
        result => {
          deferredUpdate.disarm();
-@@ -229,28 +251,38 @@ export class PromptFactory {
+@@ -229,28 +252,43 @@ export class PromptFactory {
    }
  
    _handleDateTime(aElement) {
 -    const win = aElement.documentGlobal;
++    if (this._dateTimeInputs.has(aElement)) {
++      return;
++    }
++    this._dateTimeInputs.add(aElement);
++
 +    const win = aElement.ownerGlobal || aElement.documentGlobal;
 +    const elemRect = aElement.getBoundingClientRect();
 +    const winUtils = win.windowUtils;
@@ -82,7 +95,7 @@ index e195b48ca75b..c8af414e3504 100644
      const dismissPrompt = () => prompt.dismiss();
 -    // Some controls don't have UA widget (bug 888320)
 +
-+    // REYNARD: If the input has a UA widget (dateTimeBoxElement), notify it that the
++    // If the input has a UA widget (dateTimeBoxElement), notify it that the
 +    // picker is open. Otherwise (called from click before UA widget renders,
 +    // or for types without UA widgets) use a blur listener instead.
      {
@@ -108,7 +121,7 @@ index e195b48ca75b..c8af414e3504 100644
        }
      }
  
-@@ -262,15 +294,16 @@ export class PromptFactory {
+@@ -262,15 +300,16 @@ export class PromptFactory {
          min: aElement.min,
          max: aElement.max,
          step: aElement.step,
@@ -131,7 +144,7 @@ index e195b48ca75b..c8af414e3504 100644
            chromeEventHandler.removeEventListener(
              "MozCloseDateTimePicker",
              dismissPrompt
-@@ -278,6 +311,10 @@ export class PromptFactory {
+@@ -278,6 +317,10 @@ export class PromptFactory {
            dateTimeBoxElement.dispatchEvent(
              new win.CustomEvent("MozSetDateTimePickerState", { detail: false })
            );
@@ -142,10 +155,15 @@ index e195b48ca75b..c8af414e3504 100644
          }
  
          // OK: result
-@@ -295,6 +332,50 @@ export class PromptFactory {
-     );
-   }
- 
+@@ -292,6 +335,52 @@ export class PromptFactory {
+         aElement.value = result.datetime;
+         this._dispatchEvents(aElement);
+       }
++    ).finally(() => {
++      this._dateTimeInputs.delete(aElement);
++    });
++  }
++
 +  _handleColor(aElement) {
 +    const win = aElement.ownerGlobal || aElement.documentGlobal;
 +    const elemRect = aElement.getBoundingClientRect();
@@ -187,9 +205,6 @@ index e195b48ca75b..c8af414e3504 100644
 +        aElement.value = result.color;
 +        this._dispatchEvents(aElement);
 +      }
-+    );
-+  }
-+
-   _dispatchEvents(aElement) {
-     // Fire both "input" and "change" events for <select> and <input> for
-     // date/time.
+     );
+   }
+ 

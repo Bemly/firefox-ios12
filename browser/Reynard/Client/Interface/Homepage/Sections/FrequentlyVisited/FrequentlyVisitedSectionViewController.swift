@@ -32,6 +32,7 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
     
     private let historyStore: HistoryStore
     private let metadataStore: SiteMetadataStore
+    private var contentMode: HomepageContentMode = .embeddedNarrow
     private var sites: [HistorySiteSnapshot] = []
     private var metadataStatesByURL: [URL: MetadataState] = [:]
     private var cardViews: [FrequentlyVisitedSiteCardView] = []
@@ -40,8 +41,8 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = FrequentlyVisitedSectionViewController.titleFont
-        label.textColor = .appLabel
-        label.text = "Frequently Visited"
+        label.textColor = .label
+        label.text = NSLocalizedString("Frequently Visited", comment: "")
         label.adjustsFontForContentSizeCategory = true
         return label
     }()
@@ -94,10 +95,20 @@ final class FrequentlyVisitedSectionViewController: UIViewController {
         super.viewWillAppear(animated)
     }
     
+    func setContentMode(_ contentMode: HomepageContentMode) {
+        guard self.contentMode != contentMode else {
+            return
+        }
+        
+        self.contentMode = contentMode
+        titleLabel.textColor = HomepageWallpaper.foregroundColor(for: contentMode)
+    }
+    
     // MARK: - Configuration
     
     private func configureAppearance() {
         view.backgroundColor = .clear
+        titleLabel.textColor = HomepageWallpaper.foregroundColor(for: contentMode)
     }
     
     private func configureHierarchy() {

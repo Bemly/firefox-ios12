@@ -1,0 +1,943 @@
+diff --git a/widget/uikit/GeckoKeyboardSupport.mm b/widget/uikit/GeckoKeyboardSupport.mm
+new file mode 100644
+index 000000000000..36cdbc8b2c47
+--- /dev/null
++++ b/widget/uikit/GeckoKeyboardSupport.mm
+@@ -0,0 +1,937 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#include <dlfcn.h>
++#include <objc/message.h>
++#include <objc/runtime.h>
++
++#include "GeckoKeyboardSupport.h"
++
++#include "GeckoEditableSupport.h"
++#include "TextInputHandler.h"
++#include "mozilla/BasicEvents.h"
++#include "mozilla/MacStringHelpers.h"
++#include "mozilla/RefPtr.h"
++#include "mozilla/TextEventDispatcher.h"
++#include "mozilla/TextEvents.h"
++#include "mozilla/WidgetUtils.h"
++#include "nsWindow.h"
++
++namespace mozilla::widget {
++
++Modifiers GeckoModifiersForUIKitModifiers(UIKeyModifierFlags aModifiers) {
++  Modifiers modifiers = MODIFIER_NONE;
++  if (aModifiers & UIKeyModifierAlphaShift) {
++    modifiers |= MODIFIER_CAPSLOCK;
++  }
++  if (aModifiers & UIKeyModifierShift) {
++    modifiers |= MODIFIER_SHIFT;
++  }
++  if (aModifiers & UIKeyModifierControl) {
++    modifiers |= MODIFIER_CONTROL;
++  }
++  if (aModifiers & UIKeyModifierAlternate) {
++    modifiers |= MODIFIER_ALT;
++  }
++  if (aModifiers & UIKeyModifierCommand) {
++    modifiers |= MODIFIER_META;
++  }
++  if (aModifiers & UIKeyModifierNumericPad) {
++    modifiers |= MODIFIER_NUMLOCK;
++  }
++  return modifiers;
++}
++
++namespace {
++
++enum : uint16_t {
++  kVKBack = 0x08,
++  kVKTab = 0x09,
++  kVKClear = 0x0C,
++  kVKReturn = 0x0D,
++  kVKShift = 0x10,
++  kVKControl = 0x11,
++  kVKMenu = 0x12,
++  kVKPause = 0x13,
++  kVKCapital = 0x14,
++  kVKEscape = 0x1B,
++  kVKSpace = 0x20,
++  kVKPrior = 0x21,
++  kVKNext = 0x22,
++  kVKEnd = 0x23,
++  kVKHome = 0x24,
++  kVKLeft = 0x25,
++  kVKUp = 0x26,
++  kVKRight = 0x27,
++  kVKDown = 0x28,
++  kVKInsert = 0x2D,
++  kVKDelete = 0x2E,
++  kVK0 = 0x30,
++  kVK9 = 0x39,
++  kVKA = 0x41,
++  kVKZ = 0x5A,
++  kVKLWin = 0x5B,
++  kVKRWin = 0x5C,
++  kVKApps = 0x5D,
++  kVKNumpad0 = 0x60,
++  kVKNumpad9 = 0x69,
++  kVKMultiply = 0x6A,
++  kVKAdd = 0x6B,
++  kVKSeparator = 0x6C,
++  kVKSubtract = 0x6D,
++  kVKDecimal = 0x6E,
++  kVKDivide = 0x6F,
++  kVKF1 = 0x70,
++  kVKF20 = 0x83,
++  kVKNumLock = 0x90,
++  kVKVolumeMute = 0xAD,
++  kVKVolumeDown = 0xAE,
++  kVKVolumeUp = 0xAF,
++  kVKLShift = 0xA0,
++  kVKRShift = 0xA1,
++  kVKLControl = 0xA2,
++  kVKRControl = 0xA3,
++  kVKLMenu = 0xA4,
++  kVKRMenu = 0xA5,
++  kVKOEM1 = 0xBA,
++  kVKOEMPlus = 0xBB,
++  kVKOEMComma = 0xBC,
++  kVKOEMMinus = 0xBD,
++  kVKOEMPeriod = 0xBE,
++  kVKOEM2 = 0xBF,
++  kVKOEM3 = 0xC0,
++  kVKOEM4 = 0xDB,
++  kVKOEM5 = 0xDC,
++  kVKOEM6 = 0xDD,
++  kVKOEM7 = 0xDE,
++  kVKOEM102 = 0xE2,
++  kVKKana = 0x15,
++  kVKHelp = 0x2F,
++};
++
++static Modifiers GeckoModifiersForWebEventFlags(WebEventFlags aFlags) {
++  Modifiers modifiers = MODIFIER_NONE;
++  if (aFlags & WebEventFlagMaskLeftCapsLockKey) {
++    modifiers |= MODIFIER_CAPSLOCK;
++  }
++  if (aFlags & WebEventFlagMaskShiftKey) {
++    modifiers |= MODIFIER_SHIFT;
++  }
++  if (aFlags & WebEventFlagMaskControlKey) {
++    modifiers |= MODIFIER_CONTROL;
++  }
++  if (aFlags & WebEventFlagMaskOptionKey) {
++    modifiers |= MODIFIER_ALT;
++  }
++  if (aFlags & WebEventFlagMaskCommandKey) {
++    modifiers |= MODIFIER_META;
++  }
++  return modifiers;
++}
++
++static WebEventFlags CurrentWebEventFlags(WebEvent* aEvent) {
++  WebEventFlags modifierFlags = aEvent.modifierFlags;
++  if (aEvent.type == WebEventKeyDown) {
++    using ModifierFlagsFunction = WebEventFlags (*)(id, SEL);
++    static ModifierFlagsFunction modifierFlagsFunction =
++        reinterpret_cast<ModifierFlagsFunction>(objc_msgSend);
++    Class webEventClass = objc_getClass("WebEvent");
++    MOZ_RELEASE_ASSERT(webEventClass);
++    modifierFlags |= modifierFlagsFunction(reinterpret_cast<id>(webEventClass),
++                                           sel_registerName("modifierFlags"));
++  }
++  return modifierFlags;
++}
++
++static TimeStamp GeckoTimeStampForWebEvent(CFTimeInterval aTimestamp) {
++  NSTimeInterval age = NSProcessInfo.processInfo.systemUptime - aTimestamp;
++  return TimeStamp::Now() - TimeDuration::FromSeconds(age);
++}
++
++static CodeNameIndex ComputeCodeNameIndex(uint16_t aKeyCode) {
++  if (aKeyCode >= kVK0 && aKeyCode <= kVK9) {
++    return static_cast<CodeNameIndex>(CODE_NAME_INDEX_Digit0 +
++                                      (aKeyCode - kVK0));
++  }
++  if (aKeyCode >= kVKA && aKeyCode <= kVKZ) {
++    return static_cast<CodeNameIndex>(CODE_NAME_INDEX_KeyA + (aKeyCode - kVKA));
++  }
++  if (aKeyCode >= kVKNumpad0 && aKeyCode <= kVKNumpad9) {
++    return static_cast<CodeNameIndex>(CODE_NAME_INDEX_Numpad0 +
++                                      (aKeyCode - kVKNumpad0));
++  }
++  if (aKeyCode >= kVKF1 && aKeyCode <= kVKF20) {
++    return static_cast<CodeNameIndex>(CODE_NAME_INDEX_F1 + (aKeyCode - kVKF1));
++  }
++
++  switch (aKeyCode) {
++    case kVKOEM3:
++      return CODE_NAME_INDEX_Backquote;
++    case kVKOEM5:
++      return CODE_NAME_INDEX_Backslash;
++    case kVKBack:
++      return CODE_NAME_INDEX_Backspace;
++    case kVKOEM4:
++      return CODE_NAME_INDEX_BracketLeft;
++    case kVKOEM6:
++      return CODE_NAME_INDEX_BracketRight;
++    case kVKOEMComma:
++      return CODE_NAME_INDEX_Comma;
++    case kVKOEMPlus:
++      return CODE_NAME_INDEX_Equal;
++    case kVKOEM102:
++      return CODE_NAME_INDEX_IntlBackslash;
++    case kVKOEMMinus:
++      return CODE_NAME_INDEX_Minus;
++    case kVKOEMPeriod:
++      return CODE_NAME_INDEX_Period;
++    case kVKOEM7:
++      return CODE_NAME_INDEX_Quote;
++    case kVKOEM1:
++      return CODE_NAME_INDEX_Semicolon;
++    case kVKOEM2:
++      return CODE_NAME_INDEX_Slash;
++    case kVKLMenu:
++      return CODE_NAME_INDEX_AltLeft;
++    case kVKRMenu:
++      return CODE_NAME_INDEX_AltRight;
++    case kVKCapital:
++      return CODE_NAME_INDEX_CapsLock;
++    case kVKLControl:
++      return CODE_NAME_INDEX_ControlLeft;
++    case kVKRControl:
++      return CODE_NAME_INDEX_ControlRight;
++    case kVKReturn:
++      return CODE_NAME_INDEX_Enter;
++    case kVKLWin:
++      return CODE_NAME_INDEX_MetaLeft;
++    case kVKApps:
++    case kVKRWin:
++      return CODE_NAME_INDEX_MetaRight;
++    case kVKLShift:
++      return CODE_NAME_INDEX_ShiftLeft;
++    case kVKRShift:
++      return CODE_NAME_INDEX_ShiftRight;
++    case kVKSpace:
++      return CODE_NAME_INDEX_Space;
++    case kVKTab:
++      return CODE_NAME_INDEX_Tab;
++    case kVKKana:
++      return CODE_NAME_INDEX_KanaMode;
++    case kVKDelete:
++      return CODE_NAME_INDEX_Delete;
++    case kVKEnd:
++      return CODE_NAME_INDEX_End;
++    case kVKHelp:
++      return CODE_NAME_INDEX_Help;
++    case kVKHome:
++      return CODE_NAME_INDEX_Home;
++    case kVKInsert:
++      return CODE_NAME_INDEX_Insert;
++    case kVKNext:
++      return CODE_NAME_INDEX_PageDown;
++    case kVKPrior:
++      return CODE_NAME_INDEX_PageUp;
++    case kVKDown:
++      return CODE_NAME_INDEX_ArrowDown;
++    case kVKLeft:
++      return CODE_NAME_INDEX_ArrowLeft;
++    case kVKRight:
++      return CODE_NAME_INDEX_ArrowRight;
++    case kVKUp:
++      return CODE_NAME_INDEX_ArrowUp;
++    case kVKNumLock:
++      return CODE_NAME_INDEX_NumLock;
++    case kVKAdd:
++      return CODE_NAME_INDEX_NumpadAdd;
++    case kVKSeparator:
++      return CODE_NAME_INDEX_NumpadComma;
++    case kVKDecimal:
++      return CODE_NAME_INDEX_NumpadDecimal;
++    case kVKDivide:
++      return CODE_NAME_INDEX_NumpadDivide;
++    case kVKClear:
++      return CODE_NAME_INDEX_NumpadEqual;
++    case kVKMultiply:
++      return CODE_NAME_INDEX_NumpadMultiply;
++    case kVKSubtract:
++      return CODE_NAME_INDEX_NumpadSubtract;
++    case kVKEscape:
++      return CODE_NAME_INDEX_Escape;
++    case kVKVolumeDown:
++      return CODE_NAME_INDEX_VolumeDown;
++    case kVKVolumeMute:
++      return CODE_NAME_INDEX_VolumeMute;
++    case kVKVolumeUp:
++      return CODE_NAME_INDEX_VolumeUp;
++    default:
++      return CODE_NAME_INDEX_UNKNOWN;
++  }
++}
++
++static KeyNameIndex ComputeSpecialKeyNameIndex(uint16_t aKeyCode) {
++  if (aKeyCode >= kVKF1 && aKeyCode <= kVKF20) {
++    return static_cast<KeyNameIndex>(KEY_NAME_INDEX_F1 + (aKeyCode - kVKF1));
++  }
++
++  switch (aKeyCode) {
++    case kVKBack:
++      return KEY_NAME_INDEX_Backspace;
++    case kVKTab:
++      return KEY_NAME_INDEX_Tab;
++    case kVKClear:
++      return KEY_NAME_INDEX_Clear;
++    case kVKReturn:
++      return KEY_NAME_INDEX_Enter;
++    case kVKShift:
++    case kVKLShift:
++    case kVKRShift:
++      return KEY_NAME_INDEX_Shift;
++    case kVKControl:
++    case kVKLControl:
++    case kVKRControl:
++      return KEY_NAME_INDEX_Control;
++    case kVKMenu:
++    case kVKLMenu:
++    case kVKRMenu:
++      return KEY_NAME_INDEX_Alt;
++    case kVKCapital:
++      return KEY_NAME_INDEX_CapsLock;
++    case kVKEscape:
++      return KEY_NAME_INDEX_Escape;
++    case kVKPrior:
++      return KEY_NAME_INDEX_PageUp;
++    case kVKNext:
++      return KEY_NAME_INDEX_PageDown;
++    case kVKEnd:
++      return KEY_NAME_INDEX_End;
++    case kVKHome:
++      return KEY_NAME_INDEX_Home;
++    case kVKLeft:
++      return KEY_NAME_INDEX_ArrowLeft;
++    case kVKUp:
++      return KEY_NAME_INDEX_ArrowUp;
++    case kVKRight:
++      return KEY_NAME_INDEX_ArrowRight;
++    case kVKDown:
++      return KEY_NAME_INDEX_ArrowDown;
++    case kVKInsert:
++      return KEY_NAME_INDEX_Insert;
++    case kVKDelete:
++      return KEY_NAME_INDEX_Delete;
++    case kVKLWin:
++    case kVKRWin:
++    case kVKApps:
++      return KEY_NAME_INDEX_Meta;
++    case kVKNumLock:
++      return KEY_NAME_INDEX_NumLock;
++    case kVKKana:
++      return KEY_NAME_INDEX_KanaMode;
++    case kVKHelp:
++      return KEY_NAME_INDEX_Help;
++    case kVKVolumeDown:
++      return KEY_NAME_INDEX_AudioVolumeDown;
++    case kVKVolumeMute:
++      return KEY_NAME_INDEX_AudioVolumeMute;
++    case kVKVolumeUp:
++      return KEY_NAME_INDEX_AudioVolumeUp;
++    default:
++      return KEY_NAME_INDEX_Unidentified;
++  }
++}
++
++static bool IsWritingSystemCode(CodeNameIndex aCodeNameIndex) {
++  return (aCodeNameIndex >= CODE_NAME_INDEX_Backquote &&
++          aCodeNameIndex <= CODE_NAME_INDEX_Slash) ||
++         (aCodeNameIndex >= CODE_NAME_INDEX_KeyA &&
++          aCodeNameIndex <= CODE_NAME_INDEX_KeyZ) ||
++         aCodeNameIndex == CODE_NAME_INDEX_Space;
++}
++
++static uint32_t ComputeLegacyKeyCode(KeyNameIndex aKeyNameIndex,
++                                     CodeNameIndex aCodeNameIndex,
++                                     const nsAString& aKeyValue,
++                                     uint16_t aNativeKeyCode) {
++  if (aKeyNameIndex != KEY_NAME_INDEX_USE_STRING) {
++    uint32_t keyCode =
++        WidgetKeyboardEvent::ComputeKeyCodeFromKeyNameIndex(aKeyNameIndex);
++    return keyCode ? keyCode : aNativeKeyCode;
++  }
++  if (!aKeyValue.IsEmpty()) {
++    uint32_t keyCode = WidgetUtils::ComputeKeyCodeFromChar(aKeyValue[0]);
++    if (keyCode) {
++      return keyCode;
++    }
++  }
++  uint32_t keyCode =
++      WidgetKeyboardEvent::GetFallbackKeyCodeOfPunctuationKey(aCodeNameIndex);
++  return keyCode ? keyCode : aNativeKeyCode;
++}
++
++static bool IsModifierKeyName(KeyNameIndex aKeyNameIndex) {
++  return aKeyNameIndex == KEY_NAME_INDEX_Alt ||
++         aKeyNameIndex == KEY_NAME_INDEX_CapsLock ||
++         aKeyNameIndex == KEY_NAME_INDEX_Control ||
++         aKeyNameIndex == KEY_NAME_INDEX_Meta ||
++         aKeyNameIndex == KEY_NAME_INDEX_Shift;
++}
++
++static bool IsRepeatableSpecialKey(WebEvent* aEvent) {
++  const KeyNameIndex keyName = ComputeSpecialKeyNameIndex(aEvent.keyCode);
++  return aEvent.keyCode == kVKSpace ||
++         (keyName != KEY_NAME_INDEX_Unidentified &&
++          !IsModifierKeyName(keyName));
++}
++
++static CFTimeInterval PhysicalKeyRepeatInterval() {
++  using KeyRepeatIntervalFunction = double (*)();
++  static KeyRepeatIntervalFunction keyRepeatInterval =
++      reinterpret_cast<KeyRepeatIntervalFunction>(
++          dlsym(RTLD_DEFAULT, "_AXSKeyRepeatInterval"));
++  MOZ_RELEASE_ASSERT(keyRepeatInterval);
++  return keyRepeatInterval();
++}
++
++static uint16_t NativeKeyCodeForHIDUsage(NSUInteger aUsage) {
++  enum : NSUInteger {
++    kHIDUsageRightArrow = 0x4F,
++    kHIDUsageLeftArrow = 0x50,
++    kHIDUsageDownArrow = 0x51,
++    kHIDUsageUpArrow = 0x52,
++  };
++  switch (aUsage) {
++    case kHIDUsageRightArrow:
++      return kVKRight;
++    case kHIDUsageLeftArrow:
++      return kVKLeft;
++    case kHIDUsageDownArrow:
++      return kVKDown;
++    case kHIDUsageUpArrow:
++      return kVKUp;
++    default:
++      return 0;
++  }
++}
++
++}  // namespace
++
++struct GeckoKeyboardSupport::HeldKey {
++  uint16_t mNativeKeyCode = 0;
++  uint32_t mKeyCode = 0;
++  KeyNameIndex mKeyNameIndex = KEY_NAME_INDEX_Unidentified;
++  CodeNameIndex mCodeNameIndex = CODE_NAME_INDEX_UNKNOWN;
++  nsString mKeyValue;
++  uint32_t mLocation = eKeyLocationStandard;
++};
++
++GeckoKeyboardSupport::GeckoKeyboardSupport(TextInputHandler* aHandler)
++    : mHandler(aHandler) {}
++
++GeckoKeyboardSupport::~GeckoKeyboardSupport() { StopKeyRepeat(); }
++
++void GeckoKeyboardSupport::InitKeyEvent(WebEvent* aNativeEvent,
++                                        WidgetKeyboardEvent& aEvent,
++                                        uint32_t aUniqueId,
++                                        bool aProcessedByIME,
++                                        const nsAString* aInsertString,
++                                        bool aForceRepeat) const {
++  aEvent.mModifiers = mCurrentModifiers;
++  aEvent.mCodeNameIndex = ComputeCodeNameIndex(aNativeEvent.keyCode);
++  aEvent.mLocation =
++      WidgetKeyboardEvent::ComputeLocationFromCodeValue(aEvent.mCodeNameIndex);
++  aEvent.mIsRepeat = aEvent.mMessage != eKeyUp &&
++                     (aForceRepeat || aNativeEvent.isKeyRepeating);
++  aEvent.mTimeStamp = aForceRepeat
++                          ? TimeStamp::Now()
++                          : GeckoTimeStampForWebEvent(aNativeEvent.timestamp);
++  aEvent.mUniqueId = aUniqueId;
++
++  if (aProcessedByIME) {
++    aEvent.mKeyNameIndex = KEY_NAME_INDEX_Process;
++    aEvent.mKeyCode = NS_VK_PROCESSKEY;
++    return;
++  }
++
++  aEvent.mKeyNameIndex = ComputeSpecialKeyNameIndex(aNativeEvent.keyCode);
++  if (aEvent.mKeyNameIndex == KEY_NAME_INDEX_Unidentified) {
++    NSString* nativeCharacters = aEvent.IsControl()
++                                     ? aNativeEvent.charactersIgnoringModifiers
++                                     : aNativeEvent.characters;
++    nsString characters;
++    if (aInsertString) {
++      characters = *aInsertString;
++    } else {
++      CopyNSStringToXPCOMString(nativeCharacters ?: @"", characters);
++    }
++    if (!characters.IsEmpty()) {
++      aEvent.mKeyNameIndex = KEY_NAME_INDEX_USE_STRING;
++      aEvent.mKeyValue = characters;
++      if (aEvent.mKeyValue[0] < 0x20 || aEvent.mKeyValue[0] == 0x7F) {
++        CopyNSStringToXPCOMString(
++            aNativeEvent.charactersIgnoringModifiers ?: @"", aEvent.mKeyValue);
++      }
++    } else if (IsWritingSystemCode(aEvent.mCodeNameIndex)) {
++      aEvent.mKeyNameIndex = KEY_NAME_INDEX_Dead;
++    }
++  }
++  aEvent.mKeyCode =
++      ComputeLegacyKeyCode(aEvent.mKeyNameIndex, aEvent.mCodeNameIndex,
++                           aEvent.mKeyValue, aNativeEvent.keyCode);
++}
++
++Modifiers GeckoKeyboardSupport::CurrentModifiers() const {
++  return mCurrentModifiers;
++}
++
++uint32_t GeckoKeyboardSupport::NextUniqueId() { return ++mNextEventId; }
++
++bool GeckoKeyboardSupport::Destroyed() const { return mHandler->Destroyed(); }
++
++void GeckoKeyboardSupport::RememberKeyDown(WebEvent* aEvent) {
++  if (aEvent.isKeyRepeating) {
++    return;
++  }
++  for (const auto& heldKey : mHeldKeys) {
++    if (heldKey->mNativeKeyCode == aEvent.keyCode) {
++      return;
++    }
++  }
++
++  WidgetKeyboardEvent keydownEvent(true, eKeyDown, mHandler->mWidget);
++  InitKeyEvent(aEvent, keydownEvent, 0);
++  auto heldKey = MakeUnique<HeldKey>();
++  heldKey->mNativeKeyCode = aEvent.keyCode;
++  heldKey->mKeyCode = keydownEvent.mKeyCode;
++  heldKey->mKeyNameIndex = keydownEvent.mKeyNameIndex;
++  heldKey->mCodeNameIndex = keydownEvent.mCodeNameIndex;
++  heldKey->mKeyValue = keydownEvent.mKeyValue;
++  heldKey->mLocation = keydownEvent.mLocation;
++  mHeldKeys.AppendElement(std::move(heldKey));
++}
++
++void GeckoKeyboardSupport::ForgetKeyUp(WebEvent* aEvent) {
++  mHeldKeys.RemoveElementsBy([aEvent](const UniquePtr<HeldKey>& aHeldKey) {
++    return aHeldKey->mNativeKeyCode == aEvent.keyCode;
++  });
++}
++
++void GeckoKeyboardSupport::StartKeyRepeat(WebEvent* aEvent) {
++  if (mKeyRepeatTimer || !IsRepeatableSpecialKey(aEvent)) {
++    return;
++  }
++
++  const CFTimeInterval interval = PhysicalKeyRepeatInterval();
++  if (interval <= 0) {
++    return;
++  }
++
++  mRepeatingEvent = [aEvent retain];
++  CFRunLoopTimerContext context = {0, this, nullptr, nullptr, nullptr};
++  mKeyRepeatTimer = CFRunLoopTimerCreate(
++      kCFAllocatorDefault, CFAbsoluteTimeGetCurrent() + interval, interval, 0,
++      0, KeyRepeatTimerFired, &context);
++  CFRunLoopAddTimer(CFRunLoopGetMain(), mKeyRepeatTimer, kCFRunLoopCommonModes);
++}
++
++void GeckoKeyboardSupport::StopKeyRepeat() {
++  if (mKeyRepeatTimer) {
++    CFRunLoopTimerInvalidate(mKeyRepeatTimer);
++    CFRelease(mKeyRepeatTimer);
++    mKeyRepeatTimer = nullptr;
++  }
++  [mRepeatingEvent release];
++  mRepeatingEvent = nil;
++}
++
++void GeckoKeyboardSupport::KeyRepeatTimerFired(CFRunLoopTimerRef, void* aInfo) {
++  static_cast<GeckoKeyboardSupport*>(aInfo)->RepeatKey();
++}
++
++void GeckoKeyboardSupport::RepeatKey() {
++  if (Destroyed() || !mRepeatingEvent) {
++    StopKeyRepeat();
++    return;
++  }
++
++  bool isHeld = false;
++  for (const auto& heldKey : mHeldKeys) {
++    if (heldKey->mNativeKeyCode == mRepeatingEvent.keyCode) {
++      isHeld = true;
++      break;
++    }
++  }
++  if (!isHeld) {
++    StopKeyRepeat();
++    return;
++  }
++
++  RefPtr<TextInputHandler> kungFuDeathGrip(mHandler);
++  mHandler->DispatchPhysicalKeyDown(mRepeatingEvent, true, false);
++}
++
++bool GeckoKeyboardSupport::DispatchKeyUp(WebEvent* aEvent) {
++  if (Destroyed()) {
++    return false;
++  }
++  nsresult rv = mHandler->mDispatcher->BeginNativeInputTransaction();
++  if (NS_FAILED(rv)) {
++    return false;
++  }
++
++  WidgetKeyboardEvent keyupEvent(true, eKeyUp, mHandler->mWidget);
++  InitKeyEvent(aEvent, keyupEvent, 0);
++  nsEventStatus status = nsEventStatus_eIgnore;
++  return mHandler->mDispatcher->DispatchKeyboardEvent(eKeyUp, keyupEvent,
++                                                      status);
++}
++
++bool GeckoKeyboardSupport::DispatchHeldKeyUp(const HeldKey& aHeldKey,
++                                             Modifiers aModifiers) {
++  if (Destroyed()) {
++    return false;
++  }
++  nsresult rv = mHandler->mDispatcher->BeginNativeInputTransaction();
++  if (NS_FAILED(rv)) {
++    return false;
++  }
++
++  WidgetKeyboardEvent keyupEvent(true, eKeyUp, mHandler->mWidget);
++  keyupEvent.mKeyCode = aHeldKey.mKeyCode;
++  keyupEvent.mKeyNameIndex = aHeldKey.mKeyNameIndex;
++  keyupEvent.mCodeNameIndex = aHeldKey.mCodeNameIndex;
++  keyupEvent.mKeyValue = aHeldKey.mKeyValue;
++  keyupEvent.mModifiers = aModifiers;
++  keyupEvent.mLocation = aHeldKey.mLocation;
++  keyupEvent.mIsRepeat = false;
++  keyupEvent.mTimeStamp = TimeStamp::Now();
++  nsEventStatus status = nsEventStatus_eIgnore;
++  return mHandler->mDispatcher->DispatchKeyboardEvent(eKeyUp, keyupEvent,
++                                                      status);
++}
++
++void GeckoKeyboardSupport::ReleasePhysicalKey(uint16_t aNativeKeyCode) {
++  for (size_t index = 0; index < mHeldKeys.Length(); ++index) {
++    if (mHeldKeys[index]->mNativeKeyCode != aNativeKeyCode) {
++      continue;
++    }
++
++    if (mRepeatingEvent && mRepeatingEvent.keyCode == aNativeKeyCode) {
++      StopKeyRepeat();
++    }
++    UniquePtr<HeldKey> heldKey = std::move(mHeldKeys[index]);
++    mHeldKeys.RemoveElementAt(index);
++    DispatchHeldKeyUp(*heldKey, mCurrentModifiers);
++    return;
++  }
++}
++
++void GeckoKeyboardSupport::ReleasePhysicalKeys() {
++  StopKeyRepeat();
++  nsTArray<UniquePtr<HeldKey>> heldKeys;
++  heldKeys.SwapElements(mHeldKeys);
++  Modifiers modifiers = mCurrentModifiers;
++  mCurrentModifiers = MODIFIER_NONE;
++  if (heldKeys.IsEmpty() || Destroyed()) {
++    return;
++  }
++
++  for (const auto& heldKey : heldKeys) {
++    if (!IsModifierKeyName(heldKey->mKeyNameIndex)) {
++      DispatchHeldKeyUp(*heldKey, modifiers);
++    }
++  }
++  for (const auto& heldKey : heldKeys) {
++    switch (heldKey->mKeyNameIndex) {
++      case KEY_NAME_INDEX_Alt:
++        modifiers &= ~MODIFIER_ALT;
++        break;
++      case KEY_NAME_INDEX_CapsLock:
++        modifiers &= ~MODIFIER_CAPSLOCK;
++        break;
++      case KEY_NAME_INDEX_Control:
++        modifiers &= ~MODIFIER_CONTROL;
++        break;
++      case KEY_NAME_INDEX_Meta:
++        modifiers &= ~MODIFIER_META;
++        break;
++      case KEY_NAME_INDEX_Shift:
++        modifiers &= ~MODIFIER_SHIFT;
++        break;
++      default:
++        continue;
++    }
++    DispatchHeldKeyUp(*heldKey, modifiers);
++  }
++}
++
++bool GeckoKeyboardSupport::HandleKeyEvent(WebEvent* aEvent) {
++  if (Destroyed() || !aEvent ||
++      (aEvent.type != WebEventKeyDown && aEvent.type != WebEventKeyUp)) {
++    return false;
++  }
++
++  RefPtr<TextInputHandler> kungFuDeathGrip(mHandler);
++  const Modifiers eventModifiers =
++      GeckoModifiersForWebEventFlags(CurrentWebEventFlags(aEvent));
++  mCurrentModifiers = eventModifiers | (mCurrentModifiers &
++                                        (MODIFIER_SHIFT | MODIFIER_CAPSLOCK));
++  if (aEvent.type == WebEventKeyUp) {
++    if (ComputeSpecialKeyNameIndex(aEvent.keyCode) == KEY_NAME_INDEX_Shift) {
++      mCurrentModifiers &= ~MODIFIER_SHIFT;
++    }
++    if (mRepeatingEvent && mRepeatingEvent.keyCode == aEvent.keyCode) {
++      StopKeyRepeat();
++    }
++    bool dispatched = DispatchKeyUp(aEvent);
++    ForgetKeyUp(aEvent);
++    return dispatched;
++  }
++
++  const bool modifierFlagsChanged =
++      aEvent.keyboardFlags & WebEventKeyboardInputModifierFlagsChanged;
++  if (modifierFlagsChanged && !aEvent.isKeyRepeating) {
++    KeyNameIndex keyName = ComputeSpecialKeyNameIndex(aEvent.keyCode);
++    for (const auto& heldKey : mHeldKeys) {
++      if (heldKey->mNativeKeyCode == aEvent.keyCode &&
++          IsModifierKeyName(keyName)) {
++        return true;
++      }
++    }
++  }
++
++  if (!aEvent.isKeyRepeating &&
++      !IsModifierKeyName(ComputeSpecialKeyNameIndex(aEvent.keyCode))) {
++    StopKeyRepeat();
++  } else if (aEvent.isKeyRepeating && mRepeatingEvent &&
++             mRepeatingEvent.keyCode == aEvent.keyCode) {
++    return true;
++  }
++
++  RememberKeyDown(aEvent);
++  bool handled = mHandler->DispatchPhysicalKeyDown(aEvent, false, true);
++  if (aEvent.isKeyRepeating && handled && !Destroyed()) {
++    StartKeyRepeat(aEvent);
++  }
++  return handled;
++}
++
++void GeckoKeyboardSupport::HandleModifierFlagsChanged(
++    UIKeyModifierFlags aOldFlags, UIKeyModifierFlags aNewFlags) {
++  struct ModifierTransition {
++    UIKeyModifierFlags mFlag;
++    uint16_t mNativeKeyCode;
++    KeyNameIndex mKeyNameIndex;
++    CodeNameIndex mCodeNameIndex;
++  };
++  constexpr ModifierTransition transitions[] = {
++      {UIKeyModifierShift, kVKLShift, KEY_NAME_INDEX_Shift,
++       CODE_NAME_INDEX_ShiftLeft},
++      {UIKeyModifierAlphaShift, kVKCapital, KEY_NAME_INDEX_CapsLock,
++       CODE_NAME_INDEX_CapsLock},
++  };
++
++  mCurrentModifiers = GeckoModifiersForUIKitModifiers(aNewFlags);
++  for (const auto& transition : transitions) {
++    bool wasDown = aOldFlags & transition.mFlag;
++    bool isDown = aNewFlags & transition.mFlag;
++    if (wasDown == isDown || Destroyed()) {
++      continue;
++    }
++
++    if (isDown) {
++      bool alreadyHeld = false;
++      for (const auto& heldKey : mHeldKeys) {
++        alreadyHeld |= heldKey->mNativeKeyCode == transition.mNativeKeyCode;
++      }
++      if (alreadyHeld) {
++        continue;
++      }
++      auto heldKey = MakeUnique<HeldKey>();
++      heldKey->mNativeKeyCode = transition.mNativeKeyCode;
++      heldKey->mKeyCode = WidgetKeyboardEvent::ComputeKeyCodeFromKeyNameIndex(
++          transition.mKeyNameIndex);
++      heldKey->mKeyNameIndex = transition.mKeyNameIndex;
++      heldKey->mCodeNameIndex = transition.mCodeNameIndex;
++      heldKey->mLocation = WidgetKeyboardEvent::ComputeLocationFromCodeValue(
++          heldKey->mCodeNameIndex);
++
++      WidgetKeyboardEvent keydownEvent(true, eKeyDown, mHandler->mWidget);
++      keydownEvent.mKeyCode = heldKey->mKeyCode;
++      keydownEvent.mKeyNameIndex = heldKey->mKeyNameIndex;
++      keydownEvent.mCodeNameIndex = heldKey->mCodeNameIndex;
++      keydownEvent.mModifiers = mCurrentModifiers;
++      keydownEvent.mLocation = heldKey->mLocation;
++      keydownEvent.mTimeStamp = TimeStamp::Now();
++      keydownEvent.mUniqueId = NextUniqueId();
++      nsEventStatus status = nsEventStatus_eIgnore;
++      if (NS_SUCCEEDED(mHandler->mDispatcher->BeginNativeInputTransaction())) {
++        mHeldKeys.AppendElement(std::move(heldKey));
++        mHandler->mDispatcher->DispatchKeyboardEvent(eKeyDown, keydownEvent,
++                                                     status);
++      }
++      continue;
++    }
++
++    for (size_t index = 0; index < mHeldKeys.Length(); ++index) {
++      if (mHeldKeys[index]->mNativeKeyCode == transition.mNativeKeyCode) {
++        UniquePtr<HeldKey> heldKey = std::move(mHeldKeys[index]);
++        mHeldKeys.RemoveElementAt(index);
++        DispatchHeldKeyUp(*heldKey, mCurrentModifiers);
++        break;
++      }
++    }
++  }
++}
++
++}  // namespace mozilla::widget
++
++// MARK: - ChildView (Keyboard)
++
++@interface UIResponder (Private)
++- (void)_handleKeyUIEvent:(UIEvent*)event;
++@end
++
++@interface UIEvent (Private)
++- (void*)_hidEvent;
++@end
++
++@interface ChildView : UIView {
++ @public
++  nsWindow* mGeckoChild;
++  GeckoEditableState mEditable;
++}
++@end
++
++@interface ChildView (Keyboard)
++- (BOOL)_requiresKeyboardWhenFirstResponder;
++- (BOOL)_requiresKeyboardResetOnReload;
++- (void)_handleKeyUIEvent:(UIEvent*)event;
++- (BOOL)requiresKeyEvents;
++- (void)handleKeyWebEvent:(WebEvent*)event;
++- (void)handleKeyWebEvent:(WebEvent*)event
++    withCompletionHandler:
++        (void (^)(WebEvent* event, BOOL wasHandled))completionHandler;
++- (void)modifierFlagsDidChangeFrom:(UIKeyModifierFlags)oldFlags
++                                to:(UIKeyModifierFlags)newFlags;
++- (void)pressesEnded:(NSSet<UIPress*>*)presses withEvent:(UIPressesEvent*)event;
++- (void)pressesCancelled:(NSSet<UIPress*>*)presses
++               withEvent:(UIPressesEvent*)event;
++@end
++
++@implementation ChildView (Keyboard)
++
++- (BOOL)_requiresKeyboardWhenFirstResponder {
++  if (!mGeckoChild || mGeckoChild->Destroyed()) {
++    return NO;
++  }
++  return mGeckoChild->GetInputContext().mIMEState.mEnabled !=
++             mozilla::widget::IMEEnabled::Disabled ||
++         mEditable.mSeenHardwareKeyDownInNonEditableContent;
++}
++
++- (BOOL)_requiresKeyboardResetOnReload {
++  return YES;
++}
++
++- (void)_handleKeyUIEvent:(UIEvent*)event {
++  BOOL isHardwareKeyboardEvent = [event _hidEvent] != nullptr;
++  if ([self isFirstResponder] && isHardwareKeyboardEvent && mGeckoChild &&
++      !mGeckoChild->Destroyed() &&
++      mGeckoChild->GetInputContext().mIMEState.mEnabled ==
++          mozilla::widget::IMEEnabled::Disabled &&
++      !mEditable.mSeenHardwareKeyDownInNonEditableContent) {
++    mEditable.mSeenHardwareKeyDownInNonEditableContent = YES;
++    [self reloadInputViews];
++  }
++  [super _handleKeyUIEvent:event];
++}
++
++- (BOOL)requiresKeyEvents {
++  return mGeckoChild && !mGeckoChild->Destroyed();
++}
++
++- (void)handleKeyWebEvent:(WebEvent*)event {
++  BOOL handled = NO;
++  if (mGeckoChild && !mGeckoChild->Destroyed()) {
++    if (mozilla::widget::TextInputHandler* handler =
++            mGeckoChild->GetTextInputHandler()) {
++      handled = handler->HandleKeyEvent(event);
++    }
++  }
++  event.wasHandled = handled;
++}
++
++- (void)handleKeyWebEvent:(WebEvent*)event
++    withCompletionHandler:
++        (void (^)(WebEvent* event, BOOL wasHandled))completionHandler {
++  BOOL handled = NO;
++  if (mGeckoChild && !mGeckoChild->Destroyed()) {
++    if (mozilla::widget::TextInputHandler* handler =
++            mGeckoChild->GetTextInputHandler()) {
++      handled = handler->HandleKeyEvent(event);
++    }
++  }
++  completionHandler(event, handled);
++}
++
++- (void)modifierFlagsDidChangeFrom:(UIKeyModifierFlags)oldFlags
++                                to:(UIKeyModifierFlags)newFlags {
++  if (!mGeckoChild || mGeckoChild->Destroyed()) {
++    return;
++  }
++  if (mozilla::widget::TextInputHandler* handler =
++          mGeckoChild->GetTextInputHandler()) {
++    handler->HandleModifierFlagsChanged(oldFlags, newFlags);
++  }
++}
++
++- (void)pressesEnded:(NSSet<UIPress*>*)presses
++           withEvent:(UIPressesEvent*)event {
++  [super pressesEnded:presses withEvent:event];
++
++  if (!mGeckoChild || mGeckoChild->Destroyed()) {
++    return;
++  }
++  mozilla::widget::TextInputHandler* handler =
++      mGeckoChild->GetTextInputHandler();
++  if (!handler) {
++    return;
++  }
++
++  SEL keySelector = sel_registerName("key");
++  SEL keyCodeSelector = sel_registerName("keyCode");
++  using KeyFunction = id (*)(id, SEL);
++  using KeyCodeFunction = NSUInteger (*)(id, SEL);
++  for (UIPress* press in presses) {
++    if (![press respondsToSelector:keySelector]) {
++      continue;
++    }
++    id key = reinterpret_cast<KeyFunction>(objc_msgSend)(press, keySelector);
++    if (![key respondsToSelector:keyCodeSelector]) {
++      continue;
++    }
++    NSUInteger usage =
++        reinterpret_cast<KeyCodeFunction>(objc_msgSend)(key, keyCodeSelector);
++    uint16_t nativeKeyCode = mozilla::widget::NativeKeyCodeForHIDUsage(usage);
++    if (nativeKeyCode) {
++      handler->ReleasePhysicalKey(nativeKeyCode);
++    }
++  }
++}
++
++- (void)pressesCancelled:(NSSet<UIPress*>*)presses
++               withEvent:(UIPressesEvent*)event {
++  if (mGeckoChild && !mGeckoChild->Destroyed()) {
++    if (mozilla::widget::TextInputHandler* handler =
++            mGeckoChild->GetTextInputHandler()) {
++      handler->ReleasePhysicalKeys();
++    }
++  }
++  [super pressesCancelled:presses withEvent:event];
++}
++
++@end

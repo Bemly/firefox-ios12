@@ -10,34 +10,36 @@ import UIKit
 
 extension FilePicker: UIDocumentPickerDelegate {
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        presentedController = nil
-        prepareDocumentResult(from: urls) { [weak self] result in
-            self?.finish(with: result?.promptResult)
+        dismissPicker(controller) { picker in
+            picker.prepareDocumentResult(from: urls) { result in
+                picker.finish(with: result?.promptResult)
+            }
         }
     }
 
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-        presentedController = nil
-        finish(with: nil)
+        dismissPicker(controller) { picker in
+            picker.finish(with: nil)
+        }
     }
 }
 
 @available(iOS 14.0, *)
 extension FilePicker: PHPickerViewControllerDelegate {
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-        picker.dismiss(animated: true)
-        presentedController = nil
-        preparePhotoLibraryResult(from: results) { [weak self] result in
-            self?.finish(with: result?.promptResult)
+        dismissPicker(picker) { filePicker in
+            filePicker.preparePhotoLibraryResult(from: results) { result in
+                filePicker.finish(with: result?.promptResult)
+            }
         }
     }
 }
 
 extension FilePicker: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-        picker.dismiss(animated: true)
-        presentedController = nil
-        finish(with: nil)
+        dismissPicker(picker) { filePicker in
+            filePicker.finish(with: nil)
+        }
     }
 
     func imagePickerController(
@@ -48,16 +50,17 @@ extension FilePicker: UIImagePickerControllerDelegate, UINavigationControllerDel
         let imageURL = info[.imageURL] as? URL
         let imageData = (info[.originalImage] as? UIImage)?.jpegData(compressionQuality: UX.imageCompressionQuality)
 
-        picker.dismiss(animated: true)
-        presentedController = nil
-        prepareMediaResult(mediaURL: mediaURL, imageURL: imageURL, imageData: imageData) { [weak self] result in
-            self?.finish(with: result?.promptResult)
+        dismissPicker(picker) { filePicker in
+            filePicker.prepareMediaResult(mediaURL: mediaURL, imageURL: imageURL, imageData: imageData) { result in
+                filePicker.finish(with: result?.promptResult)
+            }
         }
     }
 }
 
 extension FilePicker: UIAdaptivePresentationControllerDelegate {
     func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        guard !isCompletingPicker else { return }
         presentedController = nil
         finish(with: nil)
     }

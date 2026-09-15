@@ -1,8 +1,8 @@
 diff --git a/dom/media/systemservices/CamerasParent.h b/dom/media/systemservices/CamerasParent.h
-index 44556c7158f2..5ca849a2be62 100644
+index 18fe4aba162e..3bbc7cb306c2 100644
 --- a/dom/media/systemservices/CamerasParent.h
 +++ b/dom/media/systemservices/CamerasParent.h
-@@ -176,7 +176,8 @@ class CamerasParent : public PCamerasParent {
+@@ -180,7 +180,8 @@ class CamerasParent : public PCamerasParent {
     *   The returned promise will never be rejected.
     */
    static RefPtr<CameraAccessRequestPromise> RequestCameraAccess(

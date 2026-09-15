@@ -1,0 +1,13 @@
+diff --git a/layout/base/ZoomConstraintsClient.cpp b/layout/base/ZoomConstraintsClient.cpp
+index d243b6b2cb2e..3b28333e900b 100644
+--- a/layout/base/ZoomConstraintsClient.cpp
++++ b/layout/base/ZoomConstraintsClient.cpp
+@@ -51,7 +51,7 @@ static nsIWidget* GetWidget(PresShell* aPresShell) {
+     return nullptr;
+   }
+   if (nsIFrame* rootFrame = aPresShell->GetRootFrame()) {
+-#if defined(MOZ_WIDGET_ANDROID)
++#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
+     // On Android in cases of about:XX pages loaded in the browser parent
+     // process we need to return the nearest widget since it's the widget owning
+     // an IAPZCTreeManager to communicate with the APZCTreeManager for the

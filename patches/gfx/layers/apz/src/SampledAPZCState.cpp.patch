@@ -1,0 +1,23 @@
+diff --git a/gfx/layers/apz/src/SampledAPZCState.cpp b/gfx/layers/apz/src/SampledAPZCState.cpp
+index 5876a64994ed..348d7da9700d 100644
+--- a/gfx/layers/apz/src/SampledAPZCState.cpp
++++ b/gfx/layers/apz/src/SampledAPZCState.cpp
+@@ -72,7 +72,8 @@ void SampledAPZCState::ClampVisualScrollOffset(const FrameMetrics& aMetrics) {
+   // Make sure that we use the local mZoom to do these calculations, because the
+   // one on aMetrics might be newer.
+   CSSRect scrollRange = FrameMetrics::CalculateScrollRange(
+-      aMetrics.GetScrollableRect(), aMetrics.GetCompositionBounds(), mZoom);
++      aMetrics.GetScrollableRectWithContentInsets(mZoom),
++      aMetrics.GetCompositionBounds(), mZoom);
+   mVisualScrollOffset = scrollRange.ClampPoint(mVisualScrollOffset);
+ 
+   KeepLayoutViewportEnclosingVisualViewport(aMetrics);
+@@ -113,7 +114,7 @@ void SampledAPZCState::KeepLayoutViewportEnclosingVisualViewport(
+       CSSRect(mVisualScrollOffset,
+               FrameMetrics::CalculateCompositedSizeInCssPixels(
+                   aMetrics.GetCompositionBounds(), mZoom)),
+-      aMetrics.GetScrollableRect(), mLayoutViewport);
++      aMetrics.GetScrollableRectWithContentInsets(mZoom), mLayoutViewport);
+ }
+ 
+ }  // namespace layers

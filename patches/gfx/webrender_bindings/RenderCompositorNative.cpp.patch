@@ -1,8 +1,8 @@
 diff --git a/gfx/webrender_bindings/RenderCompositorNative.cpp b/gfx/webrender_bindings/RenderCompositorNative.cpp
-index f60325f45f62..aef7ca853af0 100644
+index e02adf311299..9c0a5689d39e 100644
 --- a/gfx/webrender_bindings/RenderCompositorNative.cpp
 +++ b/gfx/webrender_bindings/RenderCompositorNative.cpp
-@@ -108,7 +108,7 @@ bool RenderCompositorNative::Resume() { return true; }
+@@ -109,7 +109,7 @@ bool RenderCompositorNative::Resume() { return true; }
  inline layers::WebRenderCompositor RenderCompositorNative::CompositorType()
      const {
    if (gfx::gfxVars::UseWebRenderCompositor()) {

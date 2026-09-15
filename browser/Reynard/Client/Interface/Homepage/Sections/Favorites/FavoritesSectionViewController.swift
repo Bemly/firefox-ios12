@@ -61,8 +61,8 @@ final class FavoritesSectionViewController: UIViewController {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = FavoritesSectionViewController.titleFont
-        label.textColor = .appLabel
-        label.text = "Favorites"
+        label.textColor = .label
+        label.text = NSLocalizedString("Favorites", comment: "")
         label.adjustsFontForContentSizeCategory = true
         return label
     }()
@@ -136,6 +136,7 @@ final class FavoritesSectionViewController: UIViewController {
         }
         
         self.contentMode = contentMode
+        updateForegroundColor()
         applyFavoriteItemLimit()
     }
     
@@ -144,6 +145,16 @@ final class FavoritesSectionViewController: UIViewController {
     private func configureAppearance() {
         view.backgroundColor = .clear
         headerView.isHidden = !showsSectionTitle
+        updateForegroundColor()
+    }
+    
+    private func updateForegroundColor() {
+        let foregroundColor = HomepageWallpaper.foregroundColor(for: contentMode)
+        titleLabel.textColor = foregroundColor
+        showAllButton.tintColor = foregroundColor
+        if isViewLoaded {
+            collectionView.reloadData()
+        }
     }
     
     private func configureHierarchy() {
@@ -257,7 +268,7 @@ final class FavoritesSectionViewController: UIViewController {
         let isHidden = !showsSectionTitle || !hasExpandableFavorites
         UIView.performWithoutAnimation {
             showAllButton.isHidden = isHidden
-            showAllButton.setTitle(isHidden ? nil : (showsExpandedFavorites ? "Show Less" : "Show All"), for: .normal)
+            showAllButton.setTitle(isHidden ? nil : (showsExpandedFavorites ? NSLocalizedString("Show Less", comment: "") : NSLocalizedString("Show All", comment: "")), for: .normal)
             showAllButton.layoutIfNeeded()
         }
     }
@@ -578,7 +589,10 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
                 withReuseIdentifier: FavoriteSiteCollectionViewCell.reuseIdentifier,
                 for: indexPath
             ) as! FavoriteSiteCollectionViewCell
-            cell.configure(favorite: bookmark)
+            cell.configure(
+                favorite: bookmark,
+                titleColor: HomepageWallpaper.foregroundColor(for: contentMode)
+            )
             return cell
             
         case let .folder(folder):
@@ -586,7 +600,11 @@ extension FavoritesSectionViewController: UICollectionViewDataSource, UICollecti
                 withReuseIdentifier: FavoriteFolderCollectionViewCell.reuseIdentifier,
                 for: indexPath
             ) as! FavoriteFolderCollectionViewCell
-            cell.configure(folder: folder, previewBookmarks: previewBookmarks(for: folder))
+            cell.configure(
+                folder: folder,
+                previewBookmarks: previewBookmarks(for: folder),
+                titleColor: HomepageWallpaper.foregroundColor(for: contentMode)
+            )
             return cell
         }
     }

@@ -17,13 +17,13 @@ final class DDIManager: NSObject {
         var errorDescription: String? {
             switch self {
             case .alreadyInProgress:
-                return "A Developer Disk Image download is already in progress."
+                return NSLocalizedString("A Developer Disk Image download is already in progress.", comment: "")
             case .cancelled:
-                return "Developer Disk Image download was cancelled."
+                return NSLocalizedString("Developer Disk Image download was cancelled.", comment: "")
             case .appSupportDirUnavail:
-                return "Unable to access the app Application Support directory."
+                return NSLocalizedString("Unable to access the app Application Support directory.", comment: "")
             case .invalidRemoteURL:
-                return "Developer Disk Image source URL is invalid."
+                return NSLocalizedString("Developer Disk Image source URL is invalid.", comment: "")
             }
         }
     }

@@ -1,13 +1,12 @@
 diff --git a/gfx/thebes/IOSPlatformFontList.mm b/gfx/thebes/IOSPlatformFontList.mm
-index 6342e7e84c32..ef880deb1662 100644
+index b44b28d1d070..ce6859cac607 100644
 --- a/gfx/thebes/IOSPlatformFontList.mm
 +++ b/gfx/thebes/IOSPlatformFontList.mm
-@@ -3,16 +3,69 @@
-  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+@@ -4,15 +4,68 @@
  
+ #include "IOSPlatformFontList.h"
  #import <UIKit/UIKit.h>
 +#include "mozilla/FontPropertyTypes.h"
- #include "IOSPlatformFontList.h"
  
  IOSPlatformFontList::IOSPlatformFontList() : CoreTextFontList() {}
  
@@ -52,9 +51,9 @@ index 6342e7e84c32..ef880deb1662 100644
 +                          : mozilla::FontWeight::NORMAL;
 +
 +  float width = widthTrait ? widthTrait.floatValue : 0.0f;
-+  aFontStyle.stretch = width > 0.1f    ? mozilla::FontStretch::EXPANDED
-+                       : width < -0.1f ? mozilla::FontStretch::CONDENSED
-+                                       : mozilla::FontStretch::NORMAL;
++  aFontStyle.width = width > 0.1f    ? mozilla::FontWidth::EXPANDED
++                     : width < -0.1f ? mozilla::FontWidth::CONDENSED
++                                     : mozilla::FontWidth::NORMAL;
 +  aFontStyle.size = aFont.pointSize;
 +  aFontStyle.systemFont = true;
 +}
@@ -63,7 +62,7 @@ index 6342e7e84c32..ef880deb1662 100644
      mozilla::LookAndFeel::FontID aSystemFontID, nsACString& aSystemFontName,
      gfxFontStyle& aFontStyle) {
 -  MOZ_CRASH("UNIMPLEMENTED");
-+  // REYNARD: iOS system font lookup through UIKit and report the family as
++  // iOS system font lookup through UIKit and report the family as
 +  // -apple-system
 +  UIFont* font = GetUIFontForSystemFontID(aSystemFontID);
 +  MOZ_ASSERT(font, "system font not set");

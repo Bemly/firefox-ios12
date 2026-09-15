@@ -1,17 +1,8 @@
 diff --git a/dom/geolocation/Geolocation.cpp b/dom/geolocation/Geolocation.cpp
-index 20a3eded3ad1..68fa2a8c0efb 100644
+index 51efcf97c062..671c52010401 100644
 --- a/dom/geolocation/Geolocation.cpp
 +++ b/dom/geolocation/Geolocation.cpp
-@@ -48,7 +48,7 @@ class nsIPrincipal;
- #  include "mozilla/WidgetUtilsGtk.h"
- #endif
- 
--#ifdef MOZ_WIDGET_COCOA
-+#if defined(MOZ_WIDGET_COCOA) || defined(MOZ_WIDGET_UIKIT)
- #  include "CoreLocationLocationProvider.h"
- #endif
- 
-@@ -307,6 +307,12 @@ NS_IMPL_ISUPPORTS0(CancelSystemGeolocationPermissionRequest)
+@@ -291,6 +291,12 @@ NS_IMPL_ISUPPORTS0(CancelSystemGeolocationPermissionRequest)
  void Geolocation::ReallowWithSystemPermissionOrCancel(
      BrowsingContext* aBrowsingContext,
      geolocation::ParentRequestResolver&& aResolver) {
@@ -24,7 +15,7 @@ index 20a3eded3ad1..68fa2a8c0efb 100644
    // Make sure we don't return without responding to the geolocation request.
    auto denyPermissionOnError =
        MakeScopeExit([&aResolver]() MOZ_CAN_RUN_SCRIPT_BOUNDARY_LAMBDA {
-@@ -388,6 +394,7 @@ void Geolocation::ReallowWithSystemPermissionOrCancel(
+@@ -372,6 +378,7 @@ void Geolocation::ReallowWithSystemPermissionOrCancel(
        new CancelSystemGeolocationPermissionRequest(permissionRequest));
  
    cancelRequestOnError.release();
@@ -32,12 +23,3 @@ index 20a3eded3ad1..68fa2a8c0efb 100644
  }
  
  NS_IMETHODIMP
-@@ -771,7 +778,7 @@ nsresult nsGeolocationService::Init() {
- #  endif
- #endif
- 
--#ifdef MOZ_WIDGET_COCOA
-+#if defined(MOZ_WIDGET_COCOA) || defined(MOZ_WIDGET_UIKIT)
-   if (Preferences::GetBool("geo.provider.use_corelocation", true)) {
-     mProvider = new CoreLocationLocationProvider();
-   }

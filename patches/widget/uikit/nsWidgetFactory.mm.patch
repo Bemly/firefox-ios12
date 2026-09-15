@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/nsWidgetFactory.mm b/widget/uikit/nsWidgetFactory.mm
-index 25d89f7bbbac..86585b973084 100644
+index e6aa6d98cbaf..983228e4a473 100644
 --- a/widget/uikit/nsWidgetFactory.mm
 +++ b/widget/uikit/nsWidgetFactory.mm
 @@ -13,13 +13,20 @@

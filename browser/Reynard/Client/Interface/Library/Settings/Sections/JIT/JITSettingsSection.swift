@@ -24,6 +24,22 @@ final class JITSettingsSection: NSObject {
     var hasEntitledJIT: Bool {
         return getEntitlementValue("com.apple.private.security.no-sandbox")
     }
+
+    private var shouldUseTrollStore: Bool {
+        if #available(iOS 17.0, *) {
+            if #unavailable(iOS 17.0.1) {
+                return !hasEntitledJIT
+            }
+        }
+
+        if #available(iOS 14.0, *) {
+            if #unavailable(iOS 16.7) {
+                return !hasEntitledJIT
+            }
+        }
+
+        return false
+    }
     
     private let jitSwitch = UISwitch()
     private let backgroundQueue = DispatchQueue(label: "com.minh-ton.Reynard.JITSettingsSection.Queue", qos: .userInitiated)
@@ -46,13 +62,13 @@ final class JITSettingsSection: NSObject {
         
         switch Row.allCases[index] {
         case .enableJIT:
-            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-            cell.textLabel?.text = "Enable JIT"
+            let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = NSLocalizedString("Enable JIT", comment: "")
             cell.selectionStyle = .none
             cell.accessoryView = jitSwitch
             return cell
         case .importPairingFile:
-            let cell = SettingsViewUtils.actionCell(title: "Import Pairing File...", tintColor: tintColor)
+            let cell = SettingsViewUtils.actionCell(title: NSLocalizedString("Import Pairing File…", comment: ""), tintColor: tintColor)
             
             if #available(iOS 16.7, *) {
                 if #unavailable(iOS 17.4) {
@@ -81,12 +97,10 @@ final class JITSettingsSection: NSObject {
         }
         stackView.addArrangedSubview(performanceDetailLabel())
         
-        if #available(iOS 16.7, *) {
-            if #unavailable(iOS 17.4) {
-                stackView.addArrangedSubview(unsupportedVersionWarningLabel())
-            }
+        if #unavailable(iOS 17.4) {
+            stackView.addArrangedSubview(unsupportedVersionWarningLabel())
         }
-        
+
         footerView.contentView.addSubview(stackView)
         NSLayoutConstraint.activate([
             stackView.leadingAnchor.constraint(equalTo: footerView.contentView.layoutMarginsGuide.leadingAnchor),
@@ -152,7 +166,7 @@ final class JITSettingsSection: NSObject {
                 }
             } catch {
                 DispatchQueue.main.async {
-                    AlertPresenter.show(title: "Import Failed", message: error.localizedDescription)
+                    AlertPresenter.show(title: NSLocalizedString("Import Failed", comment: ""), message: error.localizedDescription)
                 }
             }
         }
@@ -165,8 +179,8 @@ final class JITSettingsSection: NSObject {
         
         sender.isEnabled = false
         let alert = UIAlertController(
-            title: "Preparing JIT",
-            message: "Since this is your first time enabling JIT, Reynard needs to download and mount the Developer Disk Image. This is required for JIT to work properly.",
+            title: NSLocalizedString("Preparing JIT", comment: ""),
+            message: NSLocalizedString("Since this is your first time enabling JIT, Reynard needs to download and mount the Developer Disk Image. This is required for JIT to work properly.", comment: ""),
             preferredStyle: .alert
         )
         let progressView = UIProgressView(progressViewStyle: .default)
@@ -175,7 +189,7 @@ final class JITSettingsSection: NSObject {
         
         let token = UUID()
         activeDDIDownloadToken = token
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel) { [weak self] _ in
             self?.cancelDDI(for: sender, token: token)
         })
         
@@ -219,7 +233,7 @@ final class JITSettingsSection: NSObject {
                     Prefs.JITSettings.isJITEnabled = false
                     sender.setOn(false, animated: true)
                     SettingsViewUtils.dismissPresentedAlert(alert, from: settingsController) {
-                        AlertPresenter.show(title: "Download Failed", message: error.localizedDescription)
+                        AlertPresenter.show(title: NSLocalizedString("Download Failed", comment: ""), message: error.localizedDescription)
                     }
                 }
             }
@@ -240,11 +254,11 @@ final class JITSettingsSection: NSObject {
     
     private func showRestartAlert() {
         let alert = UIAlertController(
-            title: "Restart Required",
-            message: "The app will now close for the JIT setting to take effect.",
+            title: NSLocalizedString("Restart Required", comment: ""),
+            message: NSLocalizedString("The app will now close for the JIT setting to take effect.", comment: ""),
             preferredStyle: .alert
         )
-        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in
+        alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default) { _ in
             UIApplication.shared.perform(#selector(NSXPCConnection.suspend))
             DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(1)) {
                 exit(EXIT_SUCCESS)
@@ -266,7 +280,7 @@ final class JITSettingsSection: NSObject {
         statusLabel.font = statusBoldFont
         statusLabel.adjustsFontForContentSizeCategory = true
         statusLabel.textColor = .systemOrange
-        statusLabel.text = "\u{25B2} JIT-Less Mode is Currently Active"
+        statusLabel.text = NSLocalizedString("\u{25B2} JIT-Less Mode is Currently Active", comment: "")
         return statusLabel
     }
     
@@ -276,7 +290,7 @@ final class JITSettingsSection: NSObject {
         detailLabel.font = UIFont.preferredFont(forTextStyle: .footnote)
         detailLabel.adjustsFontForContentSizeCategory = true
         detailLabel.textColor = .appSecondaryLabel
-        detailLabel.text = "Enable JIT to improve performance and ensure websites work properly."
+        detailLabel.text = NSLocalizedString("Enable JIT to improve performance and ensure websites work properly.", comment: "")
         return detailLabel
     }
     
@@ -286,11 +300,9 @@ final class JITSettingsSection: NSObject {
         warningLabel.font = UIFont.preferredFont(forTextStyle: .footnote)
         warningLabel.adjustsFontForContentSizeCategory = true
         warningLabel.textColor = .systemRed
-        warningLabel.text = "JIT is not supported on the OS version you are using."
-        if #available(iOS 17.0, *) {
-            if #unavailable(iOS 17.0.1) {
-                warningLabel.text = "Install the TrollStore version of Reynard to enable JIT automatically for improved performance and to ensure websites work properly."
-            }
+        warningLabel.text = NSLocalizedString("JIT is not supported on the OS version you are using.", comment: "")
+        if shouldUseTrollStore {
+            warningLabel.text = NSLocalizedString("Install the TrollStore version of Reynard to enable JIT automatically for improved performance and to ensure websites work properly.", comment: "")
         }
         return warningLabel
     }

@@ -30,7 +30,7 @@ final class HistoryViewController: UIViewController, UITableViewDataSource, UITa
         searchBar.autocapitalizationType = .none
         searchBar.autocorrectionType = .no
         searchBar.searchBarStyle = .minimal
-        searchBar.placeholder = "Search History"
+        searchBar.placeholder = NSLocalizedString("Search History", comment: "")
         searchBar.delegate = self
         return searchBar
     }()
@@ -73,6 +73,9 @@ final class HistoryViewController: UIViewController, UITableViewDataSource, UITa
         view.rowHeight = UITableView.automaticDimension
         view.estimatedRowHeight = UX.estimatedRowHeight
         view.separatorStyle = .singleLine
+        if #available(iOS 14.0, *) {
+            view.selectionFollowsFocus = false
+        }
         if #available(iOS 15.0, *) {
             view.sectionHeaderTopPadding = UX.sectionHeaderTopPadding
         }
@@ -80,7 +83,7 @@ final class HistoryViewController: UIViewController, UITableViewDataSource, UITa
         return view
     }()
     
-    private let emptyStateView = SidebarEmptyBackgroundView(message: "Your browsing history appears here")
+    private let emptyStateView = SidebarEmptyBackgroundView(message: NSLocalizedString("Your browsing history appears here", comment: ""))
     private var sections: [HistorySection] = []
     private var storeObserver: NSObjectProtocol?
     private var nextOffset = 0
@@ -419,7 +422,7 @@ final class HistoryViewController: UIViewController, UITableViewDataSource, UITa
     
     private func updateEmptyState() {
         let hasRows = !sections.isEmpty
-        emptyStateView.message = query.isEmpty ? "Your browsing history appears here" : "No matching history"
+        emptyStateView.message = query.isEmpty ? NSLocalizedString("Your browsing history appears here", comment: "") : NSLocalizedString("No matching history", comment: "")
         tableView.backgroundView = hasRows ? nil : emptyStateView
         emptyStateView.updateContentInsets(from: tableView)
     }
@@ -459,6 +462,7 @@ final class HistoryViewController: UIViewController, UITableViewDataSource, UITa
         }
         
         browserViewController.loadViewIfNeeded()
+        browserViewController.exitFullscreenIfNeeded()
         browserViewController.tabManager.browse(to: item.url.absoluteString)
         
         if navigationController?.presentingViewController is BrowserViewController {
@@ -543,7 +547,7 @@ final class HistoryViewController: UIViewController, UITableViewDataSource, UITa
         _ tableView: UITableView,
         trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath
     ) -> UISwipeActionsConfiguration? {
-        let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] _, _, completion in
+        let deleteAction = UIContextualAction(style: .destructive, title: NSLocalizedString("Delete", comment: "")) { [weak self] _, _, completion in
             guard let self, let item = self.item(at: indexPath) else {
                 completion(false)
                 return

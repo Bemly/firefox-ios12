@@ -1,0 +1,27 @@
+diff --git a/widget/uikit/BackgroundColor.h b/widget/uikit/BackgroundColor.h
+new file mode 100644
+index 000000000000..3d8184c4f00b
+--- /dev/null
++++ b/widget/uikit/BackgroundColor.h
+@@ -0,0 +1,21 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#ifndef mozilla_widget_BackgroundColor_h
++#define mozilla_widget_BackgroundColor_h
++
++#include "nsColor.h"
++
++class nsIWidget;
++
++namespace mozilla::widget {
++
++void DispatchBackgroundColor(nsIWidget* aWidget, nscolor aColor);
++
++}  // namespace mozilla::widget
++
++#endif  // mozilla_widget_BackgroundColor_h

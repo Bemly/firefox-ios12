@@ -1,8 +1,27 @@
 diff --git a/mobile/shared/modules/geckoview/GeckoViewSettings.sys.mjs b/mobile/shared/modules/geckoview/GeckoViewSettings.sys.mjs
-index 8fb59f0a7f72..1741f2e66e69 100644
+index 8fb59f0a7f72..f4f2d4484e88 100644
 --- a/mobile/shared/modules/geckoview/GeckoViewSettings.sys.mjs
 +++ b/mobile/shared/modules/geckoview/GeckoViewSettings.sys.mjs
-@@ -83,6 +83,7 @@ export class GeckoViewSettings extends GeckoViewModule {
+@@ -32,6 +32,10 @@ export class GeckoViewSettings extends GeckoViewModule {
+     debug`onInit`;
+     this._userAgentMode = USER_AGENT_MODE_MOBILE;
+     this._userAgentOverride = null;
++    this._platformOverride = null;
++    this._appVersionOverride = null;
++    this._oscpuOverride = null;
++    this._buildIDOverride = null;
+     this._sessionContextId = null;
+ 
+     this.registerListener(["GeckoView:GetUserAgent"]);
+@@ -79,10 +83,15 @@ export class GeckoViewSettings extends GeckoViewModule {
+     this.unsafeSessionContextId = settings.unsafeSessionContextId;
+     this.userAgentMode = settings.userAgentMode;
+     this.userAgentOverride = settings.userAgentOverride;
++    this.platformOverride = settings.platformOverride ?? null;
++    this.appVersionOverride = settings.appVersionOverride ?? null;
++    this.oscpuOverride = settings.oscpuOverride ?? null;
++    this.buildIDOverride = settings.buildIDOverride ?? null;
+     this.sessionContextId = settings.sessionContextId;
      this.suspendMediaWhenInactive = settings.suspendMediaWhenInactive;
      this.allowJavascript = settings.allowJavascript;
      this.viewportMode = settings.viewportMode;
@@ -10,7 +29,7 @@ index 8fb59f0a7f72..1741f2e66e69 100644
      this.useTrackingProtection = !!settings.useTrackingProtection;
  
      if (settings.isExtensionPopup) {
-@@ -135,6 +136,14 @@ export class GeckoViewSettings extends GeckoViewModule {
+@@ -135,6 +144,14 @@ export class GeckoViewSettings extends GeckoViewModule {
        aViewportMode == VIEWPORT_MODE_DESKTOP;
    }
  
@@ -24,4 +43,59 @@ index 8fb59f0a7f72..1741f2e66e69 100644
 +
    get userAgentMode() {
      return this._userAgentMode;
+   }
+@@ -163,6 +180,54 @@ export class GeckoViewSettings extends GeckoViewModule {
+     this.browsingContext.customUserAgent = this.customUserAgent;
+   }
+ 
++  get platformOverride() {
++    return this._platformOverride;
++  }
++
++  set platformOverride(aPlatform) {
++    if (aPlatform === this.platformOverride) {
++      return;
++    }
++    this._platformOverride = aPlatform;
++    this.browsingContext.customPlatform = aPlatform ?? "";
++  }
++
++  get appVersionOverride() {
++    return this._appVersionOverride;
++  }
++
++  set appVersionOverride(aAppVersion) {
++    if (aAppVersion === this.appVersionOverride) {
++      return;
++    }
++    this._appVersionOverride = aAppVersion;
++    this.browsingContext.customAppVersion = aAppVersion ?? "";
++  }
++
++  get oscpuOverride() {
++    return this._oscpuOverride;
++  }
++
++  set oscpuOverride(aOscpu) {
++    if (aOscpu === this.oscpuOverride) {
++      return;
++    }
++    this._oscpuOverride = aOscpu;
++    this.browsingContext.customOscpu = aOscpu ?? "";
++  }
++
++  get buildIDOverride() {
++    return this._buildIDOverride;
++  }
++
++  set buildIDOverride(aBuildID) {
++    if (aBuildID === this.buildIDOverride) {
++      return;
++    }
++    this._buildIDOverride = aBuildID;
++    this.browsingContext.customBuildID = aBuildID ?? "";
++  }
++
+   get suspendMediaWhenInactive() {
+     return this.browser.suspendMediaWhenInactive;
    }

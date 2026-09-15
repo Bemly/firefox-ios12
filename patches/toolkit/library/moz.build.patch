@@ -1,5 +1,5 @@
 diff --git a/toolkit/library/moz.build b/toolkit/library/moz.build
-index 08de21db825c..d87ed69fae24 100644
+index 377b348dfd1b..bf4c7eebf635 100644
 --- a/toolkit/library/moz.build
 +++ b/toolkit/library/moz.build
 @@ -242,6 +242,8 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":

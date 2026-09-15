@@ -18,6 +18,7 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
     
     private let contentController: SidebarContentController
     private var sidebarVisible = false
+    private weak var activeSidebarTextField: UITextField?
     
     var contentBrowser: SidebarContentController {
         return contentController
@@ -28,12 +29,11 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
     }
     
     var showChromeSidebarButton: Bool {
-        updateSplitBehavior()
         guard sidebarVisible else {
             return true
         }
         if #available(iOS 14.0, *) {
-            return preferredSplitBehavior == .overlay
+            return usesOverlaySplitBehavior
         }
         return false
     }
@@ -52,6 +52,13 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
         return navigationController
     }()
     
+    private lazy var primaryNavigationController: UINavigationController = {
+        let container = SidebarNavigationContainerViewController(navigationController: menuNavigationController)
+        let navigationController = UINavigationController(rootViewController: container)
+        navigationController.setNavigationBarHidden(true, animated: false)
+        return navigationController
+    }()
+    
     // MARK: - Lifecycle
     
     override var childForStatusBarHidden: UIViewController? {
@@ -67,6 +74,7 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
         }
         configureSplitView()
         observeApplicationActivation()
+        observeTextInput()
     }
     
     required init?(coder: NSCoder) {
@@ -145,16 +153,35 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
     
     // MARK: - Sections
     
-    func showSection(_ section: LibrarySection) {
+    func showSection(_ section: LibrarySection, startsEditingBookmarks: Bool = false) {
         setVisible(true)
-        menuController.showSection(section, animated: false)
+        menuController.showSection(
+            section,
+            animated: false,
+            startsEditingBookmarks: startsEditingBookmarks
+        )
     }
     
+    func toggleSection(_ section: LibrarySection) {
+        guard section != .history || !contentController.sidebarContentIsPrivate else {
+            return
+        }
+        if isSidebarVisible,
+           menuController.shownSection == section {
+            setVisible(false)
+            return
+        }
+        
+        showSection(section)
+    }
     // MARK: - UISplitViewControllerDelegate
     
     func splitViewController(_ svc: UISplitViewController, willChangeTo displayMode: UISplitViewController.DisplayMode) {
         sidebarVisible = displayMode != .secondaryOnly
         updateBrowserLayoutIfNeeded()
+        if !sidebarVisible {
+            menuNavigationController.view.endEditing(true)
+        }
     }
     
     // MARK: - Notifications
@@ -166,6 +193,30 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
     
     @objc private func applicationWillResignActive() {
         menuController.refreshSidebarButton()
+    }
+    
+    @objc private func sidebarTextInputDidBeginEditing(_ notification: Notification) {
+        guard let textField = notification.object as? UITextField,
+              menuNavigationController.isViewLoaded,
+              textField.isDescendant(of: menuNavigationController.view) else {
+            return
+        }
+        activeSidebarTextField = textField
+    }
+    
+    @objc private func sidebarTextInputDidEndEditing(_ notification: Notification) {
+        guard let textField = notification.object as? UITextField,
+              activeSidebarTextField === textField else {
+            return
+        }
+        activeSidebarTextField = nil
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  activeSidebarTextField == nil else {
+                return
+            }
+            contentController.sidebarDidEndEditing()
+        }
     }
     
     // MARK: - View Setup
@@ -183,12 +234,12 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
             if #available(iOS 14.5, *) {
                 displayModeButtonVisibility = .never
             }
-            setViewController(menuNavigationController, for: .primary)
+            setViewController(primaryNavigationController, for: .primary)
             setViewController(browserNavigationController, for: .secondary)
             menuNavigationController.loadViewIfNeeded()
         } else {
             preferredDisplayMode = .primaryHidden
-            viewControllers = [menuNavigationController, browserNavigationController]
+            viewControllers = [primaryNavigationController, browserNavigationController]
         }
     }
     
@@ -207,17 +258,35 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
         )
     }
     
+    private func observeTextInput() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(sidebarTextInputDidBeginEditing(_:)),
+            name: UITextField.textDidBeginEditingNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(sidebarTextInputDidEndEditing(_:)),
+            name: UITextField.textDidEndEditingNotification,
+            object: nil
+        )
+    }
+    
     // MARK: - Layout
+    
+    private var usesOverlaySplitBehavior: Bool {
+        let browserLayout = contentController.sidebarContentLayout
+        return browserLayout.orientation == .portrait
+        || (contentController.isSidebarOverlayLayout && browserLayout.chromeMode != .compact)
+    }
     
     private func updateSplitBehavior() {
         guard #available(iOS 14.0, *) else {
             return
         }
         
-        let browserLayout = contentController.sidebarContentLayout
-        let shouldOverlay = browserLayout.orientation == .portrait
-        || (contentController.isSidebarOverlayLayout && browserLayout.chromeMode != .compact)
-        let splitBehavior: UISplitViewController.SplitBehavior = shouldOverlay ? .overlay : .tile
+        let splitBehavior: UISplitViewController.SplitBehavior = usesOverlaySplitBehavior ? .overlay : .tile
         
         if preferredSplitBehavior != splitBehavior {
             preferredSplitBehavior = splitBehavior
@@ -236,5 +305,27 @@ final class SidebarViewController: UISplitViewController, UISplitViewControllerD
         }
         
         contentController.updateBrowserLayoutIfNeeded(animated: animated, duration: duration)
+    }
+}
+
+extension SidebarViewController {
+    @objc private func showHistoryKeyCommand(_ sender: UIKeyCommand) {
+        toggleSection(.history)
+    }
+    
+    @objc private func showBookmarksKeyCommand(_ sender: UIKeyCommand) {
+        toggleSection(.bookmarks)
+    }
+    
+    @objc private func showDownloadsKeyCommand(_ sender: UIKeyCommand) {
+        toggleSection(.downloads)
+    }
+    
+    @objc private func toggleSidebarKeyCommand(_ sender: UIKeyCommand) {
+        toggleVisibility()
+    }
+    
+    @objc private func editBookmarksKeyCommand(_ sender: UIKeyCommand) {
+        showSection(.bookmarks, startsEditingBookmarks: true)
     }
 }

@@ -1,19 +1,23 @@
 diff --git a/hal/moz.build b/hal/moz.build
-index bb486ec1e411..dfb2184e32b0 100644
+index bb486ec1e411..5134be85a48c 100644
 --- a/hal/moz.build
 +++ b/hal/moz.build
-@@ -85,6 +85,15 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
+@@ -85,6 +85,19 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
          "fallback/FallbackScreenConfiguration.cpp",
          "fallback/FallbackVibration.cpp",
      ]
 +elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "uikit":
 +    UNIFIED_SOURCES += [
-+        "fallback/FallbackBattery.cpp",
-+        "fallback/FallbackHeterogeneousCpuInfo.cpp",
-+        "fallback/FallbackProcessPriority.cpp",
-+        "fallback/FallbackScreenConfiguration.cpp",
 +        "fallback/FallbackVibration.cpp",
++        "uikit/UIKitBattery.mm",
++        "uikit/UIKitHeterogeneousCpuInfo.cpp",
++        "uikit/UIKitProcessPriority.mm",
 +        "uikit/UIKitSensor.mm",
++    ]
++    # UIKitScreenConfiguration.mm cannot be built in unified mode because it
++    # relies on HalImpl.h.
++    SOURCES += [
++        "uikit/UIKitScreenConfiguration.mm",
 +    ]
  elif CONFIG["OS_TARGET"] in ("OpenBSD", "NetBSD", "FreeBSD", "DragonFly"):
      UNIFIED_SOURCES += [

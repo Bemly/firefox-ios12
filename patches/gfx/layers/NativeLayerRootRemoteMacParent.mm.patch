@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/NativeLayerRootRemoteMacParent.mm b/gfx/layers/NativeLayerRootRemoteMacParent.mm
-index 731551b96d9f..c6381fd82469 100644
+index 7a4614038e1d..58d7d395eaa7 100644
 --- a/gfx/layers/NativeLayerRootRemoteMacParent.mm
 +++ b/gfx/layers/NativeLayerRootRemoteMacParent.mm
 @@ -15,9 +15,25 @@
@@ -7,7 +7,7 @@ index 731551b96d9f..c6381fd82469 100644
  }
  
 +void NativeLayerRootRemoteMacParent::Shutdown() {
-+  // REYNARD: Clear the remote layer state and release the root before the
++  // Clear the remote layer state and release the root before the
 +  // UIKit view backing it is torn down.
 +  if (mRealNativeLayerRoot) {
 +    mRealNativeLayerRoot->SetLayers({});
@@ -28,7 +28,7 @@ index 731551b96d9f..c6381fd82469 100644
    for (auto& command : aCommands) {
      switch (command.type()) {
        case NativeLayerCommand::TCommandCreateLayer: {
-@@ -88,6 +104,10 @@
+@@ -91,6 +107,10 @@
  
  mozilla::ipc::IPCResult NativeLayerRootRemoteMacParent::RecvRequestReadback(
      IntSize aSize, Shmem* const aPixels) {
@@ -39,3 +39,15 @@ index 731551b96d9f..c6381fd82469 100644
    if (!xpc::IsInAutomation()) {
      return IPC_FAIL(this, "Should only be called from automation.");
    }
+@@ -154,6 +174,11 @@
+ }
+ 
+ void NativeLayerRootRemoteMacParent::HandleLayerDestroyed(uint64_t aID) {
++#ifdef XP_IOS
++  if (auto entry = mKnownLayers.MaybeGet(aID)) {
++    mRealNativeLayerRoot->RetainLayerUntilNextScreenCommit(*entry);
++  }
++#endif
+   mKnownLayers.Remove(aID);
+ }
+ 
