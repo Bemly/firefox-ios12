@@ -248,6 +248,20 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   Send-Q/Recv-Q、`ls -lt .../CrashReporter/` 看新崩溃（`0xdead10cc` 是后台握锁被杀，
   `0x8badf00d` 是看门狗，加载卡死本身不崩溃）。
 
+## 媒体/视频现状（2026-09-16 实测）
+
+- **视频能放**：本地 720p30 H.264+AAC mp4 全屏播放成功（`MOZ_APPLEMEDIA=1`，
+  `AppleDecoderModule` 已注册，ffvpx 软解兜底也在），240p 丢帧约 4%。
+- **但没有可用的硬件加速**：播放时 app CPU 40–95%（720p）/22–65%（240p）；
+  纯 CSS 全屏动画（只有合成、无解码）CPU 也有 28–46% → 合成端是 **CPU 软合成**
+  （SWGL 特征，GPU 合成该是个位数）。解码端大概率也是 ffvpx 软解在扛大头。
+  真实网站高分辨率视频会卡顿、A7 发热。
+- 诊断法：局域网 `http.server` + ffmpeg 生成 testsrc2 测试视频 + JS
+  `getVideoPlaybackQuality()` 读 decoded/dropped + `ps` 采样 CPU 对比
+  （静态页 0% / 纯动画 ≈ 纯合成成本 / 视频 ≈ 合成+解码）。
+- 若要真加速，两块都要动：解码走 VT 硬解零拷贝（IOSurface→合成器）+
+  合成端上 GPU（WebRender GL/Metal 而非 SWGL）。属后续工程方向。
+
 ## Git 约定
 
 - `main` 恒等于 `origin/main`，保持干净可编；不要在 main 上堆验证代码。
