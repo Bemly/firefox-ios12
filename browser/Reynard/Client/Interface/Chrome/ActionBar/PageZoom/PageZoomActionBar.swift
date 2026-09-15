@@ -9,14 +9,26 @@ import UIKit
 
 final class PageZoomActionBar: UIView {
     private enum UX {
-        static let controlsHeight: CGFloat = 38
-        static let controlsWidth: CGFloat = 184
-        static let controlButtonWidth: CGFloat = 55
+        static var controlsHeight: CGFloat {
+            if #available(iOS 26.0, *) { return 48 }
+            return 38
+        }
+        static var controlsWidth: CGFloat {
+            if #available(iOS 26.0, *) { return 222 }
+            return 184
+        }
+        static var controlButtonWidth: CGFloat {
+            if #available(iOS 26.0, *) { return (controlsWidth - separatorWidth * 2) / 3 }
+            return 55
+        }
         static let separatorWidth: CGFloat = 1
-        static let controlsCornerRadius: CGFloat = 19
+        static var controlsCornerRadius: CGFloat { return controlsHeight / 2 }
         static let percentFontSize: CGFloat = 16
         static let controlSymbolPointSize: CGFloat = 14
         static let animationDuration: TimeInterval = 0.12
+        static let bounceScale: CGFloat = 1.3
+        static let bounceReturnDuration: TimeInterval = 0.75
+        static let bounceDamping: CGFloat = 0.5
         static let backgroundAlpha: CGFloat = 0.34
         static let disabledAlpha: CGFloat = 0.32
         static let shadowOpacity: Float = 0.14
@@ -107,6 +119,19 @@ final class PageZoomActionBar: UIView {
         ).cgPath
     }
     
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if #available(iOS 26.0, *), !controlsShadowView.frame.contains(point) { return nil }
+        return super.hitTest(point, with: event)
+    }
+    
+    // MARK: - Presentation
+    
+    @available(iOS 26.0, *)
+    func setModernContentHidden(_ hidden: Bool) {
+        controlsBackground.effect = hidden ? nil : UIGlassEffect.nonAdaptive(style: .regular)
+        controlsBackground.contentView.alpha = hidden ? 0 : 1
+    }
+    
     // MARK: - Updates
     
     func setZoomLevel(_ level: Int) {
@@ -135,15 +160,40 @@ final class PageZoomActionBar: UIView {
     // MARK: - Actions
     
     @objc private func zoomOutTapped() {
+        animatePillTap()
         onZoomOut?()
     }
     
     @objc private func zoomInTapped() {
+        animatePillTap()
         onZoomIn?()
     }
     
     @objc private func resetTapped() {
+        animatePillTap()
         onReset?()
+    }
+    
+    private func animatePillTap() {
+        guard #available(iOS 26.0, *), !UIAccessibility.isReduceMotionEnabled else { return }
+        UIView.animate(
+            withDuration: UX.animationDuration,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction]
+        ) {
+            self.controlsShadowView.transform = CGAffineTransform(scaleX: UX.bounceScale, y: UX.bounceScale)
+        } completion: { finished in
+            guard finished else { return }
+            UIView.animate(
+                withDuration: UX.bounceReturnDuration,
+                delay: 0,
+                usingSpringWithDamping: UX.bounceDamping,
+                initialSpringVelocity: 0,
+                options: [.beginFromCurrentState, .allowUserInteraction]
+            ) {
+                self.controlsShadowView.transform = .identity
+            }
+        }
     }
     
     // MARK: - View Setup
@@ -151,6 +201,13 @@ final class PageZoomActionBar: UIView {
     private func configureAppearance() {
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = .clear
+        if #available(iOS 26.0, *) {
+            backgroundView.isHidden = true
+            controlsBackground.effect = UIGlassEffect.nonAdaptive(style: .regular)
+            controlsBackground.contentView.backgroundColor = .clear
+            controlsBackground.layer.borderWidth = 0
+            controlsShadowView.layer.shadowOpacity = 0
+        }
     }
     
     private func configureHierarchy() {
