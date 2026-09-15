@@ -287,7 +287,7 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
         }
         let linkRange = (text as NSString).range(of: linkText)
         attributedText.addAttribute(
-            .appLink,
+            .link,
             value: URL(string: urlString)!,
             range: linkRange
         )

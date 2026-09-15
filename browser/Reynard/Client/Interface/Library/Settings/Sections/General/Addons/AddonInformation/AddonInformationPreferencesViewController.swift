@@ -222,13 +222,13 @@ final class AddonInformationPreferencesViewController: SettingsTableViewControll
             return
         case .information:
             guard metadataRows.indices.contains(indexPath.row),
-                  let url = metadataRows[indexPath.row].appLink else {
+                  let url = metadataRows[indexPath.row].link else {
                 return
             }
             LibrarySharedUtils.openLinkInBrowser(url, from: self)
         case .links:
             guard externalLinkRows.indices.contains(indexPath.row),
-                  let url = externalLinkRows[indexPath.row].appLink else {
+                  let url = externalLinkRows[indexPath.row].link else {
                 return
             }
             LibrarySharedUtils.openLinkInBrowser(url, from: self)
