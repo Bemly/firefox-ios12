@@ -270,9 +270,9 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
 
 - `main` 恒等于 `origin/main`，保持干净可编；不要在 main 上堆验证代码。
 - 2026-09-16 起公开仓库为 https://github.com/Bemly/firefox-ios12（remote `bemly`），
-  由 `local/jit-main-process-a7` 强推为 `main`；发布历史已用 filter-branch 剔除
-  上游误提交的 94MB `browser/Reynard/JIT/RPPairing/libidevice_ffi.a`（SHA 全变，
-  旧历史在本地 `backup/pre-strip-ffi` 和 `refs/original/`）。
+  由 `local/jit-main-process-a7` 强推为 `main`。曾用 filter-branch 剥离上游误提交的
+  94MB `browser/Reynard/JIT/RPPairing/libidevice_ffi.a`，但改写 SHA 会切断与上游的
+  共同祖先、后续合并必炸，用户决定**不剥离**，历史已恢复原样（接受该 blob）。
 - 验证性/过期代码放 `archive/*` 或 `local/*` 分支。已有：
   `archive/expired-validation-20260915`（launch-logging 验证，+43/-3），
   子模块内对应 `engine/firefox` 的 `archive/diag-launch-log`（`4a3f369` 写 `/tmp/ReynardLaunch.log` 的诊断提交）。
