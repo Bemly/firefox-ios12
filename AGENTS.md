@@ -280,5 +280,6 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   注意：装机包里的 JS 探针（`/tmp/gvnav.log` 系列、selfdrive 自动加载、WP listener）
   是直接改 DerivedData 内 `.app` 拷贝做的**一次性实验**，没进 git，重编即丢；
   转正前要么删掉、要么按“debug 模式开关”收敛（用户已要求，待做）。
-- 本文件含口令（alpine/2328），只放本地，**不要 push 到公开远端**。
+- 本文件含口令（alpine/2328），2026-09-16 经用户知情确认后随仓库公开上传
+  （原“只放本地、不 push 公开远端”规则已按同一确认删除）。
   （UDID/ECID/序列号已按要求从本文删掉。）
