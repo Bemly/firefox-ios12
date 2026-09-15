@@ -58,12 +58,15 @@ public class GeckoEventDispatcherWrapper: NSObject, SwiftEventDispatcher {
         type: String, message: [String: Any?]? = nil, callback: EventCallback? = nil
     ) {
         if let registeredListeners = listeners[type] {
+            NSLog("[PROBE] dispatch %@ -> local(%d listeners)", type, registeredListeners.count)
             for listener in registeredListeners {
                 listener.handleMessage(type: type, message: message, callback: callback)
             }
         } else if queue != nil {
+            NSLog("[PROBE] dispatch %@ -> QUEUED(len=%d) gecko=%@", type, queue?.count ?? -1, String(describing: gecko))
             queue?.append(QueuedMessage(type: type, message: message, callback: callback))
         } else {
+            NSLog("[PROBE] dispatch %@ -> toGecko", type)
             gecko?.dispatch(toGecko: type, message: message, callback: callback)
         }
     }
@@ -96,6 +99,7 @@ public class GeckoEventDispatcherWrapper: NSObject, SwiftEventDispatcher {
     }
     
     public func attach(_ dispatcher: (any GeckoEventDispatcher)?) {
+        NSLog("[PROBE] dispatcher attach gecko=%@", String(describing: dispatcher))
         gecko = dispatcher
     }
     
@@ -109,6 +113,7 @@ public class GeckoEventDispatcherWrapper: NSObject, SwiftEventDispatcher {
     }
     
     public func activate() {
+        NSLog("[PROBE] dispatcher activate flush=%d", queue?.count ?? -1)
         if let queue = self.queue {
             self.queue = nil
             for event in queue {
