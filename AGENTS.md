@@ -36,12 +36,32 @@
 - 日志：`idevicesyslog`，崩溃：`/var/mobile/Library/Logs/CrashReporter/`。
 - Frida (动态分析首选，server 端已就绪)：Mac 端 `pip install "frida==17.17.0" frida-tools`，
   然后 `frida-ps -U` / `frida -U -f <bundle-id>`，走 usbmux 不用额外隧道。
-- 真断点 (已端到端验证)：手机 ` /usr/local/bin/debugserver12 0.0.0.0:1234 -a <pid>`，
-  Mac `iproxy 1234:1234`，再用 **15 的 lldb**：
-  `platform select remote-ios` → `target create 本地.app` → `process connect connect://127.0.0.1:1234` → `b 文件:行号`。
+- 真断点 (已端到端验证，2026-09-15 用 main 分支 Debug 包实测通过)：手机
+  `/usr/local/bin/debugserver12 0.0.0.0:1234 -a <pid>`，Mac `iproxy 1234:1234`，再用
+  **26 的 lldb**（15 的 lldb-1500 会在 `target create` 本工程二进制时崩溃，无 target 裸连才可用）：
+  `platform select remote-ios` → `target create <本地.app/二进制>` → `process connect connect://127.0.0.1:1234` →
+  `bt` → `b` → `process detach`。实测堆栈可符号化到 `XUL`Run at nsAppShell.mm:308`。
 - debugserver 丢了重提 (Mac `/tmp` 重启会丢，不要当永久存储)：
   `hdiutil attach Xcode15 DeviceSupport/12.4/DeveloperDiskImage.dmg` → 拷出 `usr/bin/debugserver` →
   `scp -O` 上机 → 按上文 4 项 entitlement `ldid -S` 签名。注意机上没有 `pkill`，kill 用 `kill $(ps aux | grep ... | awk '{print $2}')`。
+
+## main 分支构建 (2026-09-15 实测链路)
+
+- 子模块刚 `update/reset` 后必须先 `./tools/development/apply-patches.sh`，否则
+  `dist/include` 里链回源码的软链是断的（如 `GeckoViewRuntimeSupport.h`），Swift 编译报
+  `cannot find type 'DeviceOSVersion' in scope`。打完补丁子模块变脏属正常（工作树补丁流），不要提交。
+- 本机 0 个有效签名证书，`AddGecko.sh` 里写死的 `Apple Development` 会挂。
+  不改仓库文件的做法：`CODE_SIGNING_ALLOWED=NO` + PATH 里放 `codesign` 垫片，
+  把 `--sign "Apple Development"` 映射成 `--sign -`（ad-hoc，见 `/tmp/fakebin/codesign`，重启会丢）。
+- Debug 构建命令（Xcode 26.6，不动 select）：
+  `PATH=/tmp/fakebin:$PATH DEVELOPER_DIR=/Applications/Xcode.app/... xcodebuild build
+  -project browser/Reynard.xcodeproj -scheme Reynard -configuration Debug -sdk iphoneos -arch arm64
+  CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="-" -derivedDataPath /tmp/ReynardDD`
+- 装机前 Mac 端 `ldid -S` 重签（AppSync 越狱机可装）：主二进制用
+  `browser/Reynard/Entitlements/Reynard.private.entitlements`（自带 `get-task-allow`，attach 必需），
+  Helper 用 `Reynard-Helper.private.entitlements`，OpenIn 和 dylib 直接 `ldid -S`。
+  保持 bundle id 原样（`com.minh-ton.Reynard.MH79SBCPK5` 系列）可覆盖升级已装版本。
+- 打包 `Payload/*.app` → zip 改 `.ipa` → `ideviceinstaller install`，启动 `uiopen <bundle-id>`。
 
 ## Git 约定
 
