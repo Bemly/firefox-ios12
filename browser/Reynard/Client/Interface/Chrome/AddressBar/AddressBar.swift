@@ -166,7 +166,7 @@ final class AddressBar: UIView {
         view.layer.cornerCurve = .continuous
         view.layer.cornerRadius = UX.addressBarBackgroundCornerRadius
         view.layer.borderWidth = UX.borderWidth
-        view.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
+        view.layer.borderColor = UIColor.appSeparator.withAlphaComponent(0.2).cgColor
         return view
     }()
     
@@ -202,7 +202,7 @@ final class AddressBar: UIView {
         field.borderStyle = .none
         field.backgroundColor = .clear
         field.textAlignment = .left
-        field.placeholder = AddressBar.placeholderText
+        field.placeholder = AddressBar.appPlaceholderText
         field.keyboardType = .webSearch
         field.autocapitalizationType = .none
         field.autocorrectionType = .no
@@ -1091,7 +1091,7 @@ final class AddressBar: UIView {
             string: String(domain.dropFirst(query.count)),
             attributes: [
                 .foregroundColor: UIColor.label,
-                .backgroundColor: UIColor.systemGray4
+                .backgroundColor: UIColor.appSystemGray4
             ]
         ))
         return (attributed, domain, domain)

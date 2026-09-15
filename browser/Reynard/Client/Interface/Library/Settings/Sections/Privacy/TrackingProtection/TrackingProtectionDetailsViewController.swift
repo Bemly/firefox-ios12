@@ -137,7 +137,7 @@ final class TrackingProtectionDetailsViewController: SettingsTableViewController
         let cell = SettingsTableViewCell(style: .subtitle, reuseIdentifier: nil)
         cell.textLabel?.text = category.title
         cell.detailTextLabel?.text = category.description
-        cell.detailTextLabel?.textColor = .secondaryLabel
+        cell.detailTextLabel?.textColor = .appSecondaryLabel
         cell.detailTextLabel?.numberOfLines = 0
         cell.selectionStyle = .none
         return cell

@@ -92,7 +92,7 @@ final class HomepageThumbnailRenderer {
         
         let renderer = UIGraphicsImageRenderer(size: size)
         let image = renderer.image { context in
-            UIColor.systemBackground.setFill()
+            UIColor.appSystemBackground.setFill()
             context.fill(CGRect(origin: .zero, size: size))
             view.drawHierarchy(in: CGRect(origin: .zero, size: size), afterScreenUpdates: false)
         }

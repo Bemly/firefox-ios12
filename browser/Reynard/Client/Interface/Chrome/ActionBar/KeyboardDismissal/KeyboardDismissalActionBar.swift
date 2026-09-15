@@ -15,9 +15,9 @@ final class KeyboardDismissalActionBar: UIView {
     var onDone: (() -> Void)?
     
     private let backgroundView: UIVisualEffectView = {
-        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .appChromeMaterial))
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.contentView.backgroundColor = UIColor.systemBackground.withAlphaComponent(UX.backgroundAlpha)
+        view.contentView.backgroundColor = UIColor.appSystemBackground.withAlphaComponent(UX.backgroundAlpha)
         return view
     }()
     

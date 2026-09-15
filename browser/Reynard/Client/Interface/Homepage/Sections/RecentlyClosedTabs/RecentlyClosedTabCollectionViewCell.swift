@@ -25,7 +25,7 @@ final class RecentlyClosedTabCollectionViewCell: UICollectionViewCell {
     )
     
     private let pillView: UIVisualEffectView = {
-        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .appChromeMaterial))
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isUserInteractionEnabled = false
         view.layer.cornerCurve = .continuous
@@ -140,7 +140,7 @@ final class RecentlyClosedTabCollectionViewCell: UICollectionViewCell {
     // MARK: - Appearance
     
     private func updateAppearance() {
-        titleLabel.textColor = .label
+        titleLabel.textColor = .appLabel
         layer.shadowColor = UIColor.black.cgColor
     }
 }

@@ -386,7 +386,7 @@ final class TrackingProtectionPreferencesViewController: SettingsTableViewContro
         let cell = SettingsTableViewCell(style: description == nil ? .default : .subtitle, reuseIdentifier: nil)
         cell.textLabel?.text = title
         cell.detailTextLabel?.text = description
-        cell.detailTextLabel?.textColor = .secondaryLabel
+        cell.detailTextLabel?.textColor = .appSecondaryLabel
         cell.detailTextLabel?.numberOfLines = 0
         cell.accessoryType = protectionLevel == Prefs.TrackingProtectionPreferences.level ? .checkmark : .none
         return cell
@@ -397,7 +397,7 @@ final class TrackingProtectionPreferencesViewController: SettingsTableViewContro
         cell.textLabel?.text = title
         cell.textLabel?.isEnabled = isEnabled
         cell.detailTextLabel?.text = description
-        cell.detailTextLabel?.textColor = .secondaryLabel
+        cell.detailTextLabel?.textColor = .appSecondaryLabel
         cell.detailTextLabel?.isEnabled = isEnabled
         cell.detailTextLabel?.numberOfLines = 0
         cell.indentationLevel = UX.optionIndentationLevel
@@ -410,7 +410,7 @@ final class TrackingProtectionPreferencesViewController: SettingsTableViewContro
         let cell = SettingsTableViewCell(style: .value1, reuseIdentifier: nil)
         cell.textLabel?.text = title
         cell.detailTextLabel?.text = selection
-        cell.detailTextLabel?.textColor = .secondaryLabel
+        cell.detailTextLabel?.textColor = .appSecondaryLabel
         cell.indentationLevel = UX.optionIndentationLevel
         cell.accessoryType = .disclosureIndicator
         return cell

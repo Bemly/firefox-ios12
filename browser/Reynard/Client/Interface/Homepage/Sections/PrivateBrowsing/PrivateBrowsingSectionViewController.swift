@@ -41,7 +41,7 @@ final class PrivateBrowsingSectionViewController: UIViewController {
     }()
     
     private let backgroundView: UIVisualEffectView = {
-        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .appChromeMaterial))
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isUserInteractionEnabled = false
         view.layer.cornerCurve = .continuous
@@ -74,7 +74,7 @@ final class PrivateBrowsingSectionViewController: UIViewController {
         )
         label.text = NSLocalizedString("Private Browsing", comment: "")
         label.textAlignment = .center
-        label.textColor = .label
+        label.textColor = .appLabel
         label.numberOfLines = 0
         label.adjustsFontForContentSizeCategory = true
         return label
@@ -88,7 +88,7 @@ final class PrivateBrowsingSectionViewController: UIViewController {
         )
         label.text = NSLocalizedString("After you close a tab, Reynard won’t remember any of your browsing history or cookies. However, downloads and new bookmarks will be saved.", comment: "")
         label.textAlignment = .center
-        label.textColor = .secondaryLabel
+        label.textColor = .appSecondaryLabel
         label.numberOfLines = 0
         label.adjustsFontForContentSizeCategory = true
         return label

@@ -23,7 +23,7 @@ final class SidebarNavigationContainerViewController: UIViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemGray6
+        view.backgroundColor = .appSystemGray6
         configureNavigationController()
     }
     

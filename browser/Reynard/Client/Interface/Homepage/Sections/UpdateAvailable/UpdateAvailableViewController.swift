@@ -45,7 +45,7 @@ final class UpdateAvailableViewController: UIViewController, HomepageRecommendat
     }()
     
     private let backgroundView: UIVisualEffectView = {
-        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .appChromeMaterial))
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isUserInteractionEnabled = false
         view.layer.cornerCurve = .continuous

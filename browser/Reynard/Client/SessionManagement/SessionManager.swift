@@ -342,7 +342,7 @@ final class SessionManager {
     // MARK: - Page Background Color
     
     func pageBackgroundColor(for session: GeckoSession) -> UIColor {
-        return pageBackgroundColors[ObjectIdentifier(session)] ?? .systemBackground
+        return pageBackgroundColors[ObjectIdentifier(session)] ?? .appSystemBackground
     }
     
     func setPageBackgroundColor(_ color: UIColor, for session: GeckoSession) {

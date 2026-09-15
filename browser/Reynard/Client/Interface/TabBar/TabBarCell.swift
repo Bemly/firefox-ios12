@@ -54,8 +54,8 @@ final class TabBarCell: UICollectionViewCell {
     private static let fallbackFavicon = UIImage(named: "reynard.globe")
     private static let selectedTabBackgroundColor = UIColor { traitCollection in
         let backgroundColor: UIColor = traitCollection.userInterfaceStyle == .dark
-        ? .tertiarySystemBackground.withAlphaComponent(0.8)
-        : .systemBackground.withAlphaComponent(0.8)
+        ? .appTertiarySystemBackground.withAlphaComponent(0.8)
+        : .appSystemBackground.withAlphaComponent(0.8)
         return backgroundColor.resolvedColor(with: traitCollection)
     }
     var closeHandler: (() -> Void)?
@@ -167,8 +167,8 @@ final class TabBarCell: UICollectionViewCell {
         faviconView.image = tab.favicon ?? Self.fallbackFavicon
         tabContentView.backgroundColor = isSelected ? Self.selectedTabBackgroundColor : .clear
         tabContentView.layer.borderWidth = isSelected ? UX.borderWidth : 0
-        titleLabel.textColor = isSelected ? .label : .secondaryLabel
-        faviconView.tintColor = isSelected ? .label : .secondaryLabel
+        titleLabel.textColor = isSelected ? .appLabel : .appSecondaryLabel
+        faviconView.tintColor = isSelected ? .appLabel : .appSecondaryLabel
         let minimumVisibleTitle = Self.minimumVisibleTabTitle as NSString
         let minimumTitleWidth = minimumVisibleTitle.size(withAttributes: [.font: titleLabel.font as Any]).width
         let availableTitleWidth = cellWidth - UX.expandedTabTitleWidthInset
@@ -253,7 +253,7 @@ final class TabBarCell: UICollectionViewCell {
     }
     
     private func updateBorderColor() {
-        tabContentView.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
+        tabContentView.layer.borderColor = UIColor.appSeparator.withAlphaComponent(0.2).cgColor
     }
     
     // MARK: - Actions

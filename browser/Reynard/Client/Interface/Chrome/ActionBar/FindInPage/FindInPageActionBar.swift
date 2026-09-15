@@ -35,9 +35,9 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
     var onDismiss: (() -> Void)?
     
     private let backgroundView: UIVisualEffectView = {
-        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .appChromeMaterial))
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.contentView.backgroundColor = UIColor.systemBackground.withAlphaComponent(UX.backgroundAlpha)
+        view.contentView.backgroundColor = UIColor.appSystemBackground.withAlphaComponent(UX.backgroundAlpha)
         return view
     }()
     
@@ -52,7 +52,7 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
         field.translatesAutoresizingMaskIntoConstraints = false
         field.borderStyle = .none
         field.placeholder = NSLocalizedString("Find", comment: "Find in page search placeholder")
-        field.textColor = .label
+        field.textColor = .appLabel
         field.font = UIFont.systemFont(ofSize: 17)
         field.clearButtonMode = .never
         field.autocapitalizationType = .none
@@ -66,7 +66,7 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = UIFont.monospacedDigitSystemFont(ofSize: 16, weight: .regular)
-        label.textColor = .secondaryLabel
+        label.textColor = .appSecondaryLabel
         label.textAlignment = .right
         label.lineBreakMode = .byClipping
         label.isHidden = true
@@ -87,18 +87,18 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
     }()
     
     private let searchBarBackground: UIVisualEffectView = {
-        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .appMaterial))
         view.translatesAutoresizingMaskIntoConstraints = false
         view.contentView.backgroundColor = UIColor { traitCollection in
             let backgroundColor: UIColor = traitCollection.userInterfaceStyle == .dark
-            ? .tertiarySystemBackground.withAlphaComponent(0.8)
-            : .systemBackground.withAlphaComponent(0.8)
+            ? .appTertiarySystemBackground.withAlphaComponent(0.8)
+            : .appSystemBackground.withAlphaComponent(0.8)
             return backgroundColor.resolvedColor(with: traitCollection)
         }
         view.layer.cornerCurve = .continuous
         view.layer.cornerRadius = UX.controlsCornerRadius
         view.layer.borderWidth = UX.borderWidth
-        view.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
+        view.layer.borderColor = UIColor.appSeparator.withAlphaComponent(0.2).cgColor
         view.clipsToBounds = true
         return view
     }()
@@ -117,18 +117,18 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
     }()
     
     private let controlsBackground: UIVisualEffectView = {
-        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .appMaterial))
         view.translatesAutoresizingMaskIntoConstraints = false
         view.contentView.backgroundColor = UIColor { traitCollection in
             let backgroundColor: UIColor = traitCollection.userInterfaceStyle == .dark
-            ? .tertiarySystemBackground.withAlphaComponent(0.8)
-            : .systemBackground.withAlphaComponent(0.8)
+            ? .appTertiarySystemBackground.withAlphaComponent(0.8)
+            : .appSystemBackground.withAlphaComponent(0.8)
             return backgroundColor.resolvedColor(with: traitCollection)
         }
         view.layer.cornerCurve = .continuous
         view.layer.cornerRadius = UX.controlsCornerRadius
         view.layer.borderWidth = UX.borderWidth
-        view.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
+        view.layer.borderColor = UIColor.appSeparator.withAlphaComponent(0.2).cgColor
         view.clipsToBounds = true
         return view
     }()
@@ -146,7 +146,7 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
     private let separator: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = .separator
+        view.backgroundColor = .appSeparator
         return view
     }()
     
@@ -415,7 +415,7 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
             weight: .regular
         )
         button.setImage(UIImage(named: imageName, in: .main, with: configuration), for: .normal)
-        button.tintColor = .label
+        button.tintColor = .appLabel
         button.addTarget(self, action: action, for: .touchUpInside)
         return button
     }

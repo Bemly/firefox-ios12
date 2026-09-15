@@ -145,7 +145,7 @@ final class BrowsingPreferencesViewController: SettingsTableViewController {
                 let cell = SettingsTableViewCell(style: .value1, reuseIdentifier: nil)
                 cell.textLabel?.text = NSLocalizedString("Open Links in New Tabs", comment: "")
                 cell.detailTextLabel?.text = Prefs.BrowsingSettings.openLinksInNewTabsBehavior.title
-                cell.detailTextLabel?.textColor = .secondaryLabel
+                cell.detailTextLabel?.textColor = .appSecondaryLabel
                 cell.accessoryType = .disclosureIndicator
                 return cell
             }

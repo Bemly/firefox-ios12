@@ -29,7 +29,7 @@ final class ClearHistoryViewController: UITableViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = .appSystemGroupedBackground
         navigationItem.largeTitleDisplayMode = .never
         navigationItem.rightBarButtonItem = LibraryActionButton.makeSheetCloseButton(target: self, action: #selector(dismissSheet))
     }
@@ -80,7 +80,7 @@ final class ClearHistoryViewController: UITableViewController {
             ClearDataTimeframe.configureCell(cell, at: indexPath, selectedTimeframe: selectedTimeframe)
         } else {
             cell.textLabel?.text = NSLocalizedString("Close All Tabs", comment: "")
-            cell.textLabel?.textColor = .label
+            cell.textLabel?.textColor = .appLabel
             cell.accessoryView = closeAllTabsSwitch
             cell.accessoryType = .none
             cell.selectionStyle = .none

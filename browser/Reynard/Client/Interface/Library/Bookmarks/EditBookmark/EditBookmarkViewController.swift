@@ -127,7 +127,7 @@ final class EditBookmarkViewController: UIViewController, UITableViewDataSource,
         super.viewDidLoad()
         
         title = limitsToFavorites ? NSLocalizedString("Add to Favorites", comment: "") : (bookmark == nil ? NSLocalizedString("Add Bookmark", comment: "") : NSLocalizedString("Edit Bookmark", comment: ""))
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = .appSystemGroupedBackground
         navigationItem.largeTitleDisplayMode = .never
         
         if #available(iOS 26.0, *) {

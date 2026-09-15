@@ -58,14 +58,14 @@ final class PageZoomActionBar: UIView {
         view.translatesAutoresizingMaskIntoConstraints = false
         view.contentView.backgroundColor = UIColor { traitCollection in
             let backgroundColor: UIColor = traitCollection.userInterfaceStyle == .dark
-            ? .tertiarySystemBackground.withAlphaComponent(0.8)
-            : .systemBackground.withAlphaComponent(0.8)
+            ? .appTertiarySystemBackground.withAlphaComponent(0.8)
+            : .appSystemBackground.withAlphaComponent(0.8)
             return backgroundColor.resolvedColor(with: traitCollection)
         }
         view.layer.cornerCurve = .continuous
         view.layer.cornerRadius = UX.controlsCornerRadius
         view.layer.borderWidth = UX.borderWidth
-        view.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
+        view.layer.borderColor = UIColor.appSeparator.withAlphaComponent(0.2).cgColor
         view.clipsToBounds = true
         return view
     }()

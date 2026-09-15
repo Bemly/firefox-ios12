@@ -60,7 +60,7 @@ final class NewBookmarkFolderViewController: UIViewController, UITableViewDataSo
         super.viewDidLoad()
         
         title = NSLocalizedString("New Folder", comment: "")
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = .appSystemGroupedBackground
         navigationItem.largeTitleDisplayMode = .never
         
         if #available(iOS 26.0, *) {

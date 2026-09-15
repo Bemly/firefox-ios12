@@ -84,7 +84,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
     private let toolbarTextLabel: UILabel = {
         let label = UILabel()
         label.textAlignment = .left
-        label.textColor = .label
+        label.textColor = .appLabel
         label.lineBreakMode = .byTruncatingTail
         label.isHidden = true
         label.isAccessibilityElement = false

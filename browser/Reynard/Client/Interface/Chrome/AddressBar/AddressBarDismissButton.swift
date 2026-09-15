@@ -60,7 +60,7 @@ final class AddressBarDismissButton: UIButton {
         } else {
             backgroundColor = .appSystemBackground
         }
-        tintColor = .label
+        tintColor = .appLabel
         layer.cornerCurve = .continuous
         layer.shadowColor = UIColor.black.cgColor
         layer.shadowRadius = UX.dismissButtonShadowRadius
@@ -78,6 +78,6 @@ final class AddressBarDismissButton: UIButton {
     }
     
     private func updateBorderColor() {
-        layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
+        layer.borderColor = UIColor.appSeparator.withAlphaComponent(0.2).cgColor
     }
 }

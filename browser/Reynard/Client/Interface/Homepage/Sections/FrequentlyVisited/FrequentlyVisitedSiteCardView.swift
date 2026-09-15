@@ -29,7 +29,7 @@ final class FrequentlyVisitedSiteCardView: UIControl {
     )
     
     private let backgroundView: UIVisualEffectView = {
-        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .appChromeMaterial))
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isUserInteractionEnabled = false
         view.layer.cornerCurve = .continuous
@@ -185,8 +185,8 @@ final class FrequentlyVisitedSiteCardView: UIControl {
     
     private func updateAppearance() {
         backgroundColor = .clear
-        previewView.backgroundColor = .systemGray6
-        titleLabel.textColor = .label
+        previewView.backgroundColor = .appSystemGray6
+        titleLabel.textColor = .appLabel
         layer.shadowColor = UIColor.black.cgColor
     }
 }

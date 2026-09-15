@@ -325,7 +325,7 @@ final class SiteSettingsViewController: UITableViewController, UINavigationContr
             cell.detailTextLabel?.text = protectionEnabled && !hasTrackingProtectionException
             ? NSLocalizedString("If something looks broken on this website, try turning it off.", comment: "")
             : NSLocalizedString("Turning on tracking protection is recommended.", comment: "")
-            cell.detailTextLabel?.textColor = .secondaryLabel
+            cell.detailTextLabel?.textColor = .appSecondaryLabel
             cell.detailTextLabel?.numberOfLines = 0
             trackingProtectionSwitch.isOn = protectionEnabled && !hasTrackingProtectionException
             trackingProtectionSwitch.isEnabled = protectionEnabled

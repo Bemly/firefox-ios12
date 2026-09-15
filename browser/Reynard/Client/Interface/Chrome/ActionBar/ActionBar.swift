@@ -101,18 +101,18 @@ final class ActionBar: UIView {
     }()
     
     private let closeBackground: UIVisualEffectView = {
-        let view = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
+        let view = UIVisualEffectView(effect: UIBlurEffect(style: .appMaterial))
         view.translatesAutoresizingMaskIntoConstraints = false
         view.contentView.backgroundColor = UIColor { traitCollection in
             let backgroundColor: UIColor = traitCollection.userInterfaceStyle == .dark
-            ? .tertiarySystemBackground.withAlphaComponent(0.8)
-            : .systemBackground.withAlphaComponent(0.8)
+            ? .appTertiarySystemBackground.withAlphaComponent(0.8)
+            : .appSystemBackground.withAlphaComponent(0.8)
             return backgroundColor.resolvedColor(with: traitCollection)
         }
         view.layer.cornerCurve = .continuous
         view.layer.cornerRadius = UX.closeButtonCornerRadius
         view.layer.borderWidth = UX.borderWidth
-        view.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
+        view.layer.borderColor = UIColor.appSeparator.withAlphaComponent(0.2).cgColor
         view.clipsToBounds = true
         return view
     }()
@@ -120,7 +120,7 @@ final class ActionBar: UIView {
     private let topBorderView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = UIColor.separator.withAlphaComponent(0.2)
+        view.backgroundColor = UIColor.appSeparator.withAlphaComponent(0.2)
         return view
     }()
     
@@ -129,7 +129,7 @@ final class ActionBar: UIView {
         button.translatesAutoresizingMaskIntoConstraints = false
         let configuration = UIImage.SymbolConfiguration(pointSize: UX.closeSymbolPointSize, weight: .regular)
         button.setImage(UIImage(named: "reynard.xmark", in: .main, with: configuration), for: .normal)
-        button.tintColor = .secondaryLabel
+        button.tintColor = .appSecondaryLabel
         button.backgroundColor = .clear
         button.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         return button

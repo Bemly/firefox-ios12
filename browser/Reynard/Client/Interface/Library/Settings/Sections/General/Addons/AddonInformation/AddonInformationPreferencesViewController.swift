@@ -190,8 +190,8 @@ final class AddonInformationPreferencesViewController: SettingsTableViewControll
             let cell = SettingsTableViewCell(style: .value1, reuseIdentifier: nil)
             cell.textLabel?.text = row.title
             cell.detailTextLabel?.text = row.value
-            cell.detailTextLabel?.textColor = row.link == nil ? .appSecondaryLabel : view.tintColor
-            cell.accessoryType = row.link == nil ? .none : .disclosureIndicator
+            cell.detailTextLabel?.textColor = row.appLink == nil ? .appSecondaryLabel : view.tintColor
+            cell.accessoryType = row.appLink == nil ? .none : .disclosureIndicator
             return cell
         case .links:
             guard externalLinkRows.indices.contains(indexPath.row) else {
@@ -222,13 +222,13 @@ final class AddonInformationPreferencesViewController: SettingsTableViewControll
             return
         case .information:
             guard metadataRows.indices.contains(indexPath.row),
-                  let url = metadataRows[indexPath.row].link else {
+                  let url = metadataRows[indexPath.row].appLink else {
                 return
             }
             LibrarySharedUtils.openLinkInBrowser(url, from: self)
         case .links:
             guard externalLinkRows.indices.contains(indexPath.row),
-                  let url = externalLinkRows[indexPath.row].link else {
+                  let url = externalLinkRows[indexPath.row].appLink else {
                 return
             }
             LibrarySharedUtils.openLinkInBrowser(url, from: self)

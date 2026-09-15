@@ -24,7 +24,7 @@ final class ClearDownloadsViewController: UITableViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = .appSystemGroupedBackground
         navigationItem.largeTitleDisplayMode = .never
         navigationItem.rightBarButtonItem = LibraryActionButton.makeSheetCloseButton(target: self, action: #selector(dismissSheet))
     }

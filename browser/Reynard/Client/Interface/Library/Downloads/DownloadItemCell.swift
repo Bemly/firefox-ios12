@@ -129,8 +129,8 @@ final class DownloadItemCell: UITableViewCell {
         let isDeleted = item.state == .completed && !item.fileExists
         let isUnavailable = isDeleted || item.state == .cancelled || item.state == .failed
         contentView.alpha = isUnavailable ? 0.45 : 1
-        fileNameLabel.textColor = isUnavailable ? .secondaryLabel : .label
-        statusLabel.textColor = .secondaryLabel
+        fileNameLabel.textColor = isUnavailable ? .appSecondaryLabel : .appLabel
+        statusLabel.textColor = .appSecondaryLabel
         
         switch item.state {
         case .downloading:
@@ -225,7 +225,7 @@ final class DownloadItemCell: UITableViewCell {
         let placeholderIcon = Self.iconProvider.genericPlaceholderIcon()
         fileIconView.image = placeholderIcon
         fileIconView.transform = .identity
-        fileIconView.tintColor = placeholderIcon == nil ? .label : nil
+        fileIconView.tintColor = placeholderIcon == nil ? .appLabel : nil
     }
     
     // MARK: - Formatting

@@ -31,7 +31,7 @@ final class AddWebsiteLanguageCell: UITableViewCell {
     func display(language: WebsiteLanguage) {
         textLabel?.text = language.title
         detailTextLabel?.text = language.code
-        detailTextLabel?.textColor = .secondaryLabel
+        detailTextLabel?.textColor = .appSecondaryLabel
         accessoryView = addButton
     }
     

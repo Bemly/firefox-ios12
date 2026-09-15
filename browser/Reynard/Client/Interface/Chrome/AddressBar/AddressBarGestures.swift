@@ -262,7 +262,7 @@ final class AddressBarGestures: NSObject {
         container.layer.cornerRadius = UX.addressBarPreviewCornerRadius
         container.layer.cornerCurve = .continuous
         container.layer.borderWidth = UX.addressBarPreviewBorderWidth
-        container.layer.borderColor = UIColor.separator.withAlphaComponent(0.2).cgColor
+        container.layer.borderColor = UIColor.appSeparator.withAlphaComponent(0.2).cgColor
         container.layer.shadowColor = UIColor.black.cgColor
         container.layer.shadowOpacity = UX.addressBarPreviewShadowOpacity
         container.layer.shadowRadius = UX.addressBarPreviewShadowRadius
@@ -355,7 +355,7 @@ final class AddressBarGestures: NSObject {
     
     private func placeholderPreviewText() -> NSAttributedString {
         NSAttributedString(
-            string: AddressBar.placeholderText,
+            string: AddressBar.appPlaceholderText,
             attributes: [.foregroundColor: UIColor.appPlaceholderText]
         )
     }
@@ -548,10 +548,10 @@ final class AddressBarGestures: NSObject {
         let captureGeometry = delegate.transitionContentView.thumbnailCaptureGeometry
         let sourceBackgroundColor = delegate.activeTabs[safe: delegate.selectedTabIndex]
             .map { delegate.pageBackgroundColor(for: $0) }
-        ?? .systemBackground
+        ?? .appSystemBackground
         let targetBackgroundColor = delegate.activeTabs[safe: targetIndex]
             .map { delegate.pageBackgroundColor(for: $0) }
-        ?? .systemBackground
+        ?? .appSystemBackground
         var outgoingBackground: UIView?
         var targetBackground: UIView?
         var outgoingBarFinalFrame: CGRect?

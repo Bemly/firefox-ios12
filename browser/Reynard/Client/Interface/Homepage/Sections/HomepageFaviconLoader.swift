@@ -73,7 +73,7 @@ final class HomepageFaviconLoader {
     }
     
     private func applyFallbackIcon() {
-        updateIcon(UIImage(named: Self.fallbackIconName), .secondaryLabel, false)
+        updateIcon(UIImage(named: Self.fallbackIconName), .appSecondaryLabel, false)
     }
     
     private static func bundledIconName(for url: URL) -> String {

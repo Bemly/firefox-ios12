@@ -106,7 +106,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         case .hidden:
             let backgroundColor = tabManager.selectedTab.map {
                 sessionManager.pageBackgroundColor(for: $0.session)
-            } ?? .systemBackground
+            } ?? .appSystemBackground
             return backgroundColor.isLightColor(in: traitCollection) ? .darkContent : .lightContent
         }
     }

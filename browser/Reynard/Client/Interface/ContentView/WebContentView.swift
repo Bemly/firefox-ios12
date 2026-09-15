@@ -87,7 +87,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     }
     
     private func configureHierarchy() {
-        backgroundColor = .systemBackground
+        backgroundColor = .appSystemBackground
         webView.translatesAutoresizingMaskIntoConstraints = false
         pageBackgroundView.translatesAutoresizingMaskIntoConstraints = false
         errorLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -98,13 +98,13 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         scrollToTopTriggerView.showsVerticalScrollIndicator = false
         scrollToTopTriggerView.contentInsetAdjustmentBehavior = .never
         webView.interactionDelegate = self
-        pageBackgroundView.backgroundColor = .systemBackground
+        pageBackgroundView.backgroundColor = .appSystemBackground
         updateRefreshIndicatorTint()
         errorLabel.font = .preferredFont(forTextStyle: .body)
         errorLabel.adjustsFontForContentSizeCategory = true
         errorLabel.numberOfLines = 0
         errorLabel.textAlignment = .center
-        errorLabel.textColor = .secondaryLabel
+        errorLabel.textColor = .appSecondaryLabel
         errorLabel.isHidden = true
         refreshIndicator.hidesWhenStopped = false
         refreshIndicatorContainer.addSubview(refreshIndicator)
@@ -177,7 +177,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     
     func setFullscreen(_ fullscreen: Bool) {
         pageBackgroundView.isHidden = fullscreen
-        backgroundColor = fullscreen ? .black : .systemBackground
+        backgroundColor = fullscreen ? .black : .appSystemBackground
     }
     
     func setVisibility(_ visibility: VisibilityState) {
@@ -201,7 +201,7 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     
     func setTab(_ tab: Tab?, pageBackgroundColor: UIColor? = nil) {
         hidePageError()
-        pageBackgroundView.backgroundColor = pageBackgroundColor ?? .systemBackground
+        pageBackgroundView.backgroundColor = pageBackgroundColor ?? .appSystemBackground
         updateRefreshIndicatorTint()
         
         guard webView.session !== tab?.session else {

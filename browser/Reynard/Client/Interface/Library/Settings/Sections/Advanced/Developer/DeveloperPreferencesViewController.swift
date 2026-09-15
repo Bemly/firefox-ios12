@@ -116,7 +116,7 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
         textView.isScrollEnabled = false
         textView.backgroundColor = .clear
         textView.font = .preferredFont(forTextStyle: .footnote)
-        textView.textColor = .secondaryLabel
+        textView.textColor = .appSecondaryLabel
         textView.adjustsFontForContentSizeCategory = true
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
@@ -268,7 +268,7 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
             string: text,
             attributes: [
                 .font: font,
-                .foregroundColor: UIColor.secondaryLabel,
+                .foregroundColor: UIColor.appSecondaryLabel,
                 .paragraphStyle: paragraphStyle,
             ]
         )
@@ -287,7 +287,7 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
         }
         let linkRange = (text as NSString).range(of: linkText)
         attributedText.addAttribute(
-            .link,
+            .appLink,
             value: URL(string: urlString)!,
             range: linkRange
         )

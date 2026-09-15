@@ -156,7 +156,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         historyTransitionOverlayView.translatesAutoresizingMaskIntoConstraints = false
         overlayContentView.translatesAutoresizingMaskIntoConstraints = false
         historyPreviewImageView.isHidden = true
-        historyPreviewImageView.backgroundColor = .systemBackground
+        historyPreviewImageView.backgroundColor = .appSystemBackground
         historyPreviewImageView.contentMode = .scaleAspectFill
         historyPreviewImageView.clipsToBounds = true
         historyTransitionOverlayView.isHidden = true

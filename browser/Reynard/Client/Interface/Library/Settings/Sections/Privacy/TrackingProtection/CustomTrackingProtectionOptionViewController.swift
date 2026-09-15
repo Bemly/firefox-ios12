@@ -115,7 +115,7 @@ final class CustomTrackingProtectionOptionViewController: SettingsTableViewContr
         cell.textLabel?.text = displayedOption.title
         cell.textLabel?.numberOfLines = 0
         cell.detailTextLabel?.text = displayedOption.description
-        cell.detailTextLabel?.textColor = .secondaryLabel
+        cell.detailTextLabel?.textColor = .appSecondaryLabel
         cell.detailTextLabel?.numberOfLines = 0
         cell.accessoryType = indexPath.row == option.selectedOptionIndex ? .checkmark : .none
         return cell

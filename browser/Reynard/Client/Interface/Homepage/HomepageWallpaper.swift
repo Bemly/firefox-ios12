@@ -15,7 +15,7 @@ enum HomepageWallpaper {
         guard !contentMode.isDetached,
               Prefs.HomepageSettings.showsWallpaper,
               image != nil else {
-            return .label
+            return .appLabel
         }
         return usesLightForeground ? .white : .black
     }

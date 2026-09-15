@@ -10,7 +10,7 @@ import UIKit
 final class TabBarSeparatorView: UICollectionReusableView {
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = .separator
+        backgroundColor = .appSeparator
         isUserInteractionEnabled = false
     }
     

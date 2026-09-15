@@ -35,7 +35,7 @@ final class RecentlyClosedTabsSectionViewController: UIViewController {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = RecentlyClosedTabsSectionViewController.titleFont
-        label.textColor = .label
+        label.textColor = .appLabel
         label.text = NSLocalizedString("Recently Closed Tabs", comment: "")
         label.adjustsFontForContentSizeCategory = true
         return label

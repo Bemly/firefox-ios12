@@ -341,7 +341,7 @@ final class DNSOverHTTPSPreferencesViewController: SettingsTableViewController, 
         let cell = SettingsTableViewCell(style: .subtitle, reuseIdentifier: nil)
         cell.textLabel?.text = row.title
         cell.detailTextLabel?.text = row.subtitle
-        cell.detailTextLabel?.textColor = .secondaryLabel
+        cell.detailTextLabel?.textColor = .appSecondaryLabel
         cell.detailTextLabel?.numberOfLines = UX.subtitleLineCount
         cell.accessoryType = row.protectionLevel == displayedProtectionLevel ? .checkmark : .none
         return cell

@@ -54,7 +54,7 @@ final class HomepagePreferencesViewController: SettingsTableViewController {
             width: UX.wallpaperPreviewSize,
             height: UX.wallpaperPreviewSize
         ))
-        imageView.backgroundColor = .secondarySystemFill
+        imageView.backgroundColor = .appSecondarySystemFill
         imageView.contentMode = .scaleAspectFill
         imageView.layer.cornerRadius = UX.wallpaperPreviewCornerRadius
         imageView.clipsToBounds = true

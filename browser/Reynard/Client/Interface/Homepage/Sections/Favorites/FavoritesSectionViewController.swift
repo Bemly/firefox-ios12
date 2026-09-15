@@ -61,7 +61,7 @@ final class FavoritesSectionViewController: UIViewController {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = FavoritesSectionViewController.titleFont
-        label.textColor = .label
+        label.textColor = .appLabel
         label.text = NSLocalizedString("Favorites", comment: "")
         label.adjustsFontForContentSizeCategory = true
         return label

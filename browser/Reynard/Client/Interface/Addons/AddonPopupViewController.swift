@@ -38,7 +38,7 @@ final class AddonPopupViewController: UIViewController, ContentDelegate, Navigat
     private let modalTopBorderView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = UIColor.separator.withAlphaComponent(0.2)
+        view.backgroundColor = UIColor.appSeparator.withAlphaComponent(0.2)
         return view
     }()
     private let session: GeckoSession
@@ -153,7 +153,7 @@ final class AddonPopupViewController: UIViewController, ContentDelegate, Navigat
     }
     
     private func configurePopoverView() {
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = .appSystemBackground
         geckoView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(geckoView)
         

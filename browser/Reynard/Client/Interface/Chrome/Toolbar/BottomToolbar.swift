@@ -50,7 +50,7 @@ final class BottomToolbar: UIView {
         if #available(iOS 26.0, *) {
             effect = UIGlassEffect.nonAdaptive(style: .regular)
         } else {
-            effect = UIBlurEffect(style: .systemChromeMaterial)
+            effect = UIBlurEffect(style: .appChromeMaterial)
         }
         let view = UIVisualEffectView(effect: effect)
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -60,7 +60,7 @@ final class BottomToolbar: UIView {
     private let backgroundTopBorderView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = UIColor.separator.withAlphaComponent(0.2)
+        view.backgroundColor = UIColor.appSeparator.withAlphaComponent(0.2)
         if #available(iOS 26.0, *) {
             view.isHidden = true
         }
