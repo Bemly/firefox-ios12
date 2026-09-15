@@ -10,7 +10,8 @@
 
 ## 测试机
 
-- iPad mini 3 (`iPad4,4`), iOS 12.5.8 (16H88), 已越狱 (Cydia + Sileo)
+- iPad mini 3 (`iPad4,4`), iOS 12.5.8 (16H88)，checkra1n 越狱
+  （`/var/checkra1n.dmg` + dropbear；Cydia + Sileo + Substrate 共存，loader app 已删）
 - 机上已装: AppSync Unified 102.0 / OpenSSH 8.4 / frida-server 17.17.0 (开机自启)
 - `/usr/local/bin/debugserver12`: 从 Xcode15 的 12.4 DDI 提取 (arm64+arm64e)，已 `ldid -S` 签调试权限
   (`com.apple.springboard.debugapplications` + `run-unsigned-code` + `get-task-allow` + `task_for_pid-allow`)
@@ -118,6 +119,61 @@
 加载报错会被吞；`reynard://open?url=` 在 iOS 12 上根本没接（真 delegate 是引擎的
 AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 openURL 处理）。
 
+## JIT 主进程实验实录（2026-09-16 凌晨，分支 local/jit-main-process-a7）
+
+目标：iOS 12 A7 上打开 SpiderMonkey JIT。本移植单进程，JIT 必须在**主进程**
+生效，引擎的子进程 JIT 管线（childProcessDidStart/信号管道/ChildProcessInitImpl
+读端）在本移植永远走不到——`ReportJITStatusForChild(getpid(), false)` 在主进程
+查不到子进程管道是无害 no-op，不会锁死 JIT，别再往这条线查。
+
+最终结果：基准页从 ~1280ms×4 全平（纯 C++ 解释器）到 `[77,70,70,69]`
+（Ion 稳态，约 18 倍），`/tmp/Reynard-jit-final.ipa` 已装机验证。
+
+定案的三道门（按生效顺序，均有 patch 文件）：
+
+1. `javascript.options.main_process_disable_jit`：StaticPrefList.yaml 在 XP_IOS
+   默认 **true**，`nsXPConnect::InitJSEngine` 在 JS_Init 前读到就
+   `JS::DisableJitBackend()`，一次性进程级。user.js 救不了（挂在 NS_InitXPCOM
+   里，早于 profile/user.js 加载）。修：XP_IOS 直接硬编码跳过
+   （`patches/js/xpconnect/src/nsXPConnect.cpp.patch`，新文件）。
+2. **MAP_JIT 是误诊**：iOS 12 内核对 MAP_JIT 直接 **EINVAL**（内核不认该
+   flag），纯匿名 R|X mmap 反而成功。上一轮"加 MAP_JIT"实际是把本来能成功的
+   mmap 弄坏了。修：iOS 分支去掉 MAP_JIT + EINVAL 时以 hint=0 重试（随机
+   hint 可越 iOS 12 VA 界，XNU 对越界 hint 返回 EINVAL 而不是重定位；
+   `patches/js/src/jit/ProcessExecutableMemory.cpp.patch`）。
+3. `MaxCodeBytesPerProcess`（ProcessExecutableMemory.h）：上游 64 位值
+   2044MB 在 iOS 12 用户 VM map 放不下（进程内探针实测 512MB OK / 1GB 即
+   ENOMEM，与 exec 位无关）。修：XP_IOS 降到 140MB（上游 32 位同款）。
+
+关键事实（全部进程内实测，cycript dlopen 探针 dylib）：
+
+- AppSync+ldid 把主二进制签成 **CS_PLATFORM_BINARY**（csflags=0x2600100f），
+  no-sandbox/platform-application 等 entitlement 生效皆源于此；
+- 平台二进制下内核放行**整套 W^X**：R|X 预留 → mprotect RWX → 写入 →
+  mprotect R|X → 直接 RWX mmap 全部成功，**不需要 CS_DEBUGGED、不需要
+  ptrace helper**——"persona 提权"问题就此消解；
+- setuid 在 iOS 12 无效（root 属主 4755 二进制 mobile 跑仍 getuid()=501）；
+  TrollStore 的 persona spawnRoot 也不行（iOS 12 无 persona）；
+- `dynamic-codesigning` entitlement 实测无效（已从 entitlements 删掉）；
+- JITController 的 iOS 12 主进程自附 ptrace（helper 以 mobile 跑）必失败，
+  保留作未来 root daemon 场景的后备，失败静默无害；**attach 必须赶在
+  JS_Init 前**（execmem 在 JS_Init 内分配），故 start() 里用
+  `attachQueue.sync`（iOS 12 分支）；
+- execmem 预留失败不能硬返回：JS_Init 会 MOZ_CRASH 启动即崩，JitContext.cpp
+  加了 XP_IOS 软降级（disableJitBackend=true 退解释器）。
+
+诊断方法（后人照抄）：
+
+- 进程内探针：Mac 编探针 dylib（`clang -dynamiclib` + **必须** `ldid -S`
+  helper entitlements 签名——裸 `ldid -S` 二进制放 /tmp 上 exec 直接
+  SIGKILL），scp 上机，`cycript -p Reynard` 后 dlopen，构造器写
+  `/tmp/reynard-probe.log`。cycript extern 块**只能放原型不能放函数体**；
+  mach_vm.h 在 iOS SDK `#error`，mach_vm_region 手工 extern 即可；
+- 引擎内三层临时 fprintf（nsXPConnect/JitContext/Reserve 写
+  /tmp/reynard-jit.log）做分层定位，终版构建已移除探针；
+- 每轮验证：Mac `python3 -m http.server 8033 /tmp/reynard-bench` +
+  cycript 驱动地址栏加载 bench.html，看 RUNS 数组有无 warmup 形状。
+
 ## 自驱操作平板（免手动点）
 
 - 截图：`activator send libactivator.system.take-screenshot` →
@@ -147,10 +203,11 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   客户端，目标留 STOPPED 无人领，SpringBoard 以 signal 杀掉进程 pid 3528，无
   crash 日志，只能从 syslog `exited abnormally via signal` 反查。若已 kill，
   立刻重连一次 `process detach`；确认目标 `ps` 还在且 cycript 可驱动）。
-- 引擎 C++ 改动必须 `./mach build` 重编（增量约 50 分钟：603 对象 + gkrust +
-  链 XUL）。objdir 配置硬编码了已消失的 `/Applications/Xcode-beta.app`
-  （host 报 `stdio.h file not found` 即此病），解法 `sudo ln -s Xcode.app
-  Xcode-beta.app`（只补兼容软链，不动 xcode-select）。
+- 引擎 C++ 改动必须 `./mach build` 重编。单文件/少文件改动只要 ~30 秒（1-2 个对象 +
+  链 XUL）；约 50 分钟的量级（603 对象 + gkrust）只出现在大规模改动或动
+  StaticPrefList.yaml 这类全局生成头时。objdir 配置硬编码了已消失的
+  `/Applications/Xcode-beta.app`（host 报 `stdio.h file not found` 即此病），解法
+  `sudo ln -s Xcode.app Xcode-beta.app`（只补兼容软链，不动 xcode-select）。
 - Xcode 重编会覆盖 `.app` 内一次性 JS 探针（本次 fix 包已无 gvnav/selfdrive 探针，
   属正常）；但 `dist` rsync 会带上源码级正式修（`patches/` 已应用部分），放心。
 - `browser/Reynard/Entitlements/` 里没有 `Reynard-Helper.private.entitlements`

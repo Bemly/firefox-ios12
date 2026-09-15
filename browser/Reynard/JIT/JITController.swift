@@ -54,6 +54,30 @@ final class JITController {
             name: UIApplication.didBecomeActiveNotification,
             object: nil
         )
+
+        // Experiment (local/jit-main-process-a7): this port is single-process,
+        // so no "tab" child ever arrives via childProcessDidStart. Try the
+        // ptrace helper against the MAIN process itself, before the engine
+        // starts (start() runs pre-GeckoRuntime.main).
+        if #available(iOS 13.0, *) {
+            // Upstream multi-process flow: children attach via
+            // childProcessDidStart; the main process stays JIT-less.
+        } else if usePtraceJIT() {
+            // Synchronous on purpose: SpiderMonkey reserves its executable
+            // memory during JS_Init, so the helper must have marked this
+            // process CS_DEBUGGED before we hand off to GeckoRuntime.main.
+            // Silent either way: the JS benchmark page decides, never a
+            // blocking failure screen.
+            attachQueue.sync { [weak self] in
+                guard let self else { return }
+                do {
+                    try JITEnabler.shared.enableJIT(forPID: getpid(), hasTXMSupport: self.hasTXMSupport())
+                    ReportJITStatusForChild(getpid(), true, self.newJITRuntimeInfo())
+                } catch {
+                    ReportJITStatusForChild(getpid(), false, self.newJITRuntimeInfo())
+                }
+            }
+        }
     }
     
     private func isDDIMissing() -> Bool {

@@ -62,12 +62,11 @@ if #unavailable(iOS 13.0) {
 }
 
 UserDataMigration.shared.run()
-// JIT enablement is iOS 13+ only. On iOS 12 (Chimera) none of the available
-// mechanisms work (see IOS12_GATES.md), so don't attempt it -- otherwise it
-// fails and blocks the browser with a failure screen.
-if #available(iOS 13.0, *) {
-    JITController.shared.start()
-}
+// Experiment (local/jit-main-process-a7): also start the JIT controller on
+// iOS 12. This port is single-process, so JITController additionally tries the
+// ptrace helper against the MAIN process itself (see JITController.start()).
+// Deliberately silent on failure; the JS benchmark page is the arbiter.
+JITController.shared.start()
 // configureUnsandboxedAppDataDirectories is available on iOS 13.x only (introduced 13.0,
 // obsoleted 14.0); narrow the guard so it isn't called on iOS 12. See IOS12_GATES.md.
 if #available(iOS 13.0, *) {

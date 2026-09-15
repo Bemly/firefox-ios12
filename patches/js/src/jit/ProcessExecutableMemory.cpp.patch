@@ -1,5 +1,5 @@
 diff --git a/js/src/jit/ProcessExecutableMemory.cpp b/js/src/jit/ProcessExecutableMemory.cpp
-index cea7d764ca96..c9ef61b53f7d 100644
+index cea7d764ca96..d897e92bcb56 100644
 --- a/js/src/jit/ProcessExecutableMemory.cpp
 +++ b/js/src/jit/ProcessExecutableMemory.cpp
 @@ -14,6 +14,12 @@
@@ -123,13 +123,18 @@ index cea7d764ca96..c9ef61b53f7d 100644
  #ifdef XP_WIN
  #  if defined(HAVE_64BIT_BUILD)
  #    define NEED_JIT_UNWIND_HANDLING
-@@ -463,6 +563,20 @@ static void* ComputeRandomAllocationAddress() {
+@@ -463,6 +563,31 @@ static void* ComputeRandomAllocationAddress() {
  static void DecommitPages(void* addr, size_t bytes);
  
  static void* ReserveProcessExecutableMemory(size_t bytes) {
-+#  ifdef XP_IOS
++#ifdef XP_IOS
 +  void* randomAddr = ComputeRandomAllocationAddress();
 +  unsigned protection = PROT_READ | PROT_EXEC;
++  // REYNARD: Do NOT pass MAP_JIT here. The iOS 12 kernel rejects MAP_JIT
++  // with EINVAL (the flag predates this kernel's vm_map_enter), while plain
++  // anonymous R|X mappings succeed -- verified in-process on a checkra1n
++  // device (AppSync grants the app CS_PLATFORM_BINARY, which also allows the
++  // subsequent RWX/R|X mprotect transitions without any debugger attach).
 +  unsigned flags = MAP_NORESERVE | MAP_PRIVATE | MAP_ANON;
 +
 +  // Modifying exec page during execution may cause SIGBUS on some devices.
@@ -137,14 +142,20 @@ index cea7d764ca96..c9ef61b53f7d 100644
 +
 +  void* p = reynard_mmap(randomAddr, bytes, protection, flags, -1, 0);
 +  if (p == MAP_FAILED) {
-+    return nullptr;
++    // REYNARD: The random hint can exceed the (small) iOS 12 user VA space,
++    // where XNU reports EINVAL instead of relocating the hint. Retry with a
++    // null hint and let the kernel pick a valid spot.
++    p = reynard_mmap(nullptr, bytes, protection, flags, -1, 0);
++    if (p == MAP_FAILED) {
++      return nullptr;
++    }
 +  }
 +  return p;
 +#  else
    // On most Unix platforms our strategy is as follows:
    //
    // * Reserve:  mmap with PROT_NONE
-@@ -507,21 +621,22 @@ static void* ReserveProcessExecutableMemory(size_t bytes) {
+@@ -507,21 +632,22 @@ static void* ReserveProcessExecutableMemory(size_t bytes) {
    void* randomAddr = ComputeRandomAllocationAddress();
    unsigned protection = PROT_NONE;
    unsigned flags = MAP_NORESERVE | MAP_PRIVATE | MAP_ANON;
@@ -172,7 +183,7 @@ index cea7d764ca96..c9ef61b53f7d 100644
  }
  
  static void DeallocateProcessExecutableMemory(void* addr, size_t bytes) {
-@@ -561,8 +676,30 @@ static unsigned ProtectionSettingToFlags(ProtectionSetting protection) {
+@@ -561,8 +687,30 @@ static unsigned ProtectionSettingToFlags(ProtectionSetting protection) {
  
  [[nodiscard]] static bool CommitPages(void* addr, size_t bytes,
                                        ProtectionSetting protection) {
@@ -204,7 +215,7 @@ index cea7d764ca96..c9ef61b53f7d 100644
    int ret;
    do {
      ret = madvise(addr, bytes, MADV_FREE_REUSE);
-@@ -570,14 +707,14 @@ static unsigned ProtectionSettingToFlags(ProtectionSetting protection) {
+@@ -570,14 +718,14 @@ static unsigned ProtectionSettingToFlags(ProtectionSetting protection) {
    if (ret != 0) {
      return false;
    }
@@ -222,7 +233,7 @@ index cea7d764ca96..c9ef61b53f7d 100644
    unsigned flags = ProtectionSettingToFlags(protection);
    void* p = MozTaggedAnonymousMmap(addr, bytes, flags,
                                     MAP_FIXED | MAP_PRIVATE | MAP_ANON, -1, 0,
-@@ -587,28 +724,51 @@ static unsigned ProtectionSettingToFlags(ProtectionSetting protection) {
+@@ -587,28 +735,51 @@ static unsigned ProtectionSettingToFlags(ProtectionSetting protection) {
    }
    MOZ_RELEASE_ASSERT(p == addr);
    return true;
@@ -278,7 +289,7 @@ index cea7d764ca96..c9ef61b53f7d 100644
  #  endif
  }
  #endif
-@@ -722,8 +882,42 @@ class ProcessExecutableMemory {
+@@ -722,8 +893,42 @@ class ProcessExecutableMemory {
        return false;
      }
  
@@ -321,7 +332,7 @@ index cea7d764ca96..c9ef61b53f7d 100644
      mozilla::Array<uint64_t, 2> seed;
      GenerateXorShift128PlusSeed(seed);
      rng_.emplace(seed[0], seed[1]);
-@@ -743,6 +937,20 @@ class ProcessExecutableMemory {
+@@ -743,6 +948,20 @@ class ProcessExecutableMemory {
      MOZ_ASSERT(initialized());
      MOZ_ASSERT(pages_.empty());
      MOZ_ASSERT(pagesAllocated_ == 0);
@@ -342,7 +353,7 @@ index cea7d764ca96..c9ef61b53f7d 100644
      DeallocateProcessExecutableMemory(base_, MaxCodeBytesPerProcess);
      base_ = nullptr;
      rng_.reset();
-@@ -901,6 +1109,17 @@ bool js::jit::InitProcessExecutableMemory() { return execMemory.init(); }
+@@ -901,6 +1120,17 @@ bool js::jit::InitProcessExecutableMemory() { return execMemory.init(); }
  
  void js::jit::ReleaseProcessExecutableMemory() { execMemory.release(); }
  
@@ -360,7 +371,7 @@ index cea7d764ca96..c9ef61b53f7d 100644
  size_t js::jit::LikelyAvailableExecutableMemory() {
    // Round down available memory to the closest MB.
    return MaxCodeBytesPerProcess -
-@@ -920,6 +1139,19 @@ bool js::jit::AddressIsInExecutableMemory(const void* p) {
+@@ -920,6 +1150,19 @@ bool js::jit::AddressIsInExecutableMemory(const void* p) {
    return execMemory.containsAddress(p);
  }
  
@@ -380,7 +391,7 @@ index cea7d764ca96..c9ef61b53f7d 100644
  bool js::jit::ReprotectRegion(void* start, size_t size,
                                ProtectionSetting protection,
                                MustFlushICache flushICache) {
-@@ -969,7 +1201,30 @@ bool js::jit::ReprotectRegion(void* start, size_t size,
+@@ -969,7 +1212,30 @@ bool js::jit::ReprotectRegion(void* start, size_t size,
      return true;
    }
  

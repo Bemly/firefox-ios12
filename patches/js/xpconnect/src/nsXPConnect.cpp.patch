@@ -1,0 +1,32 @@
+diff --git a/js/xpconnect/src/nsXPConnect.cpp b/js/xpconnect/src/nsXPConnect.cpp
+index fc50c3260009..d0c6776f705c 100644
+--- a/js/xpconnect/src/nsXPConnect.cpp
++++ b/js/xpconnect/src/nsXPConnect.cpp
+@@ -104,12 +104,24 @@ static void InitJSEngine() {
+   JS::SetAVXEnabled(mozilla::StaticPrefs::javascript_options_wasm_simd_avx());
+ #endif
+ 
+-  if (XRE_IsParentProcess() &&
+-      mozilla::StaticPrefs::javascript_options_main_process_disable_jit()) {
++#ifdef XP_IOS
++  // REYNARD: This port is single-process -- the parent process is also the
++  // content process, so the iOS-default main_process_disable_jit=true would
++  // disable the JIT backend for all web JS before JS_Init. Skip the gate
++  // here; if executable memory can't be reserved (ptrace helper failed to
++  // mark the process CS_DEBUGGED), JitContext degrades to the interpreter
++  // instead of failing JS_Init.
++  const bool disableMainProcessJIT = false;
++#else
++  const bool disableMainProcessJIT =
++      XRE_IsParentProcess() &&
++      mozilla::StaticPrefs::javascript_options_main_process_disable_jit();
++#endif
++  if (disableMainProcessJIT) {
+     JS::DisableJitBackend();
+   }
+ #ifdef XP_IOS
+-  else if (IsLockdownModeEnabled()) {
++  if (IsLockdownModeEnabled()) {
+     JS::DisableJitBackend();
+   }
+ #endif

@@ -1,0 +1,21 @@
+diff --git a/js/src/jit/JitContext.cpp b/js/src/jit/JitContext.cpp
+index 79b22d9f249f..0b12d4f5031d 100644
+--- a/js/src/jit/JitContext.cpp
++++ b/js/src/jit/JitContext.cpp
+@@ -138,7 +138,16 @@ bool jit::InitializeJit() {
+ 
+   if (HasJitBackend()) {
+     if (!InitProcessExecutableMemory()) {
++#ifdef XP_IOS
++      // REYNARD: The executable reservation can legitimately fail on iOS
++      // (e.g. the 2GB upstream reserve does not fit the small iOS 12 user
++      // VM map). Degrade to the interpreter instead of failing JS_Init,
++      // which would crash the app on every launch of the single-process
++      // port.
++      JitOptions.disableJitBackend = true;
++#else
+       return false;
++#endif
+     }
+   }
+ 

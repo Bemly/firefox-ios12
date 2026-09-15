@@ -253,6 +253,7 @@
 				01GECKO0042F2F289C001F0001 /* Embed Frameworks */,
 				02PROCOPY2F3000000000001 /* Embed Process Extensions */,
 				01GECKO0122F2F289C001F0001 /* Copy Gecko Stuff */,
+				01PTRJIT2F70000000000001 /* Compile ptrace_jit helper */,
 			);
 			buildRules = (
 			);
@@ -427,6 +428,21 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "sh \"${SRCROOT}/Scripts/AddGecko.sh\"\n";
+		};
+		01PTRJIT2F70000000000001 /* Compile ptrace_jit helper */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Compile ptrace_jit helper";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nAPP_DIR=\"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}\"\nxcrun clang -isysroot \"${SDKROOT}\" -arch arm64 -mios-version-min=12.0 -O2 -o \"${APP_DIR}/ptrace_jit\" \"${SRCROOT}/Reynard/JIT/Unsandboxed/ptrace_jit.c\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

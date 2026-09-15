@@ -1,5 +1,5 @@
 diff --git a/js/src/jit/ProcessExecutableMemory.h b/js/src/jit/ProcessExecutableMemory.h
-index 4a08d4a6238f..e81f640ac22f 100644
+index 4a08d4a6238f..6c19d50a9810 100644
 --- a/js/src/jit/ProcessExecutableMemory.h
 +++ b/js/src/jit/ProcessExecutableMemory.h
 @@ -7,9 +7,7 @@
@@ -13,7 +13,20 @@ index 4a08d4a6238f..e81f640ac22f 100644
  
  namespace js {
  namespace jit {
-@@ -77,10 +75,26 @@ enum class MustFlushICache { No, Yes };
+@@ -18,6 +16,12 @@ namespace jit {
+ // attacks.
+ #if JS_BITS_PER_WORD == 32
+ static const size_t MaxCodeBytesPerProcess = 140 * 1024 * 1024;
++#elif defined(XP_IOS)
++// REYNARD: The upstream 64-bit 2044MB reservation cannot fit in the small
++// iOS 12 user VM map (mmap fails with EINVAL/ENOMEM, verified on a
++// checkra1n A7 device; 512MB succeeds, 1GB does not). Use the 32-bit budget,
++// which is ample for JIT code on A7-class devices.
++static const size_t MaxCodeBytesPerProcess = 140 * 1024 * 1024;
+ #else
+ // This is the largest number which satisfies various alignment static
+ // asserts that is <= INT32_MAX. If we ever want to increase this, we need to
+@@ -77,10 +81,26 @@ enum class MustFlushICache { No, Yes };
                                            ProtectionSetting protection,
                                            MustFlushICache flushICache);
  
@@ -40,7 +53,7 @@ index 4a08d4a6238f..e81f640ac22f 100644
  
  // Allocate/deallocate executable pages.
  extern void* AllocateExecutableMemory(size_t bytes,
-@@ -123,22 +137,14 @@ class MOZ_RAII AutoMarkJitCodeWritableForThread {
+@@ -123,22 +143,14 @@ class MOZ_RAII AutoMarkJitCodeWritableForThread {
  
   public:
    MOZ_ALWAYS_INLINE_EVEN_DEBUG AutoMarkJitCodeWritableForThread() {
