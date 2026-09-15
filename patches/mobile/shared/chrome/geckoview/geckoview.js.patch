@@ -12,24 +12,34 @@ index 3345a3e164df..f64655d306ef 100644
  
  ChromeUtils.defineESModuleGetters(this, {
    Blocklist: "resource://gre/modules/Blocklist.sys.mjs",
-@@ -424,8 +427,18 @@ function createBrowser() {
-   browser.setAttribute("type", "content");
-   browser.setAttribute("primary", "true");
-   browser.setAttribute("flex", "1");
+@@ -436,11 +439,21 @@
 -  browser.setAttribute("maychangeremoteness", "true");
 -  browser.setAttribute("remote", "true");
+-  browser.setAttribute(
+-    "remoteType",
+-    ChromeUtils.predictRemoteTypeForURI(null, {
+-      window,
+-      geckoViewSessionContextId: settings.sessionContextId ?? undefined,
+-    })
+-  );
 +  // REYNARD: iOS has no out-of-process content: never attempt remoteness
 +  // changes (ContextCanProcessSwitch aborts the switch when this is absent),
 +  // and keep the browser in-process.
 +  // NB: remoteness keys off presence of the attribute, not its value.
 +  if (AppConstants.platform != "ios") {
 +    browser.setAttribute("maychangeremoteness", "true");
++    browser.setAttribute(
++      "remoteType",
++      ChromeUtils.predictRemoteTypeForURI(null, {
++        window,
++        geckoViewSessionContextId: settings.sessionContextId ?? undefined,
++      })
++    );
 +  }
 +  if (AppConstants.platform == "ios") {
 +    browser.removeAttribute("remote");
 +  } else {
 +    browser.setAttribute("remote", "true");
 +  }
-   browser.setAttribute("remoteType", E10SUtils.DEFAULT_REMOTE_TYPE);
    browser.setAttribute("messagemanagergroup", "browsers");
    browser.setAttribute("manualactiveness", "true");
