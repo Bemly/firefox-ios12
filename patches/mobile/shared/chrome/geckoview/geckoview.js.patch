@@ -1,5 +1,5 @@
 diff --git a/mobile/shared/chrome/geckoview/geckoview.js b/mobile/shared/chrome/geckoview/geckoview.js
-index 3345a3e164df..f628b86412ba 100644
+index 3345a3e164df..1c476d4e46b5 100644
 --- a/mobile/shared/chrome/geckoview/geckoview.js
 +++ b/mobile/shared/chrome/geckoview/geckoview.js
 @@ -10,6 +10,9 @@ var { DelayedInit } = ChromeUtils.importESModule(
@@ -12,16 +12,18 @@ index 3345a3e164df..f628b86412ba 100644
  
  ChromeUtils.defineESModuleGetters(this, {
    Blocklist: "resource://gre/modules/Blocklist.sys.mjs",
-@@ -425,7 +428,11 @@ function createBrowser() {
+@@ -425,7 +428,13 @@ function createBrowser() {
    browser.setAttribute("primary", "true");
    browser.setAttribute("flex", "1");
    browser.setAttribute("maychangeremoteness", "true");
 -  browser.setAttribute("remote", "true");
 +  // REYNARD: iOS has no out-of-process content, keep the browser in-process.
-+  browser.setAttribute(
-+    "remote",
-+    AppConstants.platform == "ios" ? "false" : "true"
-+  );
++  // NB: remoteness keys off presence of the attribute, not its value.
++  if (AppConstants.platform == "ios") {
++    browser.removeAttribute("remote");
++  } else {
++    browser.setAttribute("remote", "true");
++  }
    browser.setAttribute("remoteType", E10SUtils.DEFAULT_REMOTE_TYPE);
    browser.setAttribute("messagemanagergroup", "browsers");
    browser.setAttribute("manualactiveness", "true");
