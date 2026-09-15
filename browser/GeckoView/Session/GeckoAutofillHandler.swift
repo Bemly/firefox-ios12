@@ -72,45 +72,45 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
     private var credentialForms: [String: CredentialForm] = [:]
     private var focusedField: CredentialField?
     private var autofillSessionId: String?
-    private var fillContinuations: [String: CheckedContinuation<Any?, Never>] = [:]
+    // Pending fill requests keyed by form UUID; each resolves with the
+    // credential values Gecko should apply to the form's fields.
+    private var fillCallbacks: [String: ([String: String]) -> Void] = [:]
     
     init(session: GeckoSession) {
         self.session = session
     }
     
-    @MainActor
-    func handleMessage(type: String, message: [String: Any?]?) async throws -> Any? {
+    func handleMessage(type: String, message: [String: Any?]?, callback: EventCallback?) {
         guard let event = CredentialEvent(rawValue: type) else {
-            throw GeckoHandlerError("unknown message \(type)")
+            callback?.sendError(GeckoHandlerError("unknown message \(type)").value)
+            return
         }
         
         switch event {
         case .start:
             clearState(refreshSuggestions: true)
             autofillSessionId = message?["sessionId"] as? String
-            return nil
+            callback?.sendSuccess(nil)
         case .clear:
             clearState(refreshSuggestions: true)
             autofillSessionId = nil
-            return nil
+            callback?.sendSuccess(nil)
         case .add:
             guard let formPayload = message?["node"] as? [String: Any?],
                   let form = CredentialForm(formPayload) else {
-                return [:]
+                callback?.sendSuccess([:])
+                return
             }
             credentialForms[form.uuid] = form
-            return await withCheckedContinuation {
-                (continuation: CheckedContinuation<Any?, Never>) in
-                // A refreshed form supersedes its older unresolved query.
-                if let replacedContinuation = fillContinuations.updateValue(
-                    continuation,
-                    forKey: form.uuid
-                ) {
-                    replacedContinuation.resume(returning: [:])
-                }
-                if focusedField?.formUuid == form.uuid {
-                    refreshAutofillSuggestions()
-                }
+            // A refreshed form supersedes its older unresolved query.
+            if let replacedCallback = fillCallbacks.updateValue(
+                { values in callback?.sendSuccess(values) },
+                forKey: form.uuid
+            ) {
+                replacedCallback([:])
+            }
+            if focusedField?.formUuid == form.uuid {
+                refreshAutofillSuggestions()
             }
         case .focus:
             let hadActiveAutofillFocus = hasActiveAutofillFocus()
@@ -142,7 +142,7 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
                     refreshAutofillSuggestions()
                 }
             }
-            return nil
+            callback?.sendSuccess(nil)
         }
     }
     
@@ -203,7 +203,7 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
               let formUuid = focusedField.formUuid,
               let form = credentialForms[formUuid],
               form.acceptsLoginCredentials,
-              fillContinuations[formUuid] != nil else {
+              fillCallbacks[formUuid] != nil else {
             return false
         }
         return ["username", "password", "current-password"].contains(
@@ -216,7 +216,7 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
         guard acceptsLoginCredentials(),
               let formUuid = focusedField?.formUuid,
               let form = credentialForms[formUuid],
-              let fillContinuation = fillContinuations.removeValue(
+              let fillCallback = fillCallbacks.removeValue(
                 forKey: formUuid
               ) else {
             return
@@ -241,7 +241,7 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
         }
         
         credentialForms.removeValue(forKey: formUuid)
-        fillContinuation.resume(returning: valuesByField)
+        fillCallback(valuesByField)
         if focusedField?.formUuid == formUuid {
             refreshAutofillSuggestions()
         }
@@ -256,24 +256,23 @@ final class GeckoAutofillHandler: NSObject, GeckoSessionHandlerCommon {
               !value.isEmpty else {
             return
         }
-        Task { @MainActor in
-            _ = try? await session.dispatcher.query(
-                type: "GeckoView:Autofill:FillOneTimeCode",
-                message: [
-                    "sessionId": sessionId,
-                    "fieldUuid": field.uuid,
-                    "value": value,
-                ]
-            )
+        session.dispatcher.query(
+            type: "GeckoView:Autofill:FillOneTimeCode",
+            message: [
+                "sessionId": sessionId,
+                "fieldUuid": field.uuid,
+                "value": value,
+            ]
+        ) { _ in
         }
     }
     
     private func clearState(refreshSuggestions shouldRefresh: Bool) {
         let hadActiveAutofillFocus = hasActiveAutofillFocus()
-        let continuations = Array(fillContinuations.values)
-        fillContinuations.removeAll()
-        for continuation in continuations {
-            continuation.resume(returning: [:])
+        let callbacks = Array(fillCallbacks.values)
+        fillCallbacks.removeAll()
+        for callback in callbacks {
+            callback([:])
         }
         credentialForms.removeAll()
         focusedField = nil

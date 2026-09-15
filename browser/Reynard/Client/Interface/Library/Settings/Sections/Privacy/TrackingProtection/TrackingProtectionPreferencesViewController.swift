@@ -104,9 +104,7 @@ final class TrackingProtectionPreferencesViewController: SettingsTableViewContro
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         tableView.reloadData()
-        Task { [weak self] in
-            await self?.loadExceptions()
-        }
+        loadExceptions()
     }
     
     override func numberOfSections(in tableView: UITableView) -> Int {
@@ -466,9 +464,16 @@ final class TrackingProtectionPreferencesViewController: SettingsTableViewContro
         }
     }
     
-    @MainActor
-    private func loadExceptions() async {
-        let permissions = (try? await PermissionDelegate.allPermissions()) ?? []
+    private func loadExceptions() {
+        PermissionDelegate.allPermissions { [weak self] result in
+            let permissions = (try? result.get()) ?? []
+            DispatchQueue.main.async {
+                self?.applyExceptions(from: permissions)
+            }
+        }
+    }
+
+    private func applyExceptions(from permissions: [ContentPermission]) {
         let trackingPermissions = permissions.compactMap { permission -> (String, ContentPermission)? in
             guard permission.permission == .tracking,
                   permission.value == .allow,

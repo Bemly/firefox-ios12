@@ -71,12 +71,9 @@ final class DateTimePicker: NSObject, UIPopoverPresentationControllerDelegate {
         return .none
     }
     
-    nonisolated func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
-        Task { @MainActor [weak self, presentationController] in
-            guard let self else { return }
-            let controller = presentationController.presentedViewController as? DateTimePickerViewController
-            finish(controller.map { self.formatDate($0.selectedDate) })
-        }
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        let controller = presentationController.presentedViewController as? DateTimePickerViewController
+        finish(controller.map { formatDate($0.selectedDate) })
     }
 
     // MARK: - Completion

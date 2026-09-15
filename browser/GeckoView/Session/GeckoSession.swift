@@ -331,11 +331,11 @@ public class GeckoSession {
     
     // MARK: - Find in Page
     
-    @MainActor
     public func findInPage(
         _ searchString: String? = nil,
-        backwards: Bool = false
-    ) async throws -> GeckoFindInPageResult {
+        backwards: Bool = false,
+        completion: @escaping (Result<GeckoFindInPageResult, Error>) -> Void
+    ) {
         var message: [String: Any?] = [:]
         if let searchString {
             message["searchString"] = searchString
@@ -343,20 +343,27 @@ public class GeckoSession {
         if backwards {
             message["backwards"] = true
         }
-        let response = try await dispatcher.query(type: "GeckoView:FindInPage", message: message)
-        let payload: [String: Any?]
-        if let values = response as? [String: Any] {
-            payload = values.mapValues { $0 }
-        } else if let values = response as? [String: Any?] {
-            payload = values
-        } else {
-            throw GeckoHandlerError("Invalid find-in-page response")
+        dispatcher.query(type: "GeckoView:FindInPage", message: message) { result in
+            switch result {
+            case .success(let response):
+                let payload: [String: Any?]
+                if let values = response as? [String: Any] {
+                    payload = values.mapValues { $0 }
+                } else if let values = response as? [String: Any?] {
+                    payload = values
+                } else {
+                    completion(.failure(GeckoHandlerError("Invalid find-in-page response")))
+                    return
+                }
+                completion(.success(GeckoFindInPageResult(
+                    found: PayloadValue.bool(payload["found"]) ?? false,
+                    current: PayloadValue.int(payload["current"]) ?? 0,
+                    total: PayloadValue.int(payload["total"]) ?? 0
+                )))
+            case .failure(let error):
+                completion(.failure(error))
+            }
         }
-        return GeckoFindInPageResult(
-            found: PayloadValue.bool(payload["found"]) ?? false,
-            current: PayloadValue.int(payload["current"]) ?? 0,
-            total: PayloadValue.int(payload["total"]) ?? 0
-        )
     }
     
     public func setFindInPageMatchHighlighting(_ enabled: Bool) {
@@ -477,7 +484,6 @@ public class GeckoSession {
 
     public func isInHardwareKeyboardMode() -> Bool {
         return window?.isInHardwareKeyboardMode() ?? false
-    }
     }
     
     // MARK: - Selection Actions

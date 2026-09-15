@@ -30,7 +30,7 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
         static let borderWidth: CGFloat = 0.5
     }
     
-    var onFind: ((_ query: String?, _ backwards: Bool) async -> (current: Int, total: Int)?)?
+    var onFind: ((_ query: String?, _ backwards: Bool, _ completion: @escaping ((current: Int, total: Int)?) -> Void) -> Void)?
     var onClear: (() -> Void)?
     var onDismiss: (() -> Void)?
     
@@ -255,12 +255,11 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
         
         requestID += 1
         let currentRequestID = requestID
-        Task { @MainActor [weak self] in
-            let result = await onFind(query, backwards)
+        onFind(query, backwards) { [weak self] result in
             guard let self, self.requestID == currentRequestID else {
                 return
             }
-            
+
             self.setResult(
                 current: result?.current ?? 0,
                 total: result?.total ?? 0

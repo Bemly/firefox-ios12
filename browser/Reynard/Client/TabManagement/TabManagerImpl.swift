@@ -1549,29 +1549,33 @@ extension TabManagerImplementation: HistoryDelegate {
         session: GeckoSession,
         url: String,
         lastVisitedURL: String?,
-        flags: HistoryVisitFlags
-    ) async -> Bool {
+        flags: HistoryVisitFlags,
+        completion: @escaping (Bool) -> Void
+    ) {
         guard !session.isPrivateMode,
               flags.contains(.topLevel),
               !flags.contains(.unrecoverableError),
               let pageURL = remoteURL(from: url) else {
-            return false
+            completion(false)
+            return
         }
-        
+
         let title = tabLocation(for: session).map { tabs(for: $0.mode)[$0.index].title } ?? ""
-        return await historyStore.recordVisitImmediately(
+        historyStore.recordVisitImmediately(
             url: pageURL,
             title: title,
-            isRedirectSource: flags.contains(.redirectSource) || flags.contains(.redirectSourcePermanent)
+            isRedirectSource: flags.contains(.redirectSource) || flags.contains(.redirectSourcePermanent),
+            completion: completion
         )
     }
-    
-    func getVisited(session: GeckoSession, urls: [String]) async -> [Bool]? {
+
+    func getVisited(session: GeckoSession, urls: [String], completion: @escaping ([Bool]?) -> Void) {
         guard !session.isPrivateMode else {
-            return Array(repeating: false, count: urls.count)
+            completion(Array(repeating: false, count: urls.count))
+            return
         }
-        
-        return await historyStore.visitedStatuses(for: urls)
+
+        historyStore.visitedStatuses(for: urls) { completion($0) }
     }
 }
 

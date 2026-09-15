@@ -24,14 +24,15 @@ public struct HistoryVisitFlags: OptionSet, Sendable {
 
 // MARK: - History Delegate
 
-public protocol HistoryDelegate {
+public protocol HistoryDelegate: AnyObject {
     func onVisited(
         session: GeckoSession,
         url: String,
         lastVisitedURL: String?,
-        flags: HistoryVisitFlags
-    ) async -> Bool
-    func getVisited(session: GeckoSession, urls: [String]) async -> [Bool]?
+        flags: HistoryVisitFlags,
+        completion: @escaping (Bool) -> Void
+    )
+    func getVisited(session: GeckoSession, urls: [String], completion: @escaping ([Bool]?) -> Void)
     func onHistoryStateChange(session: GeckoSession, sessionState: GeckoSessionState)
 }
 
@@ -40,18 +41,20 @@ public extension HistoryDelegate {
         session: GeckoSession,
         url: String,
         lastVisitedURL: String?,
-        flags: HistoryVisitFlags
-    ) async -> Bool {
-        return false
+        flags: HistoryVisitFlags,
+        completion: @escaping (Bool) -> Void
+    ) {
+        completion(false)
     }
-    
-    func getVisited(session: GeckoSession, urls: [String]) async -> [Bool]? {
-        return nil
+
+    func getVisited(session: GeckoSession, urls: [String], completion: @escaping ([Bool]?) -> Void) {
+        completion(nil)
     }
-    
+
     func onHistoryStateChange(session: GeckoSession, sessionState: GeckoSessionState) {}
 }
 
+// MARK: - History Events
 // MARK: - History Events
 
 enum HistoryEvents: String, CaseIterable {
@@ -67,34 +70,40 @@ func newHistoryHandler(_ session: GeckoSession) -> GeckoSessionHandler {
         moduleName: "GeckoViewHistory",
         events: HistoryEvents.allCases.map(\.rawValue),
         session: session
-    ) { @MainActor session, delegate, type, message in
+    ) { session, delegate, type, message, completion in
         guard let event = HistoryEvents(rawValue: type) else {
-            throw GeckoHandlerError("unknown message \(type)")
+            completion(.failure(GeckoHandlerError("unknown message \(type)")))
+            return
         }
-        
-        let delegate = delegate as? HistoryDelegate
+
+        guard let delegate = delegate as? HistoryDelegate else {
+            completion(.failure(GeckoHandlerError("history delegate not attached")))
+            return
+        }
         switch event {
         case .onVisited:
             guard let url = message?["url"] as? String else {
-                return false
+                completion(.success(false))
+                return
             }
-            
-            return await delegate?.onVisited(
+
+            delegate.onVisited(
                 session: session,
                 url: url,
                 lastVisitedURL: message?["lastVisitedURL"] as? String,
                 flags: HistoryVisitFlags(rawValue: PayloadValue.int(message?["flags"]) ?? 0)
-            ) ?? false
-            
+            ) { completion(.success($0)) }
+
         case .getVisited:
             let urls = PayloadValue.strings(message?["urls"])
-            return await delegate?.getVisited(session: session, urls: urls)
+            delegate.getVisited(session: session, urls: urls) { completion(.success($0)) }
         case .stateUpdated:
             guard let data = message?["data"] as? [String: Any] else {
-                return nil
+                completion(.success(nil))
+                return
             }
             session.handleSessionStateUpdate(data)
-            return nil
+            completion(.success(nil))
         }
     }
 }

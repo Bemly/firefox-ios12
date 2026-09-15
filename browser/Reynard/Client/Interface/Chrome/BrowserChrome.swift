@@ -65,7 +65,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
     var onPageZoomOut: (() -> Void)?
     var onPageZoomIn: (() -> Void)?
     var onPageZoomReset: (() -> Void)?
-    var onFindInPage: ((_ query: String?, _ backwards: Bool) async -> (current: Int, total: Int)?)?
+    var onFindInPage: ((_ query: String?, _ backwards: Bool, _ completion: @escaping ((current: Int, total: Int)?) -> Void) -> Void)?
     var onClearFindInPage: (() -> Void)?
     var onFindInPageVisibilityChanged: ((Bool) -> Void)?
     var onKeyboardDismissal: (() -> Void)?
@@ -600,8 +600,8 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         actionBar.onPageZoomOut = { [weak self] in self?.onPageZoomOut?() }
         actionBar.onPageZoomIn = { [weak self] in self?.onPageZoomIn?() }
         actionBar.onPageZoomReset = { [weak self] in self?.onPageZoomReset?() }
-        actionBar.onFindInPage = { [weak self] query, backwards in
-            return await self?.onFindInPage?(query, backwards)
+        actionBar.onFindInPage = { [weak self] query, backwards, completion in
+            self?.onFindInPage?(query, backwards, completion)
         }
         actionBar.onClearFindInPage = { [weak self] in self?.onClearFindInPage?() }
         actionBar.onClose = { [weak self] in self?.dismissActionBar(animated: true) }

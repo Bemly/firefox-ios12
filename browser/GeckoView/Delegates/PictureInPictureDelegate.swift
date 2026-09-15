@@ -33,16 +33,17 @@ final class PictureInPictureHandler: GeckoSessionHandlerCommon {
         self.session = session
     }
     
-    @MainActor
-    func handleMessage(type: String, message: [String: Any?]?) async throws -> Any? {
+    func handleMessage(type: String, message: [String: Any?]?, callback: EventCallback?) {
         guard events.contains(type) else {
-            throw GeckoHandlerError("unknown message \(type)")
+            callback?.sendError(GeckoHandlerError("unknown message \(type)").value)
+            return
         }
         guard let session else {
-            throw GeckoHandlerError("session has been destroyed")
+            callback?.sendError(GeckoHandlerError("session has been destroyed").value)
+            return
         }
         delegate?.onSourceChanged(session: session)
-        return nil
+        callback?.sendSuccess(nil)
     }
 }
 

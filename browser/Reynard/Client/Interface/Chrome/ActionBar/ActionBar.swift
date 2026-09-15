@@ -43,7 +43,7 @@ final class ActionBar: UIView {
         }
     }
     
-    var onFindInPage: ((_ query: String?, _ backwards: Bool) async -> (current: Int, total: Int)?)? {
+    var onFindInPage: ((_ query: String?, _ backwards: Bool, _ completion: @escaping ((current: Int, total: Int)?) -> Void) -> Void)? {
         get { return findInPageActionBar.onFind }
         set { findInPageActionBar.onFind = newValue }
     }

@@ -113,29 +113,31 @@ final class HistoryStore {
         }
     }
     
-    func recordVisitImmediately(url: URL, title: String, isRedirectSource: Bool = false, visitedAt: Date = Date()) async -> Bool {
-        await withCheckedContinuation { continuation in
-            stateQueue.async {
-                guard URLUtils.isWebURL(url) else {
-                    continuation.resume(returning: false)
-                    return
-                }
-                
-                let didRecord = self.recordVisitLocked(url: url, title: title, isRedirectSource: isRedirectSource, visitedAt: visitedAt)
-                if didRecord {
-                    self.postDidChange()
-                }
-                continuation.resume(returning: didRecord)
+    func recordVisitImmediately(
+        url: URL,
+        title: String,
+        isRedirectSource: Bool = false,
+        visitedAt: Date = Date(),
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        stateQueue.async {
+            guard URLUtils.isWebURL(url) else {
+                completion?(false)
+                return
             }
+
+            let didRecord = self.recordVisitLocked(url: url, title: title, isRedirectSource: isRedirectSource, visitedAt: visitedAt)
+            if didRecord {
+                self.postDidChange()
+            }
+            completion?(didRecord)
         }
     }
-    
-    func visitedStatuses(for urls: [String]) async -> [Bool] {
-        await withCheckedContinuation { continuation in
-            stateQueue.async {
-                let statuses = urls.map { self.isVisitedLocked(urlString: $0) }
-                continuation.resume(returning: statuses)
-            }
+
+    func visitedStatuses(for urls: [String], completion: @escaping ([Bool]) -> Void) {
+        stateQueue.async {
+            let statuses = urls.map { self.isVisitedLocked(urlString: $0) }
+            completion(statuses)
         }
     }
     

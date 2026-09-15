@@ -451,23 +451,27 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         browserChrome.onPageZoomReset = { [weak self] in
             self?.setSelectedPageZoomLevel(Prefs.BrowsingSettings.defaultPageZoomLevel)
         }
-        browserChrome.onFindInPage = { [weak self] query, backwards in
+        browserChrome.onFindInPage = { [weak self] query, backwards, completion in
             guard let self,
                   let session = self.tabManager.selectedTab?.session else {
-                return nil
+                completion(nil)
+                return
             }
-            
+
             if query != nil {
                 session.setFindInPageMatchHighlighting(true)
             }
-            let result = try? await session.findInPage(query, backwards: backwards)
-            guard self.tabManager.selectedTab?.session === session else {
-                return nil
+            session.findInPage(query, backwards: backwards) { result in
+                guard self.tabManager.selectedTab?.session === session else {
+                    completion(nil)
+                    return
+                }
+                guard case .success(let result) = result else {
+                    completion(nil)
+                    return
+                }
+                completion((result.current, result.total))
             }
-            guard let result else {
-                return nil
-            }
-            return (result.current, result.total)
         }
         browserChrome.onClearFindInPage = { [weak self] in
             self?.tabManager.selectedTab?.session.clearFindInPageMatches()

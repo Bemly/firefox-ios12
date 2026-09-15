@@ -155,20 +155,25 @@ extension LinkPreviewViewController: ContentDelegate, NavigationDelegate, Histor
         session: GeckoSession,
         url: String,
         lastVisitedURL: String?,
-        flags: HistoryVisitFlags
-    ) async -> Bool {
+        flags: HistoryVisitFlags,
+        completion: @escaping (Bool) -> Void
+    ) {
         guard !session.isPrivateMode else {
-            return false
+            completion(false)
+            return
         }
-        
-        return await HistoryStore.shared.visitedStatuses(for: [url]).first ?? false
+
+        HistoryStore.shared.visitedStatuses(for: [url]) { statuses in
+            completion(statuses.first ?? false)
+        }
     }
-    
-    func getVisited(session: GeckoSession, urls: [String]) async -> [Bool]? {
+
+    func getVisited(session: GeckoSession, urls: [String], completion: @escaping ([Bool]?) -> Void) {
         guard !session.isPrivateMode else {
-            return Array(repeating: false, count: urls.count)
+            completion(Array(repeating: false, count: urls.count))
+            return
         }
-        
-        return await HistoryStore.shared.visitedStatuses(for: urls)
+
+        HistoryStore.shared.visitedStatuses(for: urls) { completion($0) }
     }
 }

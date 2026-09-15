@@ -37,12 +37,13 @@ func newContentBlockingHandler(_ session: GeckoSession) -> GeckoSessionHandler {
         moduleName: "GeckoViewContentBlocking",
         events: [ContentBlockingEvents.blocked.rawValue],
         session: session
-    ) { @MainActor session, delegate, _, message in
+    ) { session, delegate, _, message, completion in
         guard let tracker = BlockedTracker(message: message) else {
-            return nil
+            completion(.success(nil))
+            return
         }
         (delegate as? ContentBlockingDelegate)?.contentBlockingDelegate(session, blocked: tracker)
-        return nil
+        completion(.success(nil))
     }
 }
 

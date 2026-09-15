@@ -181,22 +181,11 @@ final class SessionManager {
         ) { [weak self] in
             self?.endSessionStateBackgroundTask()
         }
-        Task { @MainActor [weak self] in
-            guard let self else {
-                return
-            }
-            defer {
-                endSessionStateBackgroundTask()
-            }
-            do {
-                for session in sessions where session.isOpen() {
-                    try await session.flushSessionState()
-                }
-                tabStore.flushPendingWrites()
-            } catch {
-                NSLog("Failed to persist session state before suspension: %@", "\(error)")
-            }
+        for session in sessions where session.isOpen() {
+            session.flushSessionState()
         }
+        tabStore.flushPendingWrites()
+        endSessionStateBackgroundTask()
     }
     
     private func endSessionStateBackgroundTask() {

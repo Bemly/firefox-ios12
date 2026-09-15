@@ -269,18 +269,20 @@ final class HomepagePreferencesViewController: SettingsTableViewController {
         wallpaperPreviewImageView.image = HomepageWallpaper.image
     }
     
-    private func prepareWallpaper(from imageData: Data) async {
+    private func prepareWallpaper(from imageData: Data) {
         let maximumPixelSize = Int(max(UIScreen.main.nativeBounds.width, UIScreen.main.nativeBounds.height))
-        let wallpaper = await Task.detached(priority: .userInitiated) {
-            return ImageUtils.prepareJPEGImage(
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let wallpaper = ImageUtils.prepareJPEGImage(
                 from: imageData,
                 maximumPixelSize: maximumPixelSize
             )
-        }.value
-        guard let wallpaper else {
-            return
+            DispatchQueue.main.async {
+                guard let self, let wallpaper else {
+                    return
+                }
+                self.saveWallpaper(wallpaper)
+            }
         }
-        saveWallpaper(wallpaper)
     }
 }
 
@@ -296,18 +298,14 @@ extension HomepagePreferencesViewController: PHPickerViewControllerDelegate {
             guard let imageData else {
                 return
             }
-            Task { @MainActor [weak self] in
-                await self?.prepareWallpaper(from: imageData)
-            }
+            self?.prepareWallpaper(from: imageData)
         }
     }
 }
 
 extension HomepagePreferencesViewController: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-    nonisolated func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-        Task { @MainActor in
-            picker.dismiss(animated: true)
-        }
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true)
     }
     
     nonisolated func imagePickerController(
@@ -315,16 +313,19 @@ extension HomepagePreferencesViewController: UIImagePickerControllerDelegate, UI
         didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
     ) {
         let imageURL = info[.imageURL] as? URL
-        
-        Task { @MainActor [weak self] in
-            picker.dismiss(animated: true)
-            guard let imageURL,
-                  let imageData = await Task.detached(priority: .userInitiated, operation: {
-                      return try? Data(contentsOf: imageURL)
-                  }).value else {
+
+        picker.dismiss(animated: true)
+        guard let imageURL else {
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let imageData = try? Data(contentsOf: imageURL)
+            guard let imageData else {
                 return
             }
-            await self?.prepareWallpaper(from: imageData)
+            DispatchQueue.main.async {
+                self?.prepareWallpaper(from: imageData)
+            }
         }
     }
 }

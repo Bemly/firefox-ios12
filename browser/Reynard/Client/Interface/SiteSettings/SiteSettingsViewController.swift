@@ -670,27 +670,13 @@ final class SiteSettingsViewController: UITableViewController, UINavigationContr
     }
     
     private func clearWebsiteData() {
-        Task { [weak self] in
-            guard let self else {
-                return
-            }
-            
-            do {
-                try await GeckoStorageController.clearData(
-                    forHost: host,
-                    flags: GeckoStorageClearFlags.cookies
-                    | GeckoStorageClearFlags.authSessions
-                    | GeckoStorageClearFlags.domStorages
-                )
-                await MainActor.run {
-                    self.session.reload()
-                }
-            } catch {
-                AlertPresenter.show(
-                    title: NSLocalizedString("Couldn’t Clear Cookies and Website Data", comment: ""),
-                    message: "\(error)"
-                )
-            }
+        GeckoStorageController.clearData(
+            forHost: host,
+            flags: GeckoStorageClearFlags.cookies
+            | GeckoStorageClearFlags.authSessions
+            | GeckoStorageClearFlags.domStorages
+        ) { [weak self] in
+            self?.session.reload()
         }
     }
     
