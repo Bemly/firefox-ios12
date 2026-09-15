@@ -213,6 +213,10 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   客户端，目标留 STOPPED 无人领，SpringBoard 以 signal 杀掉进程 pid 3528，无
   crash 日志，只能从 syslog `exited abnormally via signal` 反查。若已 kill，
   立刻重连一次 `process detach`；确认目标 `ps` 还在且 cycript 可驱动）。
+- 换 App 图标/README logo（2026-09-16）：Mac 没有 ImageMagick，用 ffmpeg。ChatGPT
+  导出的 PNG 透明区存的 RGB 是黑的，直接 `format=rgb24` 丢 alpha 会露黑角，必须
+  overlay 到边缘采样色（源图 `crop=1:1:8:627` 取色）上压平：icon 三件套 1024
+  无 alpha，`assets/logo.png` 保留透明原样给 README 用。
 - 引擎 C++ 改动必须 `./mach build` 重编。单文件/少文件改动只要 ~30 秒（1-2 个对象 +
   链 XUL）；约 50 分钟的量级（603 对象 + gkrust）只出现在大规模改动或动
   StaticPrefList.yaml 这类全局生成头时。objdir 配置硬编码了已消失的

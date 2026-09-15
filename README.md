@@ -1,172 +1,99 @@
-<img width="100" height="100" src="https://github.com/user-attachments/assets/1c42dda2-b778-4342-9f94-8f852c3ad652" />
+<p align="center">
+  <img width="120" src="assets/logo.png" alt="Reynard logo" />
+</p>
 
-# Reynard Browser
+# Reynard Browser for iOS 12
 
-> [!WARNING]  
-> This is a silly trial using Claude to see if I can revive my iPad Mini 2 by getting Reynard to run on iOS 12. AI bad, I know, but how useful is this in the first place? 
-> I have some knowledge and so far, it seems like lots of APIs that Reynard uses aren't available on iOS 12, such as Swift Concurrency, which the app normally uses extensively.
-> I have ZERO intentions of upstreaming my changes, even if I succeed, as it would drastically decrease code readability and maintainability.
+**English** | [简体中文](README.zh.md)
 
-Reynard is a **Gecko-based** web browser for iOS 13+.
+> [!WARNING]
+> This is an experimental fork of [minh-ton/reynard-browser](https://github.com/minh-ton/reynard-browser) that targets **iOS 12 only**. It is an AI-assisted revival project: expect bugs, missing features, and rough edges. There are no plans to upstream these changes — they deliberately trade code cleanliness for compatibility with a 2014-era OS.
 
-Unlike other browsers on iOS that are forced to use Apple's **WebKit** engine (including Safari and all third-party browsers), Reynard uses **Gecko**. This is the same engine that powers the Firefox browser on desktop and Android devices.
+Reynard is a **Gecko-based** web browser. Unlike every browser shipped on iOS — including Safari — which is forced to use the **WebKit** version bundled with the OS, Reynard ships its own engine: the same Gecko that powers Firefox on desktop and Android.
 
-This project is mainly for users on older iOS versions who are stuck with an outdated version of WebKit. Because WebKit is bundled with the OS, these devices cannot receive engine updates and often fail to load modern websites. By using Gecko, which is kept up to date independently, Reynard allows these sites to work again. Users on newer iOS versions can also use the browser if they want an alternative to WebKit, including Firefox add-ons and other Gecko-exclusive features.
+On iOS 12 the bundled WebKit is a decade old and most modern websites simply break. Because Gecko is compiled into the app, this port can load modern sites on hardware Apple abandoned long ago.
+
+## Status
+
+What works on an iPad mini 3 (A7, iOS 12.5.8):
+
+- **Modern web rendering** — complex sites (Google Search, GitHub, web apps) render and run their JavaScript.
+- **SpiderMonkey JIT enabled in the main process** — this port is single-process, so the JIT is enabled directly in the app process (~18× faster JS than the interpreter baseline on a benchmark loop). No debugger attach or root helper is required on an AppSync-signed jailbroken device.
+- **Video playback** — H.264 playback works. Note that rendering/compositing currently runs on the CPU (software compositor), so high-resolution video is CPU-heavy.
+
+Known limitations:
+
+- Single-process: there are no content processes, so some process-isolation-related features behave differently.
+- Hardware video acceleration (VideoToolbox decode + GPU compositing) is not wired up yet.
+- Early and experimental: expect missing features and occasional crashes.
+
+## Requirements
+
+- iPhone/iPad on **iOS 12.4 – 12.5.x** (A7 devices were the test target)
+- A **jailbreak** (checkra1n works)
+- [AppSync Unified](https://github.com/akemin-dayo/AppSync) installed from Cydia/Sileo
 
 ## Installation
 
-The latest builds are available for download on the [Releases](https://github.com/minh-ton/reynard-browser/releases) page. Please note that this project is still in an early experimental state, so expect bugs and missing features.
+There are no prebuilt releases yet — build the `.ipa` yourself (see [Building](#building)), then:
 
-### TrollStore (iOS 14 - 16.6.1, 17.0)
-
-For the best experience, I'd recommend sideloading Reynard via [TrollStore](https://github.com/opa334/TrollStore) using the `Reynard-TrollStore.tipa` build. This gives you automatic JIT enablement, better performance, and automatic app updates. For automatic app updates, make sure that the **URL Scheme Enabled** option is turned on in TrollStore.
-
-### AltStore or SideStore (iOS 17.0.1+)
-
-You should use [AltStore](https://altstore.io/) or [SideStore](https://sidestore.io/) to sideload the `Reynard.ipa` build when TrollStore is not available, especially on newer iOS versions. Please note that you must select the **Keep App Extensions** option during installation, as Reynard relies on its extensions to function and will not work without them. 
-
-You can also [click here](https://stikstore.app/altdirect/?url=https://github.com/minh-ton/reynard-browser/releases/download/0.0.1-a1/source.json&exclude=livecontainer,stikstore,trollapps,feather) to add the AltSource for Reynard to AltStore or SideStore.
-
-> [!IMPORTANT]
-> - **LiveContainer is not supported** due to its own limitations.
-> - Sideloading methods that use a distribution certificate for signing are **not supported**.⁠
-> - Other sideloading methods are **untested**, and **no support will be provided** for issues arising from them.
-
-### Jailbroken (iOS 13)
-
-Sideload the `Reynard-Jailbroken.ipa` build using [Filza File Manager](https://www.tigisoftware.com/default/?page_id=78) with [AppSync Unified](https://github.com/akemin-dayo/AppSync) on a **jailbroken device**. You will also benefit from automatic JIT enablement and better performance.
-
-## Preview
-
-### iOS 14 (iPhone 6S Plus, 14.1)
-
-These sites are known to break or render incorrectly on iOS 14. The screenshots below compare how they load in Safari versus Reynard.
-
-<table>
-  <tr>
-    <th colspan="2">github.com</th>
-    <th colspan="2">chatgpt.com</th>
-    <th colspan="2">apple.com</th>
-  </tr>
-  <tr>
-    <td align="center">Safari</td>
-    <td align="center">Reynard</td>
-    <td align="center">Safari</td>
-    <td align="center">Reynard</td>
-    <td align="center">Safari</td>
-    <td align="center">Reynard</td>
-  </tr>
-  <tr>
-    <td>
-      <img width=150 src="https://github.com/user-attachments/assets/d89f4385-c478-4aea-aa9d-6c9fca72252b"><br>
-    </td>
-    <td>
-      <img width=150 src="https://github.com/user-attachments/assets/917ee435-39cb-469d-835f-8e69f9e13d03"><br>
-    </td>
-    <td>
-      <img width=150 src="https://github.com/user-attachments/assets/1a68024e-83d4-489c-a576-26d5ea43011c"><br>
-    </td>
-    <td>
-      <img width=150 src="https://github.com/user-attachments/assets/6880b1ac-63f9-421f-a373-5d69c5745cd7"><br>
-    </td>
-    <td>
-      <img width=150 src="https://github.com/user-attachments/assets/d237118e-be3b-43d1-b14c-032784b43571"><br>
-    </td>
-    <td>
-      <img width=150 src="https://github.com/user-attachments/assets/9f799569-d712-44d0-918a-21d523874c6e"><br>
-    </td>
-  </tr>
-</table>
-
-### iOS 15 (iPhone 7, 15.8.6)
-
-<table>
-  <tr>
-    <td>
-      <img width=150 src="https://github.com/user-attachments/assets/a7f1b302-51b6-4afe-a2ce-35b518e5b761"><br>
-    </td>
-    <td>
-      <img width=150 src="https://github.com/user-attachments/assets/f5dbfba5-c1a8-4729-bd7d-b96a7ace1237"><br>
-    </td>
-    <td>
-      <img width=150 src="https://github.com/user-attachments/assets/986c8cfb-7979-4f4b-9305-73ebd1a87b19"><br>
-    </td>
-    <td>
-      <img width=150 src="https://github.com/user-attachments/assets/544ff493-6807-4b2f-b526-6d34f029e1d3"><br>
-    </td>
-    <td>
-      <img width=150 src="https://github.com/user-attachments/assets/31ef9486-8631-4d0e-ad9a-1281d513151f"><br>
-    </td>
-  </tr>
-</table>
-
-### iOS 26 (iPhone 13 mini, 26.1)
-
-Reynard also works great on the latest version of iOS!
-
-<table>
-  <tr>
-    <td>
-      <img width=150 src="https://github.com/user-attachments/assets/974e8ce1-f798-4bef-bac1-621ee535c5ee"><br>
-    </td>
-    <td>
-      <img width=150 src="https://github.com/user-attachments/assets/1429c985-f439-4e58-9385-0eefef4add4c"><br>
-    </td>
-    <td>
-      <img width=150 src="https://github.com/user-attachments/assets/a9eeaf68-828f-4ead-b619-8b9914e0ed2c"><br>
-    </td>
-    <td>
-      <img width=150 src="https://github.com/user-attachments/assets/bbc08422-4bf3-4928-933e-71cdad551fed"><br>
-    </td>
-    <td>
-      <img width=150 src="https://github.com/user-attachments/assets/cf01d298-a8d2-49ea-a557-7b1bbd1d893a"><br>
-    </td>
-  </tr>
-</table>
+1. Copy the `.ipa` to the device (AirDrop won't work on iOS 12; use SSH/Filza/iTunes File Sharing).
+2. Open it with [Filza](https://www.tigisoftware.com/default/?page_id=78) and install. AppSync Unified handles the signing.
+3. Launch. JIT is enabled automatically at startup; if it cannot be enabled the browser silently falls back to the interpreter.
 
 ## Building
 
 > [!WARNING]
-> Build instructions are included below for reference. Please be aware that I **do not** provide support for issues or errors encountered during the build process.
+> Build instructions are for reference only. No support is provided for build issues.
 
-To build the project, you'll need Xcode, [Python 3](https://www.python.org/downloads/), [Rust and Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html), and [ldid](https://formulae.brew.sh/formula/ldid).
+You need Xcode, [Python 3](https://www.python.org/downloads/), [Rust and Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html), and [ldid](https://formulae.brew.sh/formula/ldid).
 
 Clone the repository.
 
 ```bash
-git clone --recursive https://github.com/minh-ton/reynard-browser
-cd reynard-browser
+git clone --recursive <this-repo-url>
+cd reynard-browser-ios12
 ```
 
-Download Gecko and apply patches.
+Download Gecko and apply the port's patches.
 
 ```bash
 ./tools/development/update-gecko.sh
 ./tools/development/apply-patches.sh
 ```
 
-Build dependencies and the Gecko engine.
+Build the dependencies and the Gecko engine (this takes a while the first time).
 
 ```bash
 ./tools/development/build-idevice.sh
 ./tools/development/build-gecko.sh
 ```
 
-To run Reynard, open `Reynard.xcodeproj` in Xcode and build/run it from there.
+Then build the app itself. Without a paid signing certificate you can build with signing disabled and re-sign with `ldid` afterwards (the main binary wants the entitlements in `browser/Reynard/Entitlements/Reynard.private.entitlements`):
+
+```bash
+xcodebuild build -project browser/Reynard.xcodeproj -scheme Reynard \
+  -configuration Debug -sdk iphoneos -arch arm64 \
+  CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="-" -derivedDataPath /tmp/ReynardDD
+ldid -Sbrowser/Reynard/Entitlements/Reynard.private.entitlements \
+  /tmp/ReynardDD/Build/Products/Debug-iphoneos/Reynard.app/Reynard
+```
 
 ## Notes
 
-This project initially started out of curiosity. I wanted to see if I could get Gecko to run without the [BrowserEngineKit](https://developer.apple.com/documentation/browserenginekit) framework, so it could be further modified to run on iOS versions as far back as possible. I got it working, and since then, I’ve been focusing on developing engine patches for better UIKit integration, fixing bugs, and turning this into a full, usable browser.
+The upstream project started as an experiment to run Gecko without Apple's [BrowserEngineKit](https://developer.apple.com/documentation/browserenginekit) so the engine could be back-ported to old iOS versions. This fork is that idea taken to its logical conclusion: a 2025-Gecko browser running on the original iPad mini's A7 chip, with the engine's JIT, media pipeline, and JavaScript security gates adjusted for a single-process, pre-iOS-13 world.
 
-If you’ve come across this repository and find it interesting, I’d love to get help or collaborate on it. I’m learning as I go here and don’t have much prior experience with iOS app development or with Gecko itself, so any contributions, feedback, or pointers would be greatly appreciated.
+If you find this interesting, contributions and pointers are welcome — this is very much a learn-as-you-go project.
 
 ## Acknowledgements
+
+- [minh-ton/reynard-browser](https://github.com/minh-ton/reynard-browser): the upstream iOS 13+ Gecko browser this fork builds on.
 - [LiveContainer](https://github.com/LiveContainer/LiveContainer): app extension handling and NSExtension usage.
 - [StikDebug](https://github.com/StephenDev0/StikDebug) and [idevice](https://github.com/jkcoxson/idevice): pairing-based JIT enablement support.
-- [TrollStore](https://github.com/opa334/TrollStore): spawning a binary as root and JIT enablement.
-- [Amethyst-iOS](https://github.com/AngelAuraMC/Amethyst-iOS), [dolphin-ios](https://github.com/OatmealDome/dolphin-ios), [DukeX](https://github.com/MaftyManicEMU/DukeX), and [MeloNX](https://git.ryujinx.app/projects/MeloNX): Various utility functions, numerous private API usage, and JIT memory handling.
-- [Pre-existing work](https://bugzilla.mozilla.org/show_bug.cgi?id=1882872) on bringing Gecko to iOS using BrowserEngineKit: most of the difficult engine integration. 
+- [TrollStore](https://github.com/opa334/TrollStore): root helper spawning and JIT enablement techniques.
+- [Amethyst-iOS](https://github.com/AngelAuraMC/Amethyst-iOS), [dolphin-ios](https://github.com/OatmealDome/dolphin-ios), [DukeX](https://github.com/MaftyManicEMU/DukeX), and [MeloNX](https://git.ryujinx.app/projects/MeloNX): various utility functions, private API usage, and JIT memory handling.
+- [Pre-existing work](https://bugzilla.mozilla.org/show_bug.cgi?id=1882872) on bringing Gecko to iOS using BrowserEngineKit: most of the difficult engine integration.
 
 ## License
 
-This project is licensed under the [GNU General Public License v3.0](https://github.com/minh-ton/reynard-browser/blob/main/LICENSE), except for the `patches` directory containing the modifications to the Firefox Gecko engine and therefore is licensed under the [Mozilla Public License 2.0](https://github.com/minh-ton/reynard-browser/blob/main/LICENSE.firefox).
+This project is licensed under the [GNU General Public License v3.0](LICENSE), except for the `patches` directory containing the modifications to the Firefox Gecko engine and therefore is licensed under the [Mozilla Public License 2.0](LICENSE.firefox).
