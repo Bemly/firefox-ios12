@@ -1,0 +1,24 @@
+diff --git a/docshell/base/nsDocShell.cpp b/docshell/base/nsDocShell.cpp
+index 69d45a59b433..30330b947108 100644
+--- a/docshell/base/nsDocShell.cpp
++++ b/docshell/base/nsDocShell.cpp
+@@ -8893,6 +8893,11 @@ nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
+ 
+ /* static */
+ bool nsDocShell::CanLoadInParentProcess(nsIURI* aURI) {
++#ifdef XP_IOS
++  // iOS runs single-process (no content process), so all loads must be
++  // allowed in the parent process.
++  return true;
++#else
+   nsCOMPtr<nsIURI> uri = aURI;
+   // In e10s, in the parent process, we refuse to load anything other than
+   // "safe" resources that we ship or trust enough to give "special" URLs.
+@@ -8942,6 +8947,7 @@ bool nsDocShell::CanLoadInParentProcess(nsIURI* aURI) {
+     return true;
+   }
+   return false;
++#endif
+ }
+ 
+ nsIPrincipal* nsDocShell::GetInheritedPrincipal(

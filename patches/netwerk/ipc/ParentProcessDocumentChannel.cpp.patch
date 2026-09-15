@@ -1,0 +1,22 @@
+diff --git a/netwerk/ipc/ParentProcessDocumentChannel.cpp b/netwerk/ipc/ParentProcessDocumentChannel.cpp
+index c17d27e32528..61694b740226 100644
+--- a/netwerk/ipc/ParentProcessDocumentChannel.cpp
++++ b/netwerk/ipc/ParentProcessDocumentChannel.cpp
+@@ -56,6 +56,9 @@ ParentProcessDocumentChannel::RedirectToRealChannel(
+     channel->SetLoadGroup(mLoadGroup);
+   }
+ 
++  // iOS runs single-process (no content process), so all loads must be
++  // allowed to proceed in the parent process.
++#ifndef XP_IOS
+   if (XRE_IsE10sParentProcess()) {
+     nsCOMPtr<nsIURI> uri;
+     MOZ_ALWAYS_SUCCEEDS(NS_GetFinalChannelURI(channel, getter_AddRefs(uri)));
+@@ -69,6 +72,7 @@ ParentProcessDocumentChannel::RedirectToRealChannel(
+           NS_ERROR_CONTENT_BLOCKED, __func__);
+     }
+   }
++#endif
+   mStreamFilterEndpoints = std::move(aStreamFilterEndpoints);
+ 
+   if (mDocumentLoadListener->IsDocumentLoad() && GetDocShell() &&

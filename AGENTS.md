@@ -74,7 +74,7 @@
 ## 白屏排查实录（2026-09-15，分支 local/white-screen-probe）
 
 现象：壳（主页/快捷方式/设置，原生 Swift UI）正常，任何网页白屏、地址栏叉号常亮。
-已定案两根因（都有 patch 文件，均在 `local/white-screen-probe`）：
+已定案四根因（都有 patch 文件，均在 `local/white-screen-probe`）：
 
 1. `frameLoader.remoteTab` 为 null，`RemoteWebNavigation.sys.mjs` 的
    `maybeCancelContentJSExecution` 直接解引用抛 TypeError，整条加载静默死亡。
@@ -87,14 +87,32 @@
    `AppConstants.platform == "ios"` 判断；注意 `Services.appinfo.OS` 在本移植上是
    `"Darwin"`，不能拿它判断）。
    修完 `docShell=true`，PageStart/Progress 开始流动。
+   同文件：iOS 不设 `maychangeremoteness`（否则每次导航都触发 ChangeRemoteness
+   进程切换，必败；lldb 抓到过 `FinishReplacementChannelSetup(NS_ERROR_FAILURE)`）。
+3. **真凶（收尾失败，白屏最后一跃）**：本移植是单进程（无 content 进程），但
+   `BrowserTabsRemoteAutostart()` 恒返回 true（只认 `MOZ_FORCE_DISABLE_E10S=1`
+   环境变量，不读任何 pref），于是 `XRE_IsE10sParentProcess()==true`；
+   `ParentProcessDocumentChannel::RedirectToRealChannel` 判定 http“不许在
+   parent 加载”→ promise 决议 `NS_ERROR_CONTENT_BLOCKED`，底层 http channel
+   随之撕掉（`OnStopRequest(NS_ERROR_FAILURE)`，`OnDataAvailable` 永不到）。
+   所以 DNS→建连→TLS→Waiting→服务器回 200 全正常，但无渲染、无成功 PageStop。
+   修（C++，`XP_IOS` 守卫，单进程全许 parent 加载）：`nsDocShell::CanLoadInParentProcess`
+   直接 `return true`（兼顾 `InternalLoad` 同名门禁）+
+   `RedirectToRealChannel` 跳过 e10s-parent 检查。patches：
+   `patches/docshell/base/nsDocShell.cpp.patch`、
+   `patches/netwerk/ipc/ParentProcessDocumentChannel.cpp.patch`。
+   修完 test.html 首次 `PageStop success=1`，截图渲染出 `REYNARD-LAN-OK`（包
+   `/tmp/Reynard-fix1.ipa`，已装机验证，pid 3756）。
+   定位法：WP `STATE_STOP status=2153644038` → `0x805E0006`，按 ErrorList.py
+   （MODULE_BASE_OFFSET=0x45，实际模块 94-69=25=CONTENT，code 6）=
+   `NS_ERROR_CONTENT_BLOCKED`；lldb 断点亲见 `RedirectToRealChannel:62` 调
+   `CanLoadInParentProcess`。注意 user.js 里 `browser.tabs.remote.autostart=false`
+   / `fission.autostart=false` 对这条路**无效**（源码根本不读 pref），别再试。
+   `about:blank` 一直正常是因为 `SchemeIs("about")` 天生放行。
 
-当前前沿（未结）：上述修完后，加载能 DNS→建连→TLS 握手→Waiting，但响应回来后
-无 STATE_STOP、无 PageStop（成功）、不渲染。已排除：DNS、TLS、brotli
-（`network.http.accept-encoding` 强制 gzip 照挂）、HTTP/2（`network.http.spdy.enabled=false`
-照挂）、代理/VPN（局域网 Mac 自建 HTTP 服直连也一样挂，且服务器侧确认收到 GET 并回 200）。
-C++ 断点抓到过 `nsHttpChannel::OnStopRequest(NS_ERROR_FAILURE)` 经 InputStreamPump 上来。
-怀疑方向：socket 读到数据后递交 channel/解析器链路断了，或 STOP 通知丢失。
-下一步：`nsHttpChannel::OnDataAvailable` 断点看数据有没有递到 channel。
+当前前沿（收尾观察项）：页面已渲染，但 parent 进程内 Web JS 的 eval/脚本加载
+受 `nsContentSecurityUtils` parent 门禁（`extensions.webextensions.remote` 等
+逃生口），复杂站点的 JS 可能还需 user.js/补丁跟进；待用 google 等重型页验证。
 
 附带发现（真 bug，另案修）：`NavigationDelegate` 的 `.onLoadError` 是空实现，
 加载报错会被吞；`reynard://open?url=` 在 iOS 12 上根本没接（真 delegate 是引擎的
@@ -125,6 +143,22 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   不要同时起两个 debugserver 挂同一个 pid，会互掐（一个 T 状态、一个空转 CPU）。
 - lldb 连上后 `target create` 会丢连接（"Command requires a current process"），
   顺序必须是 create → connect。
+- **lldb 脚本化会话必须 `process detach` 收尾**（2026-09-15 血案：直接 kill lldb
+  客户端，目标留 STOPPED 无人领，SpringBoard 以 signal 杀掉进程 pid 3528，无
+  crash 日志，只能从 syslog `exited abnormally via signal` 反查。若已 kill，
+  立刻重连一次 `process detach`；确认目标 `ps` 还在且 cycript 可驱动）。
+- 引擎 C++ 改动必须 `./mach build` 重编（增量约 50 分钟：603 对象 + gkrust +
+  链 XUL）。objdir 配置硬编码了已消失的 `/Applications/Xcode-beta.app`
+  （host 报 `stdio.h file not found` 即此病），解法 `sudo ln -s Xcode.app
+  Xcode-beta.app`（只补兼容软链，不动 xcode-select）。
+- Xcode 重编会覆盖 `.app` 内一次性 JS 探针（本次 fix 包已无 gvnav/selfdrive 探针，
+  属正常）；但 `dist` rsync 会带上源码级正式修（`patches/` 已应用部分），放心。
+- `browser/Reynard/Entitlements/` 里没有 `Reynard-Helper.private.entitlements`
+  （AGENTS 旧述有误）：Helper/OpenIn/dylib 用 `ldid -S` ad-hoc 即可，只有主二进制
+  必须用 `Reynard.private.entitlements`（`get-task-allow`，attach 必需）。
+- `browser.addProgressListener` 持的是**弱引用**：listener 只存局部 const 会被 GC，
+  后期加载的 WP 日志会无声消失（曾误判为“test.html 无 WP 事件”）。探针须挂强引用
+  （如 `this.__wp`）；正式代码同理。
 - 引擎 `.sys.mjs` 是纯文本散文件（dist 经软链直接读源码，app 包里是 rsync 来的拷贝）：
   改完**源码**要同步镜像到 `.app` 拷贝再打包，不用重新编引擎；但正式修必须同时落
   `patches/`（`git -C engine/firefox diff -- <path>` 生成，`apply-patches.sh` 格式）。
@@ -154,8 +188,10 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   `archive/expired-validation-20260915`（launch-logging 验证，+43/-3），
   子模块内对应 `engine/firefox` 的 `archive/diag-launch-log`（`4a3f369` 写 `/tmp/ReynardLaunch.log` 的诊断提交）。
 - `local/white-screen-probe`：白屏排查分支。含 Swift NSLog 探针（EventDispatcher
-  attach/activate/dispatch 分支、Progress/Navigation 事件）、两个引擎正式修
-  （remoteTab `?.`、iOS 去 remote 属性，均有 `patches/` 文件）。
+  attach/activate/dispatch 分支、Progress/Navigation 事件）、四个引擎正式修
+  （remoteTab `?.`、iOS 去 remote 属性+不设 maychangeremoteness、C++ 单进程
+  parent 放行 ×2，均有 `patches/` 文件）。2026-09-15 夜白屏已修好
+  （test.html PageStop=1 + 渲染 REYNARD-LAN-OK，包 `/tmp/Reynard-fix1.ipa`）。
   注意：装机包里的 JS 探针（`/tmp/gvnav.log` 系列、selfdrive 自动加载、WP listener）
   是直接改 DerivedData 内 `.app` 拷贝做的**一次性实验**，没进 git，重编即丢；
   转正前要么删掉、要么按“debug 模式开关”收敛（用户已要求，待做）。
