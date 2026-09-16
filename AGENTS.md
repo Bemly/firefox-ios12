@@ -75,7 +75,9 @@
 ## Release 构建（2026-09-16 首通，包 `/tmp/Reynard-release.ipa` 已装机验证）
 
 - 命令同 Debug，把 `-configuration` 换成 `Release`，`-derivedDataPath` 换
-  `/tmp/ReynardDD-Release`（与 Debug 隔离）。Release 关断言
+  `/tmp/ReynardDD-Release`（与 Debug 隔离），再加 `CURRENT_BUILD=$(git rev-parse
+  HEAD | cut -c1-7)`（否则设置里版本号括号是 `UNKNOWN`——xcconfig 里写死的占位符，
+  正式脚本 `build-app.sh` 也是这么盖 SHA 的）。Release 关断言
   （`ENABLE_NS_ASSERTIONS=NO`，iOS 12 上等于去掉了一批 SIGTRAP）、strip 符号
   （崩溃回溯弱一截）。Release 无 `Reynard.debug.dylib`（Swift 静态链进主二进制），
   只签主二进制 + appex + Frameworks。
