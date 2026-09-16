@@ -1,0 +1,45 @@
+diff --git a/gfx/wr/webrender/src/scene_building.rs b/gfx/wr/webrender/src/scene_building.rs
+index 5351f2fa15ae..3d6f43ccc6ae 100644
+--- a/gfx/wr/webrender/src/scene_building.rs
++++ b/gfx/wr/webrender/src/scene_building.rs
+@@ -1478,17 +1478,29 @@ impl<'a> SceneBuilder<'a> {
+                     transformed_aa_edges: EdgeMask::empty(),
+                 };
+ 
+-                let spatial_node = self.spatial_tree.get_node_info(spatial_node_index);
+-                let anim_id: u64 =  match spatial_node.node_type {
+-                    SpatialNodeType::ReferenceFrame(ReferenceFrameInfo {
+-                        source_transform: PropertyBinding::Binding(key, _),
+-                        ..
+-                    }) => key.clone().into(),
+-                    SpatialNodeType::StickyFrame(StickyFrameInfo {
+-                        transform: Some(PropertyBinding::Binding(key, _)),
+-                        ..
+-                    }) => key.clone().into(),
+-                    _ => 0,
++                let mut ancestor_index = spatial_node_index;
++                let anim_id = loop {
++                    let node = self.spatial_tree.get_node_info(ancestor_index);
++                    match node.node_type {
++                        SpatialNodeType::ReferenceFrame(ReferenceFrameInfo {
++                            is_pipeline_root: true,
++                            ..
++                        }) => break 0,
++                        SpatialNodeType::ReferenceFrame(ReferenceFrameInfo {
++                            source_transform: PropertyBinding::Binding(key, _),
++                            kind: ReferenceFrameKind::Transform { should_snap: true, .. },
++                            ..
++                        }) => break key.clone().into(),
++                        SpatialNodeType::StickyFrame(StickyFrameInfo {
++                            transform: Some(PropertyBinding::Binding(key, _)),
++                            ..
++                        }) => break key.clone().into(),
++                        _ => {}
++                    }
++                    match node.parent {
++                        Some(parent) => ancestor_index = parent,
++                        None => break 0,
++                    }
+                 };
+ 
+                 let clip_node_id = self.get_clip_node(info.clip_chain_id);

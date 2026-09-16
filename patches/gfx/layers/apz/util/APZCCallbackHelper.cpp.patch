@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/apz/util/APZCCallbackHelper.cpp b/gfx/layers/apz/util/APZCCallbackHelper.cpp
-index 2f77c6ca1893..743c8b56b82f 100644
+index 2f77c6ca1893..b8e514dc0806 100644
 --- a/gfx/layers/apz/util/APZCCallbackHelper.cpp
 +++ b/gfx/layers/apz/util/APZCCallbackHelper.cpp
 @@ -30,6 +30,8 @@
@@ -37,7 +37,7 @@ index 2f77c6ca1893..743c8b56b82f 100644
    SetDisplayPortMargins(presShell, content, displayPortMargins,
                          aRequest.CalculateCompositedSizeInCssPixels());
    SetPaintRequestTime(content, aRequest.GetPaintRequestTime());
-+  presShell->SetFixedPositionTopMargin(aRequest.GetFixedPositionTopMargin());
++  presShell->SetFixedPositionMargins(aRequest.GetFixedPositionMargins());
  }
  
  void APZCCallbackHelper::UpdateSubFrame(const RepaintRequest& aRequest) {
