@@ -17,6 +17,55 @@
   (`com.apple.springboard.debugapplications` + `run-unsigned-code` + `get-task-allow` + `task_for_pid-allow`)
 - SSH root 口令：`alpine`（越狱默认）。用法：`SSHPASS='alpine' sshpass -e ssh -p 2222 ...`。
 - 本机 sudo 口令：`2328`，需提权时用（例如 `echo '2328' | sudo -S ...`）。
+- iPhone 5s (`iPhone6,2`), iOS 12.5.8 (16H88)，checkra1n 越狱（2026-09-17 加入，第二台真机）：
+  WiFi SSH 直连 `root@192.168.1.10`；USB iproxy 用 **2233**（`iproxy 2233:22 -u <UDID>`），
+  2222 留给 iPad 可并存。两台同 iOS 版本，同一 IPA 可互换验证。
+- iPhone 与 iPad 环境差异（2026-09-17 实测）：无 apt-get/plutil/netstat/pkill/Activator；
+  已 dpkg 手装 libactivator 四件套（rocketbootstrap/flipswitch/preferenceloader/libactivator，
+  deb 从 `https://rpetri.ch/repo/debs/` 拉，依赖也在同源）+ network-cmds（`/sbin/netstat`，
+  从设备 Sileo 已刷新的 `/var/lib/apt/lists/*.plist` 里查 `Filename:` 定位 deb URL，BigBoss 索引
+  里搜不到该包定义）。设备截图即 `activator send libactivator.system.take-screenshot`。
+  iPhone 上 uiopen 拉不起锁屏状态的 App（报错无进程），自动化前先亮屏解锁。
+
+## iPhone 5s 排障实录（2026-09-17，"所有网页打不开 + 三个点闪退"，Debug 包 /tmp/Reynard-debug-fix1.ipa 验证通过）
+
+- **根因一：iOS 按 App 无线数据权限把 App 整个断网**（首要坑，影响任何装机流程）：
+  症状=每个网页都 Gecko DNS 错误页（"could not be found"），但设备 shell 里 curl 一切正常。
+  实质：该 App **全部 socket（TCP/UDP、含局域网 IP）在内核层秒拒 `EHOSTUNREACH`（errno 65）**，
+  nw_path_monitor 永不回调，mDNSResponder 查询也死——系统级按 App 断网（设置→无线局域网→
+  「使用无线局域网与蜂窝网络的应用」），首启弹窗被拒/误点即中。iPad 一直没事因为从没弹过/允许过。
+  诊断链（可照抄）：设备 curl OK → cycript dlopen 进程内探针 dylib（constructor 写 /tmp 日志：
+  getaddrinfo/res_query/原始 TCP/UDP/csops）→ 全挂但 csops=0x2600100f 平台位正常、profile 照写
+  全局路径（=no-sandbox 正常）→ 读 `/var/preferences/com.apple.networkextension.plist`
+  （NSKeyedArchiver，拉回 Mac plistlib 解）：每 App 记录 `WiFiBehavior/CellularBehavior`，
+  **1=拒绝 2=允许**（全表佐证：Safari/AppStore/Firefox/Cydia 全 2，越狱工具+reynard 全 1）。
+  修（CLI 法）：`kill nesessionmanager` → Mac 上 python plistlib 把 reynard 两条 1→2 二进制回写 →
+  scp 回 `/var/preferences/`（root:wheel 644）→ 杀 App 重启即通（launchd 自动拉起守护重读）。
+  已留备份 `/var/preferences/com.apple.networkextension.plist.bak-20260917`。
+  GUI 法：设置→无线局域网→底部列表→Reynard→选「WLAN 与蜂窝网络」。
+- **根因二：necko 不认 iOS 系统 WiFi 代理**（HTTP 全局代理也无效，neck 走自家 socket+自家 prefs）：
+  无 VPN 时被墙站全死、直连站（baidu）修复根因一后即通。修：设备 profile
+  `/var/mobile/Library/Application Support/.mozilla/firefox/*.default/user.js` 加
+  `network.proxy.type=1` + `http/ssl/socks → 192.168.1.5:7890`（Mac 上 Clash），杀进程重进。
+  实测 google 首页完整渲染（Debug 包 + 代理）。iPad 靠 VPN 不需要这套。
+- **根因三（已修，commit 4943d0d）：三个点闪退 = iPhone-only 上游潜伏 bug**：
+  `ContentModalNavigationController` 自定义 designated init（`init(rootViewController:onDismissed:)`）
+  后，Swift 不再继承 `init(nibName:bundle:)`，编译器生成的 @objc thunk 直接 trap
+  （fatalError "use of unimplemented initializer"，crash 帧=`@objc ...CfETo`）；
+  而 UIKit `initWithRootViewController:` 内部会 `[self initWithNibName:nil bundle:nil]`
+  动态派发回子类 thunk → 必崩 EXC_BREAKPOINT。iPad 上 `presentLibrary` 走 sidebar 分支
+  从不构造该类，iPad-only 测试永远暴露不了。修：改 `super.init(nibName: nil, bundle: nil)` +
+  `viewControllers=[rootViewController]`（静态上溯绕开 thunk），行为等价。符号化注意：
+  Release 主二进制 `__TEXT` 只有 ~4.6MB，crash 地址要按报告里 base+偏移还原，别拿运行时
+  地址直接对段。
+- 定位方法论加分项：**进程内探针 dylib** 是本工程最快的一锤定音工具——Mac
+  `xcrun -sdk iphoneos clang -x c -arch arm64 -dynamiclib`（缺符号就补
+  `-framework CoreFoundation -framework CFNetwork -lresolv -weak_framework Network`），
+  constructor 里写 `/tmp/*.log` 并**每行 fflush**，`ldid -S` 签名，scp 上机，
+  `cycript -p <pid> /tmp/dlopen-probe.cy`（文件模式；extern 块只放 `dlopen` 原型）→ cat 日志。
+  本轮 getaddrinfo EAI_NONAME（8ms 秒拒）vs res_ninit 正常（能看到 114DNS）→ 把"DNS 配置坏"
+  和"socket 被拒"区分开全靠它。cycript 注入偶发 `_assert(InjectLibrary)` 并杀掉目标属已知噪声，
+  重启 App 即恢复。
 
 ## Mac 工具链 (不要动 xcode-select，当前指向 Xcode.app 即 27)
 
