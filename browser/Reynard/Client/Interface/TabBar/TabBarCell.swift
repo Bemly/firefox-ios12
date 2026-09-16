@@ -14,7 +14,8 @@ final class TabBarCell: UICollectionViewCell {
         static let tabTitleFontSize: CGFloat = 14
         static let tabTitleSpacing: CGFloat = 6
         static let tabFaviconSideLength: CGFloat = 16
-        static let tabFaviconCornerRadius: CGFloat = 3
+        // PERF flat-chrome: rounded corners removed for compositing test.
+        static let tabFaviconCornerRadius: CGFloat = 0
         static let tabCloseButtonSideLength: CGFloat = 22
         static let tabCloseButtonTrailingInset: CGFloat = 6
         static let tabCloseButtonSymbolPointSize: CGFloat = 14
@@ -22,7 +23,7 @@ final class TabBarCell: UICollectionViewCell {
         static let expandedTabContentTrailingInset: CGFloat = 34
         static let collapsedTabContentHorizontalInset: CGFloat = 8
         static let expandedTabTitleWidthInset: CGFloat = 58
-        static let contentCornerRadius: CGFloat = 16
+        static let contentCornerRadius: CGFloat = 0
         static let contentInsets = UIEdgeInsets(top: 2, left: 4, bottom: 2, right: 4)
         static let borderWidth: CGFloat = 0.5
     }

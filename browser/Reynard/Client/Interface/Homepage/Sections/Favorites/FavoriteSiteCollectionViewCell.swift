@@ -10,10 +10,11 @@ import UIKit
 final class FavoriteSiteCollectionViewCell: UICollectionViewCell {
     private enum UX {
         static let maximumIconSize: CGFloat = 74
-        static let iconCornerRadius: CGFloat = 17
+        // PERF flat-chrome: rounded corners + shadow removed for compositing test.
+        static let iconCornerRadius: CGFloat = 0
         static let titleHeight: CGFloat = 34
         static let titleFontSize: CGFloat = 12
-        static let shadowOpacity: Float = 0.18
+        static let shadowOpacity: Float = 0
         static let shadowRadius: CGFloat = 5
         static let shadowOffsetWidth: CGFloat = 0
         static let shadowOffsetHeight: CGFloat = 2
@@ -180,12 +181,9 @@ final class FavoriteSiteCollectionViewCell: UICollectionViewCell {
     }
     
     private func updateShadowColor() {
-        let iconSize = currentIconSize()
+        // PERF flat-chrome: shadow removed, no shadowPath needed.
         shadowView.layer.shadowColor = UIColor.black.cgColor
-        shadowView.layer.shadowPath = UIBezierPath(
-            roundedRect: CGRect(origin: .zero, size: CGSize(width: iconSize, height: iconSize)),
-            cornerRadius: cornerRadius(for: iconSize)
-        ).cgPath
+        shadowView.layer.shadowPath = nil
     }
     
     private func applyReorderState(animated: Bool) {

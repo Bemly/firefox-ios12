@@ -372,7 +372,8 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
 - user.js 生效，但 `false` 等于默认值时不落 prefs.js（别拿 prefs.js 有无当判据）；
   改完 user.js 必须杀进程重进（退出时会重写 prefs.js，见上文）。
 - 本体 chrome 去圆角阴影实验（`PERF flat-chrome` 标记）：Toolbar/地址栏（含手势预览浮层）/
-  ActionBar 三件套/ChromeOverlay/TabOverviewToolbar/LibraryActionButton 的 cornerRadius 常量归 0、
+  ActionBar 三件套/ChromeOverlay/TabOverviewToolbar/LibraryActionButton/TabBar 药丸/
+  个人收藏（含文件夹 cell）的 cornerRadius 常量归 0、
   `shadowOpacity` 归 0、`layoutSubviews` 里 `shadowPath=nil`（不再算圆角 shadowPath）。
   `clipsToBounds/masksToBounds` 和 `applyContinuousCornerCurve()` 调用保留原样
  （radius=0 时无离屏 mask 成本；iOS 12 上 continuous 本来就是 no-op）。回退：搜
