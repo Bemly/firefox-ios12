@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/apz/src/APZCTreeManager.cpp b/gfx/layers/apz/src/APZCTreeManager.cpp
-index 525cc79ed3c3..403084dd6f1b 100644
+index 525cc79ed3c3..a89c9e5da89d 100644
 --- a/gfx/layers/apz/src/APZCTreeManager.cpp
 +++ b/gfx/layers/apz/src/APZCTreeManager.cpp
 @@ -4,6 +4,7 @@
@@ -456,7 +456,7 @@ index 525cc79ed3c3..403084dd6f1b 100644
    }
  }
  
-@@ -4011,6 +4014,28 @@ ScreenPoint APZCTreeManager::ComputeFixedMarginsOffset(
+@@ -4011,6 +4014,30 @@ ScreenPoint APZCTreeManager::ComputeFixedMarginsOffset(
    return translation;
  }
  
@@ -475,9 +475,11 @@ index 525cc79ed3c3..403084dd6f1b 100644
 +                aMode,
 +                AsyncTransformComponents{AsyncTransformComponent::eVisual})
 +            .mTranslation;
-+    translation.y -=
++
++    translation.y -= std::max(
 +        ViewAs<ScreenPixel>(visualTranslation.y,
-+                            PixelCastJustification::ScreenIsParentLayerForRoot);
++                            PixelCastJustification::ScreenIsParentLayerForRoot),
++        ScreenCoord(0));
 +  }
 +  return translation;
 +}
@@ -485,7 +487,7 @@ index 525cc79ed3c3..403084dd6f1b 100644
  /*static*/
  LayerToParentLayerMatrix4x4 APZCTreeManager::ComputeTransformForScrollThumb(
      const LayerToParentLayerMatrix4x4& aCurrentTransform,
-@@ -4102,11 +4127,18 @@ APZCTreeManager::FixedPositionInfo::FixedPositionInfo(
+@@ -4102,11 +4129,18 @@ APZCTreeManager::FixedPositionInfo::FixedPositionInfo(
  APZCTreeManager::StickyPositionInfo::StickyPositionInfo(
      const HitTestingTreeNode* aNode) {
    mStickyPositionAnimationId = aNode->GetStickyPositionAnimationId();

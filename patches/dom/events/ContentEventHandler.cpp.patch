@@ -1,5 +1,5 @@
 diff --git a/dom/events/ContentEventHandler.cpp b/dom/events/ContentEventHandler.cpp
-index 676c358f6e54..0767ea509114 100644
+index 676c358f6e54..592f3efc03c2 100644
 --- a/dom/events/ContentEventHandler.cpp
 +++ b/dom/events/ContentEventHandler.cpp
 @@ -6,6 +6,8 @@
@@ -243,7 +243,7 @@ index 676c358f6e54..0767ea509114 100644
    if (NS_WARN_IF(NS_FAILED(QueryContentRect(mRootElement, aEvent)))) {
      return NS_ERROR_FAILURE;
    }
-@@ -3408,13 +3584,34 @@ nsresult ContentEventHandler::ConvertToRootRelativeOffset(nsIFrame* aFrame,
+@@ -3408,13 +3584,35 @@ nsresult ContentEventHandler::ConvertToRootRelativeOffset(nsIFrame* aFrame,
    if (NS_WARN_IF(!rootPC)) {
      return NS_ERROR_FAILURE;
    }
@@ -270,7 +270,8 @@ index 676c358f6e54..0767ea509114 100644
 +        const CSSPoint callbackOffset =
 +            nsLayoutUtils::GetCumulativeApzCallbackTransform(
 +                rootPresShell->GetRootScrollContainerFrame());
-+        aRect.y += CSSPixel::ToAppUnits(*topMargin + callbackOffset.y);
++        aRect.y += CSSPixel::ToAppUnits(
++            *topMargin + std::min(callbackOffset.y, CSSCoord(0)));
 +        break;
 +      }
 +    }
