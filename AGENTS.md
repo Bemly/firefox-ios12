@@ -519,6 +519,46 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   （`Reynard-2026-09-16-210634.ips`，ime-fix 包，用户播视频期间），与本次
   弹窗无关，另案跟。
 
+## WebGL 修复实录（2026-09-17，单行 pref 修复，真机验证通过）
+
+现象：任何页面 `getContext('webgl'/'webgl2'/'experimental-webgl')` 全部返回
+null（3d.bemly.moe 只剩移动按钮）。最终修复只有一行：
+`pref("webgl.allow-in-parent", true)`（已落 `mobile/ios/app/mobile.js`）。
+
+- **定位捷径（零重建，先用这个）**：`ClientWebGLContext::CreateHostContext`
+  的每个 Err 都会向 canvas 派发 `webglcontextcreationerror`，探针页监听
+  `e.statusMessage` 直接拿到精确失败字符串。第一轮截图即拿到
+  "WebGL disabled, see about:support for why"——是 `CreateHostContext` 的
+  **第一道门** `gfxVars::AllowWebGL()`，上会话怀疑的 CanvasManagerChild 层
+  根本没执行到。
+- lldb 教训：`CanvasManagerChild::Get` 调用方很多（2D canvas/
+  PersistentBufferProvider/CompositorBridgeChild 等），断点命中 ≠ WebGL
+  路径走到；先用 creationerror 字符串定性，再上断点。
+- 根因：`gfx/thebes/gfxPlatform.cpp`（~3252）无 GPU 进程时
+  `featureWebGL.Disable(UnavailableNoGpuProcess)` → `AllowWebGL=false`。
+  修：`webgl.allow-in-parent`（**连字符**，StaticPrefList 里 grep 下划线
+  找不到；默认 false，ONCE_PREF 启动一次性读，user.js / 默认 prefs 均可）。
+  user.js 里旧的 `webgl.force-enabled`/`webgl.ignore-blocklist` 对这道门
+  无效（门在 gfxConfig/GPU 进程判定，不在 blocklist），属无效药可清理。
+- 架构事实（Fx 155）：WebGL **没有进程内 host 分支**，无条件走
+  `CanvasManagerChild::Get()`（TLS 惰性建链）→ `SendPWebGLConstructor` IPC。
+  单进程 port 下整条链实测能跑通：in-proc `CompositorManagerChild`
+  （合成会话创建时 `EnsureProtocolsReady → InitSameProcess` 设置
+  `sCompositorProcInfo=Current`）→ 同进程 endpoint
+  （`PCanvasManager::CreateEndpoints(Current, Current)`）→
+  `CanvasManagerParent`/`WebGLParent`/`HostWebGLContext`/EAGL headless GL
+  全部落主进程 CompositorThread。上游注释 "we don't actually support remote
+  canvas in the parent process" 是保守说法，别被吓退。
+- 同进程排查备忘：`CanvasShutdownManager::Get()` 主线程惰性自建不是断点；
+  `CompositorManagerChild::GetCompositorProcInfo()` 只有 `InitSameProcess`/
+  `Init` 会设置。
+- 验证：user.js 单加该 pref 冷启 → 探针页三种类型全 OK
+  （RENDERER "Apple M1, or similar" 是 Gecko 对 Apple GPU 的掩码文案，
+  `draw+read: PASS` = 画+readPixels 读回校验）。
+  patch regen：`git -C engine/firefox diff HEAD -- mobile/ios/app/mobile.js`
+  整文件 diff 覆盖 `patches/mobile/ios/app/mobile.js.patch`，reverse-check 过。
+
+
 ## browserscore.dev 崩溃定性（2026-09-17，Debug 包 + lldb 真机复现）
 
 结论：**不是单个代码 bug，是内存耗尽**。该站是 Lea Verou css3test 变体，对数千个

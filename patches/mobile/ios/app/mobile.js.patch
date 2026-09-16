@@ -1,5 +1,5 @@
 diff --git a/mobile/ios/app/mobile.js b/mobile/ios/app/mobile.js
-index e835b1c33d86..9497e9c92f7f 100644
+index e835b1c33d86..62097924463b 100644
 --- a/mobile/ios/app/mobile.js
 +++ b/mobile/ios/app/mobile.js
 @@ -3,7 +3,103 @@
@@ -107,7 +107,7 @@ index e835b1c33d86..9497e9c92f7f 100644
  
  // Use software webrender on simulator due to missing APIs.
  #if TARGET_OS_SIMULATOR
-@@ -19,3 +115,24 @@ pref("security.sandbox.content.level", 1);
+@@ -19,3 +115,32 @@ pref("security.sandbox.content.level", 1);
  // 1 complete progressbar at DOMContentLoaded
  // 2 complete progressbar at first MozAfterPaint after DOMContentLoaded
  pref("page_load.progressbar_completion", 2);
@@ -119,6 +119,14 @@ index e835b1c33d86..9497e9c92f7f 100644
 +// OpenGL ES context; the parent is a full app and can, so keep GL/compositing
 +// there.
 +pref("layers.gpu-process.enabled", false);
++
++// REYNARD (iOS 12): Allow WebGL contexts to be hosted in the parent process.
++// gfxPlatform disables WebGL entirely when the GPU process is off
++// ("Disabled without GPU process"), which made every getContext('webgl*')
++// return null on this single-process port. With this pref the canvas manager
++// (CanvasManagerParent) is hosted in-process on the compositor thread and
++// WebGL runs through GLContextProviderEAGL.
++pref("webgl.allow-in-parent", true);
 +
 +// REYNARD (iOS 12): Run networking (including DNS) in the parent process. On
 +// iOS 12 the socket process runs as an app extension whose sandbox cannot
