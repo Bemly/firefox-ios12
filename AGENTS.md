@@ -567,6 +567,31 @@ null（3d.bemly.moe 只剩移动按钮）。最终修复只有一行：
 - WebGL 修复包：`/tmp/Reynard-webgl-17dd42f.ipa`（Release，装机验证通过；
   user.js 三条 webgl pref 已清空，纯靠仓库 mobile.js 默认值）。
 
+### 内存预算 pref（2026-09-17，commit 7dc188d，包 `/tmp/Reynard-mem-7dc188d.ipa` 已装机）
+
+配置层缓解 jetsam 高水位（~702MB），全部落在 `mobile/ios/app/mobile.js`：
+
+- **`image.mem.max_bytes` 在 Fx 155 已不存在**（旧文档/记忆别再找它），解码图
+  缓存实际由 SurfaceCache 管理：大小 = `min(physmem / size_factor,
+  max_size_kb)`，默认 factor=4、max≈2GB → 1GB 机上 **256MB**。已改
+  `size_factor=8` + `max_size_kb=131072`（封顶 128MB）。
+- JS GC tunables 在 `modules/libpref/init/all.js`（StaticPrefList 里只有
+  mem.log/notify）。desktop 默认 `gc_large_heap_size_min_mb=500` 在 1GB 机
+  完全失配。已改：small_heap_max 64、large_heap_min 128、high_freq_small
+  growth 200、high_freq_large/low_freq growth 120、allocation_threshold 8、
+  malloc_threshold_base 16、urgent 8。代价 = 更频繁的增量 GC。
+- 实测（3d.bemly.moe，nohup `ps aux` 采样 /tmp/mem.log）：RSS 曲线
+  146→181MB 峰值→GC 压回 95MB，**ps RSS 看不见 GPU/IOSurface/phys_footprint，
+  别拿它当 jetsam 判据**。站点加载 ~15s 后仍触发系统级风暴。
+- **为什么风暴后找不到 JetsamEvent**：系统会拉起 `/usr/libexec/
+  ReportMemoryException`（CrashReporter 目录里有同名隐藏 `.ips`），但它被
+  越狱插件 Cr4shed（Cr4shedJetsam.dylib）搞崩（SIGABRT），完整 jetsam 报告
+  永远落不了盘。看到 `.ReportMemoryException-*.ips` = 内存异常事件实锤。
+- 风暴时 nohup 后台采样器也会陪葬（只录到 6 条）；`ps` 采样结论仅作趋势用。
+- 3d 站剩余内存消耗在 GPU 纹理/SWGL 渲染缓冲，pref 压不到，缓解需
+  场景降载/纹理预算（非配置层）。
+
+
 
 
 ## browserscore.dev 崩溃定性（2026-09-17，Debug 包 + lldb 真机复现）
