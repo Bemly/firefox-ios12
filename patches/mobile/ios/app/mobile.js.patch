@@ -1,5 +1,5 @@
 diff --git a/mobile/ios/app/mobile.js b/mobile/ios/app/mobile.js
-index e835b1c33d86..62097924463b 100644
+index e835b1c33d86..75a083eda458 100644
 --- a/mobile/ios/app/mobile.js
 +++ b/mobile/ios/app/mobile.js
 @@ -3,7 +3,103 @@
@@ -107,7 +107,7 @@ index e835b1c33d86..62097924463b 100644
  
  // Use software webrender on simulator due to missing APIs.
  #if TARGET_OS_SIMULATOR
-@@ -19,3 +115,32 @@ pref("security.sandbox.content.level", 1);
+@@ -19,3 +115,51 @@ pref("security.sandbox.content.level", 1);
  // 1 complete progressbar at DOMContentLoaded
  // 2 complete progressbar at first MozAfterPaint after DOMContentLoaded
  pref("page_load.progressbar_completion", 2);
@@ -140,3 +140,22 @@ index e835b1c33d86..62097924463b 100644
 +// PreallocatedProcessManager would otherwise spawn a Helper child for nothing
 +// (BrowserTabsRemoteAutostart() is unconditionally true on this port).
 +pref("dom.ipc.processPrelaunch.enabled", false);
++
++// REYNARD (iOS 12): memory-budget tuning for 1GB devices (jetsam highwater
++// ~700MB; see the browserscore.dev postmortem). Without these, the image
++// SurfaceCache alone resolves to min(physmem/4, 2GB) = 256MB on a 1GB device,
++// and the SpiderMonkey heap triggers assume a desktop-sized heap
++// (JSGC_LARGE_HEAP_SIZE_MIN 500MB). Halve the SurfaceCache and make the JS
++// heap trigger GCs earlier with slower growth so the process stays further
++// away from the jetsam line. All of these are safe to set; the cost is more
++// frequent (but incremental) GCs.
++pref("image.mem.surfacecache.size_factor", 8);
++pref("image.mem.surfacecache.max_size_kb", 131072);
++pref("javascript.options.mem.gc_small_heap_size_max_mb", 64);
++pref("javascript.options.mem.gc_large_heap_size_min_mb", 128);
++pref("javascript.options.mem.gc_high_frequency_small_heap_growth", 200);
++pref("javascript.options.mem.gc_high_frequency_large_heap_growth", 120);
++pref("javascript.options.mem.gc_low_frequency_heap_growth", 120);
++pref("javascript.options.mem.gc_allocation_threshold_mb", 8);
++pref("javascript.options.mem.gc_malloc_threshold_base_mb", 16);
++pref("javascript.options.mem.gc_urgent_threshold_mb", 8);
