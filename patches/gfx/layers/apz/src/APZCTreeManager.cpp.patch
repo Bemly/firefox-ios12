@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/apz/src/APZCTreeManager.cpp b/gfx/layers/apz/src/APZCTreeManager.cpp
-index 525cc79ed3c3..a89c9e5da89d 100644
+index 525cc79ed3c3..884fbab88eb5 100644
 --- a/gfx/layers/apz/src/APZCTreeManager.cpp
 +++ b/gfx/layers/apz/src/APZCTreeManager.cpp
 @@ -4,6 +4,7 @@
@@ -224,7 +224,7 @@ index 525cc79ed3c3..a89c9e5da89d 100644
  
    RecursiveMutexAutoLock lock(mTreeLock);
  
-@@ -3548,15 +3518,36 @@ ParentLayerToScreenMatrix4x4 APZCTreeManager::GetApzcToGeckoTransform(
+@@ -3548,15 +3518,59 @@ ParentLayerToScreenMatrix4x4 APZCTreeManager::GetApzcToGeckoTransform(
        PixelCastJustification::ScreenIsParentLayerForRoot);
  }
  
@@ -250,6 +250,29 @@ index 525cc79ed3c3..a89c9e5da89d 100644
 +    translation = ComputeFixedMarginsOffset(
 +        aHit.mTargetApzc, aHit.mFixedPosSides,
 +        AsyncTransformConsumer::eForEventHandling, lock);
++  } else if (aHit.mNode && aHit.mNode->GetFixedPositionAnimationId() &&
++             !aApzc->IsRootContent()) {
++    RecursiveMutexAutoLock treeLock(mTreeLock);
++    MutexAutoLock mapLock(mMapLock);
++    const auto* node = aHit.mNode.Get(treeLock);
++    if (auto* apzc = GetRootContentApzc(node->GetLayersId(),
++                                        node->GetFixedPosTarget(), mapLock)) {
++      translation = ComputeFixedMarginsOffset(
++          apzc, node->GetFixedPosSides(),
++          AsyncTransformConsumer::eForEventHandling, mapLock);
++
++      if (!IsSoftwareKeyboardVisible(mapLock) ||
++          InteractiveWidgetMode(mapLock) ==
++              dom::InteractiveWidget::ResizesContent) {
++        const ParentLayerPoint layoutOffset =
++            apzc->GetLayoutScrollOffset() * apzc->GetZoom();
++        translation.y +=
++            std::min(ViewAs<ScreenPixel>(
++                         layoutOffset.y,
++                         PixelCastJustification::ScreenIsParentLayerForRoot),
++                     ScreenCoord(0));
++      }
++    }
 +  } else if (aHit.mNode && aHit.mNode->GetStickyPositionAnimationId()) {
 +    RecursiveMutexAutoLock treeLock(mTreeLock);
 +    MutexAutoLock mapLock(mMapLock);
@@ -265,7 +288,7 @@ index 525cc79ed3c3..a89c9e5da89d 100644
  }
  
  CSSToCSSMatrix4x4 APZCTreeManager::GetOopifToRootContentTransform(
-@@ -3670,19 +3661,7 @@ Maybe<ScreenIntPoint> APZCTreeManager::ConvertToGecko(
+@@ -3670,19 +3684,7 @@ Maybe<ScreenIntPoint> APZCTreeManager::ConvertToGecko(
    const HitTestResult& hit = mInputQueue->GetCurrentTouchBlock()
                                   ? mTouchBlockHitResult
                                   : mTapGestureHitResult;
@@ -286,7 +309,7 @@ index 525cc79ed3c3..a89c9e5da89d 100644
  }
  
  already_AddRefed<AsyncPanZoomController> APZCTreeManager::CommonAncestor(
-@@ -3732,68 +3711,80 @@ already_AddRefed<AsyncPanZoomController> APZCTreeManager::CommonAncestor(
+@@ -3732,68 +3734,80 @@ already_AddRefed<AsyncPanZoomController> APZCTreeManager::CommonAncestor(
    return ancestor.forget();
  }
  
@@ -310,16 +333,16 @@ index 525cc79ed3c3..a89c9e5da89d 100644
    }
 -  RefPtr<AsyncPanZoomController> targetApzc = it->second.apzc;
 -  return targetApzc && targetApzc->IsRootContent();
--}
--
--SideBits APZCTreeManager::SidesStuckToRootContent(
--    const HitTestingTreeNode* aNode, AsyncTransformConsumer aMode) const {
--  MutexAutoLock lock(mMapLock);
--  return SidesStuckToRootContent(StickyPositionInfo(aNode), aMode, lock);
 +  auto* apzc = it->second.apzc.get();
 +  return apzc && apzc->IsRootContent() ? apzc : nullptr;
  }
  
+-SideBits APZCTreeManager::SidesStuckToRootContent(
+-    const HitTestingTreeNode* aNode, AsyncTransformConsumer aMode) const {
+-  MutexAutoLock lock(mMapLock);
+-  return SidesStuckToRootContent(StickyPositionInfo(aNode), aMode, lock);
+-}
+-
 -SideBits APZCTreeManager::SidesStuckToRootContent(
 -    const StickyPositionInfo& aStickyInfo, AsyncTransformConsumer aMode,
 -    const MutexAutoLock& aProofOfMapLock) const {
@@ -419,7 +442,7 @@ index 525cc79ed3c3..a89c9e5da89d 100644
  }
  
  LayerToParentLayerMatrix4x4 APZCTreeManager::ComputeTransformForScrollThumbNode(
-@@ -3959,11 +3950,15 @@ void APZCTreeManager::SendSubtreeTransformsToChromeMainThread(
+@@ -3959,11 +3973,15 @@ void APZCTreeManager::SendSubtreeTransformsToChromeMainThread(
  }
  
  void APZCTreeManager::SetFixedLayerMargins(ScreenIntCoord aTop,
@@ -436,7 +459,7 @@ index 525cc79ed3c3..a89c9e5da89d 100644
    }
    {
      RecursiveMutexAutoLock lock(mTreeLock);
-@@ -3973,9 +3968,17 @@ void APZCTreeManager::SetFixedLayerMargins(ScreenIntCoord aTop,
+@@ -3973,9 +3991,17 @@ void APZCTreeManager::SetFixedLayerMargins(ScreenIntCoord aTop,
  
  void APZCTreeManager::SetFixedLayerMarginsOnRootContentApzcs(
      const RecursiveMutexAutoLock& aProofOfTreeLock) {
@@ -456,7 +479,7 @@ index 525cc79ed3c3..a89c9e5da89d 100644
    }
  }
  
-@@ -4011,6 +4014,30 @@ ScreenPoint APZCTreeManager::ComputeFixedMarginsOffset(
+@@ -4011,6 +4037,30 @@ ScreenPoint APZCTreeManager::ComputeFixedMarginsOffset(
    return translation;
  }
  
@@ -487,7 +510,7 @@ index 525cc79ed3c3..a89c9e5da89d 100644
  /*static*/
  LayerToParentLayerMatrix4x4 APZCTreeManager::ComputeTransformForScrollThumb(
      const LayerToParentLayerMatrix4x4& aCurrentTransform,
-@@ -4102,11 +4129,18 @@ APZCTreeManager::FixedPositionInfo::FixedPositionInfo(
+@@ -4102,11 +4152,18 @@ APZCTreeManager::FixedPositionInfo::FixedPositionInfo(
  APZCTreeManager::StickyPositionInfo::StickyPositionInfo(
      const HitTestingTreeNode* aNode) {
    mStickyPositionAnimationId = aNode->GetStickyPositionAnimationId();
