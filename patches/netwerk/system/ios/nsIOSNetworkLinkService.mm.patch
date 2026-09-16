@@ -3,7 +3,7 @@ new file mode 100644
 index 000000000000..441b0e633e44
 --- /dev/null
 +++ b/netwerk/system/ios/nsIOSNetworkLinkService.mm
-@@ 0,0 +1,571 @@
+@@ -0,0 +1,571 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
