@@ -396,6 +396,25 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
 - 改完引擎源码必须 regen 对应 `patches/`（`git diff` 生成）+ reverse-check；
   新文件走 glob 自动发现，无需注册。验证用 touch 定点重编 + grep 日志，不要全量等。
 
+## GPU 合成方向（分支 `local/gpu-compositing-wr-gl`，实验中）
+
+- 现状：网页合成走 SWGL（CPU）。present 端已是 CoreAnimation
+ （`RenderCompositorNative.cpp.patch` 在 XP_IOS 返回 CORE_ANIMATION；
+  NativeLayerCA/SurfacePoolCA 均有 XP_IOS 分支）；`layers.gpu-process.enabled=false`，
+  合成在主进程 in-process（`mobile.js.patch` 注释：子进程是 app extension 建不了
+  GLES context，主进程是完整 app 可以）。
+- 硬件路在树上存在：`gfx/gl/GLContextProviderEAGL.mm` 是完整实现
+  （GLES3→GLES2 回退、sharegroup）；`GfxInfo.cpp:176` iOS 永不 blocklist OGL。
+- 切入点：`gfxPlatform.cpp` 的 SWGL 决策链（`SetUseSoftwareWebRender(!hasHardware)`、
+  `gfx.webrender.software*` fallback prefs）+ EAGL provider 在本移植是否正常编译链接；
+  先加临时日志确认当前 `UseSoftwareWebRender` 取值与 fallback 起因
+ （`gfxCriticalNote "Fallback WR to SW-WR*"`），再决定翻哪道开关。
+- 风险：A8X 上 PBO 上传曾触发 AGXGLDriver 崩溃（见 RuntimePreferences.swift），
+  A7 PowerVR 驱动更老；GLES 在 iOS 12 已废弃但可用。引擎重编定点约 30 秒、
+  大规模约 50 分钟，坑位见“坑位速查”引擎条。
+- 验收：沿用 bench 法（http.server + cycript 驱动地址栏 + RUNS warmup 形状 +
+  `ps` CPU 对比静态/纯动画/视频三档）。
+
 ## 自驱/连接补充
 
 - cycript 合成调用可能打到未走正常装配的实例（如直接调 `showTabOverviewKeyCommand:`
