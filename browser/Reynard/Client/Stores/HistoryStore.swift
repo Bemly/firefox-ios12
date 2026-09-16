@@ -33,7 +33,7 @@ final class HistoryStore {
     
     private let fileManager: FileManager
     private let storage: StorageURLs
-    private let stateQueue = DispatchQueue(label: "com.minh-ton.Reynard.HistoryStore.Queue", qos: .userInitiated)
+    private let stateQueue = DispatchQueue(label: "reynard.bemly.moe.HistoryStore.Queue", qos: .userInitiated)
     private var database: OpaquePointer?
     private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     
@@ -122,7 +122,7 @@ final class HistoryStore {
     ) {
         stateQueue.async {
             guard URLUtils.isWebURL(url) else {
-                completion?(false)
+                DispatchQueue.main.async { completion?(false) }
                 return
             }
 
@@ -130,14 +130,16 @@ final class HistoryStore {
             if didRecord {
                 self.postDidChange()
             }
-            completion?(didRecord)
+            // The HistoryDelegate completion re-enters Gecko (AutoJSAPI);
+            // it must run on the main thread.
+            DispatchQueue.main.async { completion?(didRecord) }
         }
     }
 
     func visitedStatuses(for urls: [String], completion: @escaping ([Bool]) -> Void) {
         stateQueue.async {
             let statuses = urls.map { self.isVisitedLocked(urlString: $0) }
-            completion(statuses)
+            DispatchQueue.main.async { completion(statuses) }
         }
     }
     

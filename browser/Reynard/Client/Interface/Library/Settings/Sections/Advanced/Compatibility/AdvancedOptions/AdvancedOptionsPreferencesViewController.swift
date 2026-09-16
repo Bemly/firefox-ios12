@@ -38,7 +38,7 @@ final class AdvancedOptionsPreferencesViewController: SettingsTableViewControlle
     private let userAgentPolicy = UserAgentPolicy()
     
     init() {
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = NSLocalizedString("Advanced Options", comment: "")
     }
     

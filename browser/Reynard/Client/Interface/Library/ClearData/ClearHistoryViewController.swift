@@ -18,7 +18,7 @@ final class ClearHistoryViewController: UITableViewController {
     init(tabCount: Int, onClear: @escaping (Date?, Bool) -> Void) {
         self.tabCount = tabCount
         self.onClear = onClear
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = NSLocalizedString("Clear History", comment: "")
     }
     

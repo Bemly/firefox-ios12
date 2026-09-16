@@ -112,7 +112,7 @@ final class DNSOverHTTPSPreferencesViewController: SettingsTableViewController, 
     // MARK: - Lifecycle
     
     init() {
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = NSLocalizedString("DNS over HTTPS", tableName: "SettingsLocalizable", comment: "")
     }
     

@@ -53,7 +53,7 @@ final class AddonCoordinator: NSObject, AddonEmbedderDelegate {
     private var browserActionsBySession: [ObjectIdentifier: [String: AddonAction]] = [:]
     private var pageActionsBySession: [ObjectIdentifier: [String: AddonAction]] = [:]
     private let iconCache = NSCache<NSString, UIImage>()
-    private let iconLoadingQueue = DispatchQueue(label: "com.minh-ton.Reynard.AddonCoordinator.IconLoadingQueue", qos: .utility)
+    private let iconLoadingQueue = DispatchQueue(label: "reynard.bemly.moe.AddonCoordinator.IconLoadingQueue", qos: .utility)
     private var loadingIconIDs = Set<String>()
     private var pendingAddonDownloadPaths = Set<String>()
     private var pendingWebExtensionDownloadsByPath: [String: DownloadStore.WebExtensionDownloadItem] = [:]

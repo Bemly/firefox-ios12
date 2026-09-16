@@ -239,6 +239,35 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
 - `browser.addProgressListener` 持的是**弱引用**：listener 只存局部 const 会被 GC，
   后期加载的 WP 日志会无声消失（曾误判为“test.html 无 WP 事件”）。探针须挂强引用
   （如 `this.__wp`）；正式代码同理。
+- **Gecko 回调必须回主线程**：`HistoryDelegate` 的 completion 会重进 Gecko
+  （`AutoJSAPI::Init`），在后台队列调用即 `EXC_BAD_ACCESS`（`HistoryStore.Queue`
+  线程崩溃实录，2026-09-16）。`HistoryStore.recordVisitImmediately/visitedStatuses`
+  的 completion 一律 `DispatchQueue.main.async` 再调；上游 `@MainActor` handler
+  隐含了这点，port 成 completion 时别丢。
+- **UIMenuController 新 API 全是 iOS 13+**：`hideMenuFromView:`/`showMenuFromView:rect:`
+  在 iOS 12 上直接调即 `NSInvalidArgumentException`（`unrecognized selector`）。
+  引擎侧（`GeckoEditableSupport.mm` 全文件 9 处 + `GeckoTouchSupport.mm` 1 处）已收敛到
+  `Hide/ShowChildViewEditMenu` 内联 helper（`respondsToSelector` 守卫， fallback 走
+  `setMenuVisible`/`setTargetRect:inView:`）；Swift 侧同理用 `#available`。
+  另：`UITextInteraction +textInteractionForMode:` iOS 12 根本不存在，
+  `setupTextInput` 已加 `respondsToSelector` 守卫；`nsWindow.mm` 里把可能为 nil 的
+  interaction 塞进 `@[]` 字面量会崩（`initWithObjects:count: attempt to insert nil`），
+  已加 nil 判断。
+- **iOS 12 上为 nil 的 UIKit 全局量不能解引用**：`UISceneDidActivateNotification` 等
+  scene 通知常量在 iOS 12 是 nil，`addObserver:name:` 传 nil 等于收**所有**通知还是小事，
+  真机会在 `didFinishLaunching` 里直接 `EXC_BAD_ACCESS`（`nsAppShell.mm.patch`
+  已用 `@available(iOS 13,*)` 包住四个 scene 观察者；定位法：atos 到
+  `didFinishLaunchingWithOptions +244` + 反汇编看 GOT 取空）。
+- Debug 包的 `assertionFailure` 在真机即 `SIGTRAP` 崩溃：`FaviconStore` 的
+  SafariSharedUI 私有方法在 iOS 12 缺失，原来直接 `assertionFailure`，
+  已改静默回退默认值。凡是“新系统才有”的私有 API 探测，失败路径一律静默回退，
+  不要断言。
+- 包名已改为 `reynard.bemly.moe`（2026-09-16，用户要求）：改点含 pbxproj 四处
+  `PRODUCT_BUNDLE_IDENTIFIER`、Info.plist 的 `CFBundleURLName`、主/Helper 的
+  `application-identifier`、代码里 `com.minh-ton.Reynard` 字符串
+  （菜单 ID/队列 label）、`tools/release/create-ipa.sh`；`DEVELOPMENT_TEAM`
+  （签名 team）不动。注意改包名 = 新 profile（缓存目录按 bundle id 拼），
+  但 `.mozilla` 旧 profile 仍在，session restore 可能拉起旧 tab。
 - 引擎 `.sys.mjs` 是纯文本散文件（dist 经软链直接读源码，app 包里是 rsync 来的拷贝）：
   改完**源码**要同步镜像到 `.app` 拷贝再打包，不用重新编引擎；但正式修必须同时落
   `patches/`（`git -C engine/firefox diff -- <path>` 生成，`apply-patches.sh` 格式）。

@@ -87,7 +87,7 @@ final class FaviconStore {
     
     private let fileManager: FileManager
     private let storage: StorageURLs
-    private let stateQueue = DispatchQueue(label: "com.minh-ton.Reynard.FaviconStore.Queue", qos: .utility)
+    private let stateQueue = DispatchQueue(label: "reynard.bemly.moe.FaviconStore.Queue", qos: .utility)
     private var database: OpaquePointer?
     private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     
@@ -417,7 +417,8 @@ final class FaviconStore {
         let selector = transparencyAnalysisSelector
         guard image.responds(to: selector),
               let method = class_getInstanceMethod(UIImage.self, selector) else {
-            assertionFailure("SafariSharedUI transparency analysis is unavailable")
+            // SafariSharedUI transparency analysis is unavailable here (e.g. iOS 12
+            // has no such UIImage method); use the default result instead of trapping.
             return 1
         }
         

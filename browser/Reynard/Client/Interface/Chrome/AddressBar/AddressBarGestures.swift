@@ -252,7 +252,7 @@ final class AddressBarGestures: NSObject {
         let container = UIView()
         let backgroundColor: UIColor
         if #available(iOS 13.0, *) {
-            backgroundColor = UIColor { traitCollection in
+            backgroundColor = UIColor.appDynamic { traitCollection in
                 traitCollection.userInterfaceStyle == .dark ? .appTertiarySystemBackground : .appSystemBackground
             }
         } else {
@@ -355,7 +355,7 @@ final class AddressBarGestures: NSObject {
     
     private func placeholderPreviewText() -> NSAttributedString {
         NSAttributedString(
-            string: AddressBar.appPlaceholderText,
+            string: AddressBar.placeholderText,
             attributes: [.foregroundColor: UIColor.appPlaceholderText]
         )
     }

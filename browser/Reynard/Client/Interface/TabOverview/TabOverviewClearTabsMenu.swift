@@ -36,6 +36,7 @@ enum TabOverviewClearTabsMenu {
         }
     }
     
+    @available(iOS 13.0, *)
     static func make(
         tabCount: Int,
         onClearTabs: @escaping () -> Void,

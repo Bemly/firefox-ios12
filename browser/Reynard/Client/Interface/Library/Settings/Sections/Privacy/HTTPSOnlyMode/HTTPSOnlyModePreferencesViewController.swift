@@ -24,7 +24,7 @@ final class HTTPSOnlyModePreferencesViewController: SettingsTableViewController 
     }
     
     init() {
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = NSLocalizedString("HTTPS-Only Mode", tableName: "SettingsLocalizable", comment: "")
     }
     

@@ -100,14 +100,14 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         switch contentView.state.overlayPresentation {
         case .visible(.homepage):
             let foregroundColor = HomepageWallpaper.foregroundColor(for: .embedded(layout: browserLayout))
-            return foregroundColor.isLightColor(in: traitCollection) ? .lightContent : .darkContent
+            return foregroundColor.isLightColor(in: traitCollection) ? .lightContent : .compatDarkContent
         case .visible(.search):
             return .default
         case .hidden:
             let backgroundColor = tabManager.selectedTab.map {
                 sessionManager.pageBackgroundColor(for: $0.session)
             } ?? .appSystemBackground
-            return backgroundColor.isLightColor(in: traitCollection) ? .darkContent : .lightContent
+            return backgroundColor.isLightColor(in: traitCollection) ? .compatDarkContent : .lightContent
         }
     }
     

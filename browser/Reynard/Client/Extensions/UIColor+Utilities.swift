@@ -44,7 +44,7 @@ extension UIColor {
     }
     
     func isLightColor(in traitCollection: UITraitCollection) -> Bool {
-        let resolvedColor = resolvedColor(with: traitCollection)
+        let resolvedColor = appResolved(with: traitCollection)
         var whiteComponent: CGFloat = 0
         var alphaComponent: CGFloat = 0
         if resolvedColor.getWhite(&whiteComponent, alpha: &alphaComponent) {

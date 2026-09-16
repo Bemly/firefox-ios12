@@ -17,7 +17,7 @@ final class OpenLinksInNewTabsPreferencesViewController: SettingsTableViewContro
     }
     
     init() {
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = NSLocalizedString("Open Links in New Tabs", comment: "")
     }
     

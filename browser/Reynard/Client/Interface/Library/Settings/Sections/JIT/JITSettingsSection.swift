@@ -42,7 +42,7 @@ final class JITSettingsSection: NSObject {
     }
     
     private let jitSwitch = UISwitch()
-    private let backgroundQueue = DispatchQueue(label: "com.minh-ton.Reynard.JITSettingsSection.Queue", qos: .userInitiated)
+    private let backgroundQueue = DispatchQueue(label: "reynard.bemly.moe.JITSettingsSection.Queue", qos: .userInitiated)
     private var isJITLessModeActive = false
     private var activeDDIDownloadToken: UUID?
     

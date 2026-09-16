@@ -151,7 +151,8 @@ extension BrowserViewController {
     }
     
     @objc func selectTabKeyCommand(_ sender: UIKeyCommand) {
-        guard let number = (sender.propertyList as? NSNumber)?.intValue else {
+        guard #available(iOS 13.0, *),
+              let number = (sender.propertyList as? NSNumber)?.intValue else {
             return
         }
         let tabs = tabManager.activeTabs

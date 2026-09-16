@@ -54,7 +54,7 @@ final class AddressBarDismissButton: UIButton {
         isHidden = true
         let backgroundColor: UIColor
         if #available(iOS 13.0, *) {
-            backgroundColor = UIColor { traitCollection in
+            backgroundColor = UIColor.appDynamic { traitCollection in
                 traitCollection.userInterfaceStyle == .dark ? .appTertiarySystemBackground : .appSystemBackground
             }
         } else {

@@ -13,7 +13,7 @@ final class ClearDownloadsViewController: UITableViewController {
     
     init(onClear: @escaping (Date?) -> Void) {
         self.onClear = onClear
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = NSLocalizedString("Clear Downloads", comment: "")
     }
     

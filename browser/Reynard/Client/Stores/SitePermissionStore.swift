@@ -119,7 +119,7 @@ final class SitePermissionStore {
     
     private let fileManager: FileManager
     private let storage: StorageURLs
-    private let stateQueue = DispatchQueue(label: "com.minh-ton.Reynard.SitePermissionStore.Queue", qos: .utility)
+    private let stateQueue = DispatchQueue(label: "reynard.bemly.moe.SitePermissionStore.Queue", qos: .utility)
     private var database: OpaquePointer?
     private var privateActions: [ObjectIdentifier: [String: [SitePermission: SitePermissionAction]]] = [:]
     private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)

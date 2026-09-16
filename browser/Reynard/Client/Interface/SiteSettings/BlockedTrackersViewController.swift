@@ -19,7 +19,7 @@ final class BlockedTrackersViewController: UITableViewController {
     
     init(trackers: [BlockedTracker]) {
         self.trackers = trackers
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = NSLocalizedString("Blocked Trackers", comment: "")
     }
     

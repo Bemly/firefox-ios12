@@ -82,10 +82,37 @@ extension UIColor {
         if #available(iOS 13.0, *) { return .systemGray6 }
         return UIColor(red: 0.95, green: 0.95, blue: 0.97, alpha: 1)
     }
+    /// Backport of `UIColor.init(dynamicProvider:)` (iOS 13+). On iOS 12 the
+    /// provider is evaluated once against an empty (light) trait collection.
+    static func appDynamic(_ provider: @escaping (UITraitCollection) -> UIColor) -> UIColor {
+        if #available(iOS 13.0, *) { return UIColor(dynamicProvider: provider) }
+        return provider(UITraitCollection(traitsFrom: []))
+    }
+    /// Backport of `resolvedColor(with:)` (iOS 13+). Colors are static on iOS 12.
+    func appResolved(with traits: UITraitCollection) -> UIColor {
+        if #available(iOS 13.0, *) { return resolvedColor(with: traits) }
+        return self
+    }
 }
 
-extension UITableView.Style {
-    /// `.insetGrouped` on iOS 13+, falling back to `.grouped` on iOS 12.
+extension UIStatusBarStyle {
+    /// `.darkContent` on iOS 13+; `.default` (dark text) on iOS 12.
+    static var compatDarkContent: UIStatusBarStyle {
+        if #available(iOS 13.0, *) { return .darkContent }
+        return .default
+    }
+}
+
+extension UIFont {
+    /// Backport of `monospacedSystemFont(ofSize:weight:)` (iOS 13+).
+    /// Menlo ships on all iOS versions; falls back to the system font.
+    static func appMonospacedSystemFont(ofSize size: CGFloat, weight: UIFont.Weight) -> UIFont {
+        if #available(iOS 13.0, *) { return .monospacedSystemFont(ofSize: size, weight: weight) }
+        return UIFont(name: "Menlo-Regular", size: size) ?? .systemFont(ofSize: size, weight: weight)
+    }
+}
+
+extension UITableView.Style {    /// `.insetGrouped` on iOS 13+, falling back to `.grouped` on iOS 12.
     static var appGrouped: UITableView.Style {
         if #available(iOS 13.0, *) { return .insetGrouped }
         return .grouped

@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoEditableSupport.mm b/widget/uikit/GeckoEditableSupport.mm
 new file mode 100644
-index 000000000000..24eeaa8bd3a6
+index 000000000000..38bfd4ffdc61
 --- /dev/null
 +++ b/widget/uikit/GeckoEditableSupport.mm
-@@ -0,0 +1,4250 @@
+@@ -0,0 +1,4277 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -52,6 +52,28 @@ index 000000000000..24eeaa8bd3a6
 +};
 +
 +}  // namespace
++
++// UIMenuController -hideMenuFromView: / -showMenuFromView:rect: are iOS 13+.
++// On iOS 12 the selectors do not exist and calling them raises
++// NSInvalidArgumentException, so fall back to the legacy API.
++static inline void HideChildViewEditMenu(UIMenuController* aMenu,
++                                         UIView* aView) {
++  if ([aMenu respondsToSelector:@selector(hideMenuFromView:)]) {
++    [aMenu hideMenuFromView:aView];
++  } else {
++    [aMenu setMenuVisible:NO animated:NO];
++  }
++}
++
++static inline void ShowChildViewEditMenu(UIMenuController* aMenu,
++                                         UIView* aView, CGRect aRect) {
++  if ([aMenu respondsToSelector:@selector(showMenuFromView:rect:)]) {
++    [aMenu showMenuFromView:aView rect:aRect];
++  } else {
++    [aMenu setTargetRect:aRect inView:aView];
++    [aMenu setMenuVisible:YES animated:YES];
++  }
++}
 +
 +// MARK: New things
 +
@@ -614,15 +636,20 @@ index 000000000000..24eeaa8bd3a6
 +  mEditable.mKoreanComposedText = nil;
 +  [self resetHandleState];
 +
-+  mEditable.mEditableTextInteraction = [[UITextInteraction
-+      textInteractionForMode:UITextInteractionModeEditable] retain];
-+  mEditable.mEditableTextInteraction.textInput = self;
-+  mEditable.mEditableTextInteraction.delegate = self;
++  // +textInteractionForMode: is iOS 13+. iOS 12 has an older private
++  // UITextInteraction class that does not respond to it (raises
++  // NSInvalidArgumentException), so check before calling.
++  if ([UITextInteraction respondsToSelector:@selector(textInteractionForMode:)]) {
++    mEditable.mEditableTextInteraction = [[UITextInteraction
++        textInteractionForMode:UITextInteractionModeEditable] retain];
++    mEditable.mEditableTextInteraction.textInput = self;
++    mEditable.mEditableTextInteraction.delegate = self;
 +
-+  mEditable.mNonEditableTextInteraction = [[UITextInteraction
-+      textInteractionForMode:UITextInteractionModeNonEditable] retain];
-+  mEditable.mNonEditableTextInteraction.textInput = self;
-+  mEditable.mNonEditableTextInteraction.delegate = self;
++    mEditable.mNonEditableTextInteraction = [[UITextInteraction
++        textInteractionForMode:UITextInteractionModeNonEditable] retain];
++    mEditable.mNonEditableTextInteraction.textInput = self;
++    mEditable.mNonEditableTextInteraction.delegate = self;
++  }
 +
 +  [self setupModernTextInput];
 +  [self updateTextInteractions];
@@ -2122,14 +2149,14 @@ index 000000000000..24eeaa8bd3a6
 +  widget::TextInputHandler* handler = [self textHandler];
 +  UIMenuController* menuController = [UIMenuController sharedMenuController];
 +  if (!handler || ![self isFirstResponder]) {
-+    [menuController hideMenuFromView:self];
++    HideChildViewEditMenu(menuController, self);
 +    return;
 +  }
 +
 +  NSRange selectedRange = NSMakeRange(NSNotFound, 0);
 +  if (!handler->SelectedRange(selectedRange) ||
 +      selectedRange.location == NSNotFound) {
-+    [menuController hideMenuFromView:self];
++    HideChildViewEditMenu(menuController, self);
 +    return;
 +  }
 +
@@ -2138,20 +2165,20 @@ index 000000000000..24eeaa8bd3a6
 +  if (selectedRange.length > 0) {
 +    mEditable.mCaretMenuActive = NO;
 +    if (mEditable.mActiveSelectionHandle != GeckoSelectionHandleNone) {
-+      [menuController hideMenuFromView:self];
++      HideChildViewEditMenu(menuController, self);
 +      return;
 +    }
 +    ChildViewTextRange* range = [self textRangeForRange:selectedRange];
 +    if (!range) {
-+      [menuController hideMenuFromView:self];
++      HideChildViewEditMenu(menuController, self);
 +      return;
 +    }
 +    CGRect targetRect = [self firstRectForRange:range];
 +    if (CGRectIsEmpty(targetRect)) {
-+      [menuController hideMenuFromView:self];
++      HideChildViewEditMenu(menuController, self);
 +      return;
 +    }
-+    [menuController showMenuFromView:self rect:targetRect];
++    ShowChildViewEditMenu(menuController, self, targetRect);
 +    return;
 +  }
 +
@@ -2162,13 +2189,13 @@ index 000000000000..24eeaa8bd3a6
 +      CGRect caretRect =
 +          DevPixelsToUIKitPoints(caretDevRect, [self contentScaleFactor]);
 +      if (!CGRectIsEmpty(caretRect)) {
-+        [menuController showMenuFromView:self rect:caretRect];
++        ShowChildViewEditMenu(menuController, self, caretRect);
 +        return;
 +      }
 +    }
 +  }
 +
-+  [menuController hideMenuFromView:self];
++  HideChildViewEditMenu(menuController, self);
 +}
 +
 +- (void)showEditMenuForSecondaryClick {
@@ -2950,7 +2977,7 @@ index 000000000000..24eeaa8bd3a6
 +                                     selector:@selector(
 +                                                  resolveCaretMenuIfPending)
 +                                       object:nil];
-+  [[UIMenuController sharedMenuController] hideMenuFromView:self];
++  HideChildViewEditMenu([UIMenuController sharedMenuController], self);
 +  if (widget::TextInputHandler* handler = [self textHandler]) {
 +    handler->HandleCommand(aCommand);
 +  }
@@ -2972,7 +2999,7 @@ index 000000000000..24eeaa8bd3a6
 +                                     selector:@selector(
 +                                                  resolveCaretMenuIfPending)
 +                                       object:nil];
-+  [[UIMenuController sharedMenuController] hideMenuFromView:self];
++  HideChildViewEditMenu([UIMenuController sharedMenuController], self);
 +  BOOL hasBuffer = [self ensureVietnameseBufferWithHandler:handler];
 +  if (handler->HandlePhysicalDeleteBackward(
 +          hasBuffer, mEditable.mKoreanComposedText != nil)) {
@@ -3062,7 +3089,7 @@ index 000000000000..24eeaa8bd3a6
 +
 +- (void)interactionWillBegin:(UITextInteraction*)aInteraction {
 +  mEditable.mTextInteractionInProgress = YES;
-+  [[UIMenuController sharedMenuController] hideMenuFromView:self];
++  HideChildViewEditMenu([UIMenuController sharedMenuController], self);
 +  [self becomeFirstResponder];
 +  if (mEditable.mSelectionDisplayInteraction != nil) {
 +    [self updateHandleVisibility];

@@ -40,7 +40,7 @@
     self = [super init];
     if (self) {
         _sharedProvider = NULL;
-        _providerQueue = dispatch_queue_create("com.minh-ton.Reynard.JITEnabler.ProviderQueue", DISPATCH_QUEUE_SERIAL);
+        _providerQueue = dispatch_queue_create("reynard.bemly.moe.JITEnabler.ProviderQueue", DISPATCH_QUEUE_SERIAL);
         _didEnsureDDIMounted = NO;
         [self resolveJITHelper];
     }

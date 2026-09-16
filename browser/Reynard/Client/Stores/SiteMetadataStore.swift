@@ -53,7 +53,7 @@ final class SiteMetadataStore {
     
     private let fileManager: FileManager
     private let storage: StorageURLs
-    private let stateQueue = DispatchQueue(label: "com.minh-ton.Reynard.SiteMetadataStore.Queue", qos: .utility)
+    private let stateQueue = DispatchQueue(label: "reynard.bemly.moe.SiteMetadataStore.Queue", qos: .utility)
     private var records: [String: SiteMetadataRecord] = [:]
     private var pendingCompletions: [String: [(SiteMetadataSnapshot?) -> Void]] = [:]
     

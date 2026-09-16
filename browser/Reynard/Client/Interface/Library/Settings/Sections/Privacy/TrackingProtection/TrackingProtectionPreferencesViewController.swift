@@ -85,7 +85,7 @@ final class TrackingProtectionPreferencesViewController: SettingsTableViewContro
     }
     
     init() {
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = NSLocalizedString("Tracking Protection", comment: "")
     }
     

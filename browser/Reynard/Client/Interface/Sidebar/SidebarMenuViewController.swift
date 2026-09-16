@@ -152,14 +152,6 @@ final class SidebarMenuViewController: UIViewController, UICollectionViewDelegat
         return CGSize(width: collectionView.bounds.width, height: UX.legacyItemHeight)
     }
     
-    func collectionView(
-        _ collectionView: UICollectionView,
-        layout collectionViewLayout: UICollectionViewLayout,
-        sizeForItemAt indexPath: IndexPath
-    ) -> CGSize {
-        return CGSize(width: collectionView.bounds.width, height: UX.legacyItemHeight)
-    }
-    
     // MARK: - Sections
     
     func showSection(

@@ -53,7 +53,7 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
     }
     
     init() {
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = NSLocalizedString("Developer", comment: "")
     }
     
@@ -272,7 +272,7 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
                 .paragraphStyle: paragraphStyle,
             ]
         )
-        let codeFont = UIFont.monospacedSystemFont(
+        let codeFont = UIFont.appMonospacedSystemFont(
             ofSize: font.pointSize,
             weight: .regular
         )

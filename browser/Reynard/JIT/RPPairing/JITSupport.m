@@ -35,7 +35,7 @@ dispatch_queue_t debugServiceQueue(void) {
     static dispatch_queue_t queue;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken,^{
-        queue = dispatch_queue_create("com.minh-ton.Reynard.JITSupport.DebugServiceQueue", DISPATCH_QUEUE_CONCURRENT);
+        queue = dispatch_queue_create("reynard.bemly.moe.JITSupport.DebugServiceQueue", DISPATCH_QUEUE_CONCURRENT);
     });
     return queue;
 }
@@ -44,7 +44,7 @@ dispatch_queue_t debugSessionStateQueue(void) {
     static dispatch_queue_t queue;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        queue = dispatch_queue_create("com.minh-ton.Reynard.JITSupport.DebugSessionStateQueue", DISPATCH_QUEUE_SERIAL);
+        queue = dispatch_queue_create("reynard.bemly.moe.JITSupport.DebugSessionStateQueue", DISPATCH_QUEUE_SERIAL);
     });
     return queue;
 }
@@ -53,7 +53,7 @@ static dispatch_queue_t endpointMonitorQueue(void) {
     static dispatch_queue_t queue;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        queue = dispatch_queue_create("com.minh-ton.Reynard.JITSupport.EndpointMonitorQueue", DISPATCH_QUEUE_SERIAL);
+        queue = dispatch_queue_create("reynard.bemly.moe.JITSupport.EndpointMonitorQueue", DISPATCH_QUEUE_SERIAL);
     });
     return queue;
 }
@@ -107,7 +107,7 @@ static BOOL shouldDetachDebugSessionPID(int32_t pid) {
 }
 
 static void startHeartbeat(DeviceProvider *provider) {
-    dispatch_queue_t heartbeatQueue = dispatch_queue_create("com.minh-ton.Reynard.JITSupport.ProviderHeartbeatQueue",DISPATCH_QUEUE_SERIAL);
+    dispatch_queue_t heartbeatQueue = dispatch_queue_create("reynard.bemly.moe.JITSupport.ProviderHeartbeatQueue",DISPATCH_QUEUE_SERIAL);
     provider->heartbeatRunning = YES;
     
     dispatch_async(heartbeatQueue, ^{

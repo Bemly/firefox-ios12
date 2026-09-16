@@ -7,6 +7,7 @@
 
 import UIKit
 
+@available(iOS 13.0, *)
 enum ApplicationMenuBuilder {
     static func build(with builder: UIMenuBuilder) {
         guard builder.system == UIMenuSystem.main else {
@@ -47,7 +48,9 @@ enum ApplicationMenuBuilder {
         
         let historyMenu = UIMenu(
             title: NSLocalizedString("History", comment: ""),
-            identifier: UIMenu.Identifier("com.minh-ton.Reynard.ApplicationMenu.History"),
+            image: nil,
+            identifier: UIMenu.Identifier("reynard.bemly.moe.ApplicationMenu.History"),
+            options: [],
             children: [
                 UIKeyCommand(title: NSLocalizedString("Back", comment: ""), action: #selector(BrowserViewController.goBackKeyCommand(_:)), input: "[", modifierFlags: .command),
                 UIKeyCommand(title: NSLocalizedString("Forward", comment: ""), action: #selector(BrowserViewController.goForwardKeyCommand(_:)), input: "]", modifierFlags: .command),
@@ -59,14 +62,16 @@ enum ApplicationMenuBuilder {
         
         let bookmarksMenu = UIMenu(
             title: NSLocalizedString("Bookmarks", comment: ""),
-            identifier: UIMenu.Identifier("com.minh-ton.Reynard.ApplicationMenu.Bookmarks"),
+            image: nil,
+            identifier: UIMenu.Identifier("reynard.bemly.moe.ApplicationMenu.Bookmarks"),
+            options: [],
             children: [
                 UIKeyCommand(title: NSLocalizedString("Show Bookmarks", comment: ""), action: #selector(BrowserViewController.showBookmarksKeyCommand(_:)), input: "o", modifierFlags: [.command, .shift]),
                 UIKeyCommand(title: NSLocalizedString("Add Bookmark", comment: ""), action: #selector(BrowserViewController.addBookmarkKeyCommand(_:)), input: "d", modifierFlags: .command),
                 UIKeyCommand(title: NSLocalizedString("Edit Bookmarks", comment: ""), action: #selector(BrowserViewController.editBookmarksKeyCommand(_:)), input: "b", modifierFlags: [.alternate, .command]),
             ]
         )
-        builder.insertSibling(bookmarksMenu, afterMenu: UIMenu.Identifier("com.minh-ton.Reynard.ApplicationMenu.History"))
+        builder.insertSibling(bookmarksMenu, afterMenu: UIMenu.Identifier("reynard.bemly.moe.ApplicationMenu.History"))
         
         let tabCommands = (1...9).map { number in
             UIKeyCommand(

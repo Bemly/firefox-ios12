@@ -23,7 +23,7 @@ final class TabOverviewToolbarButton: UIButton {
     }
     
     private let action: Action
-    private var legacyMenuDelegate: LegacyMenuDelegate?
+    private var legacyMenuDelegate: AnyObject?
     
     init(action: Action) {
         self.action = action
@@ -45,6 +45,7 @@ final class TabOverviewToolbarButton: UIButton {
         alpha = enabled ? 1 : UX.disabledToolbarButtonAlpha
     }
     
+    @available(iOS 13.0, *)
     func installMenu(_ menu: UIMenu?) {
         if #available(iOS 14.0, *) {
             self.menu = menu
@@ -56,7 +57,7 @@ final class TabOverviewToolbarButton: UIButton {
                 addTarget(self, action: #selector(presentLegacyMenu), for: .touchUpInside)
                 legacyMenuDelegate = delegate
             }
-            legacyMenuDelegate?.menu = menu
+            (legacyMenuDelegate as? LegacyMenuDelegate)?.menu = menu
         }
     }
     
@@ -95,6 +96,7 @@ final class TabOverviewToolbarButton: UIButton {
         }
     }
     
+    @available(iOS 13.0, *)
     @objc private func presentLegacyMenu() {
         guard let interaction = interactions.compactMap({ $0 as? UIContextMenuInteraction }).first else {
             return

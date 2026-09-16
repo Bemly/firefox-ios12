@@ -93,7 +93,7 @@ final class TrackingProtectionDetailsViewController: SettingsTableViewController
             categories = []
             protectionTitle = ""
         }
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = protectionTitle
     }
     

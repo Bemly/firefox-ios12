@@ -62,7 +62,7 @@ final class HomepagePreferencesViewController: SettingsTableViewController {
     }()
     
     init() {
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = NSLocalizedString("Homepage", comment: "")
     }
     

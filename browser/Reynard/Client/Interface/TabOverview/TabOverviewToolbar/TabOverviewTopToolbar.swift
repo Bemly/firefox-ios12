@@ -52,16 +52,18 @@ final class TabOverviewTopToolbar: UIView {
             String.localizedStringWithFormat(NSLocalizedString("%d Tabs", comment: "Tab count"), tabCount),
             forSegmentAt: TabOverview.Mode.regularTabs.rawValue
         )
-        let clearTabsMenu = TabOverviewClearTabsMenu.make(
-            tabCount: visibleTabCount,
-            onClearTabs: { [weak self] in self?.onClearTabs?() },
-            onClearTabsOlderThan: { [weak self] age in self?.onClearTabsOlderThan?(age) }
-        )
-        clearTabsButton.installMenu(clearTabsMenu)
+        if #available(iOS 13.0, *) {
+            let clearTabsMenu = TabOverviewClearTabsMenu.make(
+                tabCount: visibleTabCount,
+                onClearTabs: { [weak self] in self?.onClearTabs?() },
+                onClearTabsOlderThan: { [weak self] age in self?.onClearTabsOlderThan?(age) }
+            )
+            clearTabsButton.installMenu(clearTabsMenu)
         doneButton.setActionEnabled(hasVisibleTab)
-        if #available(iOS 26.0, *) {
-            liquidGlassActionToolbar.items?.first?.menu = clearTabsMenu
-            liquidGlassActionToolbar.items?.last?.isEnabled = hasVisibleTab
+            if #available(iOS 26.0, *) {
+                liquidGlassActionToolbar.items?.first?.menu = clearTabsMenu
+                liquidGlassActionToolbar.items?.last?.isEnabled = hasVisibleTab
+            }
         }
     }
     

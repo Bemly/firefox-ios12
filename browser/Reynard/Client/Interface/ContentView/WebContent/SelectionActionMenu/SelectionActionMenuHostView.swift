@@ -105,17 +105,30 @@ final class SelectionActionMenuHostView: UIView {
         }
         
         let menuController = UIMenuController.shared
-        menuController.hideMenu(from: self)
+        if #available(iOS 13.0, *) {
+            menuController.hideMenu(from: self)
+        } else {
+            menuController.setMenuVisible(false, animated: false)
+        }
         menuController.arrowDirection = .down
-        menuController.showMenu(from: self, rect: bounds)
+        if #available(iOS 13.0, *) {
+            menuController.showMenu(from: self, rect: bounds)
+        } else {
+            menuController.setTargetRect(bounds, in: self)
+            menuController.setMenuVisible(true, animated: true)
+        }
     }
     
     func hideMenu() {
         let dismissedSession = actionId == nil ? nil : session
-        if superview != nil {
-            UIMenuController.shared.hideMenu(from: self)
+        if #available(iOS 13.0, *) {
+            if superview != nil {
+                UIMenuController.shared.hideMenu(from: self)
+            } else {
+                UIMenuController.shared.hideMenu()
+            }
         } else {
-            UIMenuController.shared.hideMenu()
+            UIMenuController.shared.setMenuVisible(false, animated: true)
         }
 
         if isFirstResponder {

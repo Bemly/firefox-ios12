@@ -76,20 +76,6 @@ final class PermissionCoordinator: NSObject, PermissionEmbedderDelegate {
     // MARK: - PermissionEmbedderDelegate
     
     func permissionDelegate(decideContentPermission permission: ContentPermission, session: GeckoSession, completion: @escaping (ContentPermission.Value) -> Void) {
-        if permission.permission == .deviceSensors,
-           let title = permission.alertTitle {
-            promptPresenter.request(
-                title: title,
-                message: permission.alertMessage,
-                cancelTitle: NSLocalizedString("Don’t Allow", comment: ""),
-                for: session
-            ) { [weak self] allowed in
-                self?.onPromptFinished?(session)
-                completion(allowed ? .allow : .deny)
-            }
-            return
-        }
-
         guard let sitePermission = SitePermission(contentPermission: permission),
               let host = URLUtils.normalizedHost(fromRawURI: permission.uri) else {
             completion(.prompt)

@@ -89,11 +89,11 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
     private let searchBarBackground: UIVisualEffectView = {
         let view = UIVisualEffectView(effect: UIBlurEffect(style: .appMaterial))
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.contentView.backgroundColor = UIColor { traitCollection in
+        view.contentView.backgroundColor = UIColor.appDynamic { traitCollection in
             let backgroundColor: UIColor = traitCollection.userInterfaceStyle == .dark
             ? .appTertiarySystemBackground.withAlphaComponent(0.8)
             : .appSystemBackground.withAlphaComponent(0.8)
-            return backgroundColor.resolvedColor(with: traitCollection)
+            return backgroundColor.appResolved(with: traitCollection)
         }
         view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.controlsCornerRadius
@@ -119,11 +119,11 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
     private let controlsBackground: UIVisualEffectView = {
         let view = UIVisualEffectView(effect: UIBlurEffect(style: .appMaterial))
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.contentView.backgroundColor = UIColor { traitCollection in
+        view.contentView.backgroundColor = UIColor.appDynamic { traitCollection in
             let backgroundColor: UIColor = traitCollection.userInterfaceStyle == .dark
             ? .appTertiarySystemBackground.withAlphaComponent(0.8)
             : .appSystemBackground.withAlphaComponent(0.8)
-            return backgroundColor.resolvedColor(with: traitCollection)
+            return backgroundColor.appResolved(with: traitCollection)
         }
         view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.controlsCornerRadius
@@ -410,11 +410,15 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
     ) -> UIButton {
         let button = UIButton(type: .system)
         button.translatesAutoresizingMaskIntoConstraints = false
-        let configuration = UIImage.SymbolConfiguration(
-            pointSize: UX.controlSymbolPointSize,
-            weight: .regular
-        )
-        button.setImage(UIImage(named: imageName, in: .main, with: configuration), for: .normal)
+        if #available(iOS 13.0, *) {
+            let configuration = UIImage.SymbolConfiguration(
+                pointSize: UX.controlSymbolPointSize,
+                weight: .regular
+            )
+            button.setImage(UIImage(named: imageName, in: .main, with: configuration), for: .normal)
+        } else {
+            button.setImage(UIImage(named: imageName, in: .main, compatibleWith: nil), for: .normal)
+        }
         button.tintColor = .appLabel
         button.addTarget(self, action: action, for: .touchUpInside)
         return button

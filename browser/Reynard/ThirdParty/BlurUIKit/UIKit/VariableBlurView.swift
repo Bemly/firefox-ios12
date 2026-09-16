@@ -68,7 +68,7 @@ public class VariableBlurView: UIView {
     }
     
     /// An optional colored gradient to dim the underlying content for better contrast.
-    public var dimmingTintColor: UIColor? = .systemBackground {
+    public var dimmingTintColor: UIColor? = .appSystemBackground {
         didSet {
             makeDimmingViewIfNeeded()
             dimmingView?.tintColor = dimmingTintColor

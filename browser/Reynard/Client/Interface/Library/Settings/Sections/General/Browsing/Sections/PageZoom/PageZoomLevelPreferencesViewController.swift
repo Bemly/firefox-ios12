@@ -25,7 +25,7 @@ final class PageZoomLevelPreferencesViewController: SettingsTableViewController 
     
     init(mode: Mode) {
         self.mode = mode
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = NSLocalizedString("Zoom Level", comment: "")
     }
     

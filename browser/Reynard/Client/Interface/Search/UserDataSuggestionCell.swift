@@ -115,7 +115,7 @@ final class UserDataSuggestionCell: UITableViewCell {
             subtitleLabel.text = URLUtils.displayString(for: result.url)
             sourceIconView.image = UIImage(named: "reynard.book")
         case .history:
-            let relativeDate = Self.relativeDateFormatter.localizedString(for: result.lastVisitedAt ?? Date(), relativeTo: Date())
+            let relativeDate = Self.relativeDateString(for: result.lastVisitedAt ?? Date())
             subtitleLabel.text = String(format: NSLocalizedString("%@ · Visited %@", comment: "Host and date"), URLUtils.hostDisplayString(for: result.url), relativeDate)
             sourceIconView.image = UIImage(named: "reynard.clock")
         case .tab:

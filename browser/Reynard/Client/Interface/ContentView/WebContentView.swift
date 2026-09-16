@@ -45,7 +45,15 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     private let errorLabel = UILabel()
     private let scrollToTopTriggerView = UIScrollView() // For scrolling up when tap the iOS status bar
     private let refreshIndicatorContainer = UIView()
-    private let refreshIndicator = UIActivityIndicatorView(style: .large)
+    private let refreshIndicator: UIActivityIndicatorView = {
+        if #available(iOS 13.0, *) {
+            return UIActivityIndicatorView(style: .large)
+        } else {
+            let indicator = UIActivityIndicatorView(style: .whiteLarge)
+            indicator.color = .gray
+            return indicator
+        }
+    }()
     
     var historySwipeDirectionsProvider: (() -> GeckoEdgeSwipeDirections)?
     var onHistorySwipeDidStart: ((GeckoEdgeSwipeDirections) -> Void)?
@@ -80,7 +88,14 @@ final class WebContentView: UIView, UIScrollViewDelegate {
     
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
-        guard previousTraitCollection?.hasDifferentColorAppearance(comparedTo: traitCollection) == true else {
+        // hasDifferentColorAppearance is iOS 13+; color appearance never changes on iOS 12.
+        let colorAppearanceChanged: Bool
+        if #available(iOS 13.0, *) {
+            colorAppearanceChanged = previousTraitCollection?.hasDifferentColorAppearance(comparedTo: traitCollection) == true
+        } else {
+            colorAppearanceChanged = false
+        }
+        guard colorAppearanceChanged else {
             return
         }
         updateRefreshIndicatorTint()

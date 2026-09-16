@@ -27,7 +27,7 @@ final class ExperimentalFeaturesViewController: SettingsTableViewController {
     private let videoPictureInPictureSwitch = UISwitch()
     
     init() {
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = "Experimental Features"
     }
     

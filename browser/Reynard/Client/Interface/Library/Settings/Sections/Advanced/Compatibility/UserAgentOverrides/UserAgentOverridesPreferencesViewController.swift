@@ -24,7 +24,7 @@ final class UserAgentOverridesPreferencesViewController: SettingsTableViewContro
     }
     
     init() {
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = NSLocalizedString("User Agent Overrides", comment: "")
     }
     

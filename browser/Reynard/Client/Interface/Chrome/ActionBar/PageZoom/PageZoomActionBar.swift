@@ -56,11 +56,11 @@ final class PageZoomActionBar: UIView {
     private let controlsBackground: UIVisualEffectView = {
         let view = UIVisualEffectView(effect: UIBlurEffect(style: .appMaterial))
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.contentView.backgroundColor = UIColor { traitCollection in
+        view.contentView.backgroundColor = UIColor.appDynamic { traitCollection in
             let backgroundColor: UIColor = traitCollection.userInterfaceStyle == .dark
             ? .appTertiarySystemBackground.withAlphaComponent(0.8)
             : .appSystemBackground.withAlphaComponent(0.8)
-            return backgroundColor.resolvedColor(with: traitCollection)
+            return backgroundColor.appResolved(with: traitCollection)
         }
         view.layer.applyContinuousCornerCurve()
         view.layer.cornerRadius = UX.controlsCornerRadius

@@ -13,6 +13,7 @@ final class ToolbarButtonMenus {
         case forward
     }
     
+    @available(iOS 13.0, *)
     private final class NavigationMenuDelegate: NSObject, UIContextMenuInteractionDelegate {
         private let direction: NavigationDirection
         private let isReversed: Bool
@@ -87,6 +88,7 @@ final class ToolbarButtonMenus {
         }
     }
     
+    @available(iOS 13.0, *)
     private final class RecentlyClosedTabsMenuDelegate: NSObject, UIContextMenuInteractionDelegate {
         private let isAvailable: () -> Bool
         private let itemsProvider: () -> [TabManagementStore.RecentlyClosedTabSnapshot]
@@ -150,6 +152,7 @@ final class ToolbarButtonMenus {
         }
     }
     
+    @available(iOS 13.0, *)
     private final class LibraryMenuDelegate: NSObject, UIContextMenuInteractionDelegate {
         private let onSelect: (LibrarySection) -> Void
         
@@ -173,6 +176,7 @@ final class ToolbarButtonMenus {
         }
     }
     
+    @available(iOS 13.0, *)
     private final class TabOverviewMenuDelegate: NSObject, UIContextMenuInteractionDelegate {
         private let tabCountProvider: () -> Int
         private let onCloseAllTabs: () -> Void
@@ -243,10 +247,11 @@ final class ToolbarButtonMenus {
         }
     }
     
-    private var navigationMenuDelegates: [NavigationMenuDelegate] = []
-    private var recentlyClosedTabsMenuDelegates: [RecentlyClosedTabsMenuDelegate] = []
-    private var libraryMenuDelegates: [LibraryMenuDelegate] = []
-    private var tabOverviewMenuDelegates: [TabOverviewMenuDelegate] = []
+    // Retained only; the delegates are iOS 13+ types (see below).
+    private var navigationMenuDelegates: [AnyObject] = []
+    private var recentlyClosedTabsMenuDelegates: [AnyObject] = []
+    private var libraryMenuDelegates: [AnyObject] = []
+    private var tabOverviewMenuDelegates: [AnyObject] = []
     
     func installNavigationMenus(
         on backButton: ToolbarButton,
@@ -276,9 +281,11 @@ final class ToolbarButtonMenus {
         onSelect: @escaping (LibrarySection) -> Void
     ) {
         buttons.forEach { button in
-            let delegate = LibraryMenuDelegate(onSelect: onSelect)
-            button.addInteraction(UIContextMenuInteraction(delegate: delegate))
-            libraryMenuDelegates.append(delegate)
+            if #available(iOS 13.0, *) {
+                let delegate = LibraryMenuDelegate(onSelect: onSelect)
+                button.addInteraction(UIContextMenuInteraction(delegate: delegate))
+                libraryMenuDelegates.append(delegate)
+            }
         }
     }
     
@@ -291,15 +298,17 @@ final class ToolbarButtonMenus {
         onNewTab: @escaping () -> Void
     ) {
         buttons.forEach { button in
-            let delegate = TabOverviewMenuDelegate(
-                tabCountProvider: tabCountProvider,
-                onCloseAllTabs: onCloseAllTabs,
-                onCloseTab: onCloseTab,
-                onNewPrivateTab: onNewPrivateTab,
-                onNewTab: onNewTab
-            )
-            button.addInteraction(UIContextMenuInteraction(delegate: delegate))
-            tabOverviewMenuDelegates.append(delegate)
+            if #available(iOS 13.0, *) {
+                let delegate = TabOverviewMenuDelegate(
+                    tabCountProvider: tabCountProvider,
+                    onCloseAllTabs: onCloseAllTabs,
+                    onCloseTab: onCloseTab,
+                    onNewPrivateTab: onNewPrivateTab,
+                    onNewTab: onNewTab
+                )
+                button.addInteraction(UIContextMenuInteraction(delegate: delegate))
+                tabOverviewMenuDelegates.append(delegate)
+            }
         }
     }
     
@@ -310,14 +319,16 @@ final class ToolbarButtonMenus {
         itemsProvider: @escaping (NavigationDirection) -> [NavigationHistoryStore.HistoryItem],
         onSelect: @escaping (NavigationDirection, Int) -> Void
     ) {
-        let delegate = NavigationMenuDelegate(
-            direction: direction,
-            isReversed: isReversed,
-            itemsProvider: itemsProvider,
-            onSelect: onSelect
-        )
-        button.addInteraction(UIContextMenuInteraction(delegate: delegate))
-        navigationMenuDelegates.append(delegate)
+        if #available(iOS 13.0, *) {
+            let delegate = NavigationMenuDelegate(
+                direction: direction,
+                isReversed: isReversed,
+                itemsProvider: itemsProvider,
+                onSelect: onSelect
+            )
+            button.addInteraction(UIContextMenuInteraction(delegate: delegate))
+            navigationMenuDelegates.append(delegate)
+        }
     }
     
     func installRecentlyClosedTabsMenu(
@@ -326,12 +337,14 @@ final class ToolbarButtonMenus {
         itemsProvider: @escaping () -> [TabManagementStore.RecentlyClosedTabSnapshot],
         onSelect: @escaping (UUID) -> Void
     ) {
-        let delegate = RecentlyClosedTabsMenuDelegate(
-            isAvailable: isAvailable,
-            itemsProvider: itemsProvider,
-            onSelect: onSelect
-        )
-        button.addInteraction(UIContextMenuInteraction(delegate: delegate))
-        recentlyClosedTabsMenuDelegates.append(delegate)
+        if #available(iOS 13.0, *) {
+            let delegate = RecentlyClosedTabsMenuDelegate(
+                isAvailable: isAvailable,
+                itemsProvider: itemsProvider,
+                onSelect: onSelect
+            )
+            button.addInteraction(UIContextMenuInteraction(delegate: delegate))
+            recentlyClosedTabsMenuDelegates.append(delegate)
+        }
     }
 }

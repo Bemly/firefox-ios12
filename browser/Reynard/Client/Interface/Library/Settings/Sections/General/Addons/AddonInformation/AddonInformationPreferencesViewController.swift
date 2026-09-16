@@ -190,8 +190,8 @@ final class AddonInformationPreferencesViewController: SettingsTableViewControll
             let cell = SettingsTableViewCell(style: .value1, reuseIdentifier: nil)
             cell.textLabel?.text = row.title
             cell.detailTextLabel?.text = row.value
-            cell.detailTextLabel?.textColor = row.appLink == nil ? .appSecondaryLabel : view.tintColor
-            cell.accessoryType = row.appLink == nil ? .none : .disclosureIndicator
+            cell.detailTextLabel?.textColor = row.link == nil ? .appSecondaryLabel : view.tintColor
+            cell.accessoryType = row.link == nil ? .none : .disclosureIndicator
             return cell
         case .links:
             guard externalLinkRows.indices.contains(indexPath.row) else {

@@ -38,7 +38,7 @@ final class LanguagesPreferencesViewController: SettingsTableViewController {
     }
     
     init() {
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = NSLocalizedString("Languages", comment: "")
     }
     

@@ -365,7 +365,7 @@ private final class AddonPromptSiteListViewController: UITableViewController {
     
     init(sites: [String]) {
         self.sites = sites
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = NSLocalizedString("Websites", comment: "")
     }
     

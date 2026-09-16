@@ -1516,7 +1516,7 @@ extension TabManagerImplementation: NavigationDelegate {
         scheduleFaviconUpdate(forTabAt: index, mode: mode)
         persistState()
         
-        guard target != .background else { return newSession }
+        guard target != .background else { completion(newSession); return }
         
         if let previousSession = selectedTab?.session,
            previousSession !== newSession {

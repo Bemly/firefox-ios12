@@ -90,7 +90,7 @@ final class CustomTrackingProtectionOptionViewController: SettingsTableViewContr
     init(option: CustomTrackingProtectionOption, selectionDidChange: @escaping () -> Void) {
         self.option = option
         self.selectionDidChange = selectionDidChange
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = option.title
     }
     

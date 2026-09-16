@@ -90,7 +90,7 @@ final class BookmarkStore {
     
     private let fileManager: FileManager
     private let storage: StorageURLs
-    private let stateQueue = DispatchQueue(label: "com.minh-ton.Reynard.BookmarkStore.Queue", qos: .userInitiated)
+    private let stateQueue = DispatchQueue(label: "reynard.bemly.moe.BookmarkStore.Queue", qos: .userInitiated)
     private var database: OpaquePointer?
     private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     

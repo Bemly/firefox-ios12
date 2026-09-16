@@ -48,7 +48,7 @@ final class NewTabPreferencesViewController: SettingsTableViewController, UIText
     }
     
     init() {
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = NSLocalizedString("New Tab", comment: "")
     }
     

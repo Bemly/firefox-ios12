@@ -145,7 +145,7 @@ final class AddressBar: UIView {
         view.translatesAutoresizingMaskIntoConstraints = false
         let backgroundColor: UIColor
         if #available(iOS 13.0, *) {
-            backgroundColor = UIColor { traitCollection in
+            backgroundColor = UIColor.appDynamic { traitCollection in
                 traitCollection.userInterfaceStyle == .dark ? .appTertiarySystemBackground : .appSystemBackground
             }
         } else {
@@ -202,7 +202,7 @@ final class AddressBar: UIView {
         field.borderStyle = .none
         field.backgroundColor = .clear
         field.textAlignment = .left
-        field.placeholder = AddressBar.appPlaceholderText
+        field.placeholder = AddressBar.placeholderText
         field.keyboardType = .webSearch
         field.autocapitalizationType = .none
         field.autocorrectionType = .no
@@ -657,7 +657,9 @@ final class AddressBar: UIView {
         tapGesture.cancelsTouchesInView = true
         tapGesture.delegate = self
         addGestureRecognizer(tapGesture)
-        addressBarContent.addInteraction(UIContextMenuInteraction(delegate: self))
+        if #available(iOS 13.0, *) {
+            addressBarContent.addInteraction(UIContextMenuInteraction(delegate: self))
+        }
         textField.addTarget(self, action: #selector(textFieldDidChange), for: .editingChanged)
         trailingButton.addTarget(self, action: #selector(handleTrailingButtonTap), for: .touchUpInside)
         trailingButton.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(handleTrailingButtonLongPress)))
@@ -1085,12 +1087,12 @@ final class AddressBar: UIView {
         
         let attributed = NSMutableAttributedString(
             string: query,
-            attributes: [.foregroundColor: UIColor.label]
+            attributes: [.foregroundColor: UIColor.appLabel]
         )
         attributed.append(NSAttributedString(
             string: String(domain.dropFirst(query.count)),
             attributes: [
-                .foregroundColor: UIColor.label,
+                .foregroundColor: UIColor.appLabel,
                 .backgroundColor: UIColor.appSystemGray4
             ]
         ))
@@ -1135,6 +1137,7 @@ final class AddressBar: UIView {
 
 // MARK: - UIContextMenuInteractionDelegate
 
+@available(iOS 13.0, *)
 extension AddressBar: UIContextMenuInteractionDelegate {
     func contextMenuInteraction(
         _ interaction: UIContextMenuInteraction,

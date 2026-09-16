@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoTouchSupport.mm b/widget/uikit/GeckoTouchSupport.mm
 new file mode 100644
-index 000000000000..7c69b7bafbdd
+index 000000000000..801ad6838d66
 --- /dev/null
 +++ b/widget/uikit/GeckoTouchSupport.mm
-@@ -0,0 +1,326 @@
+@@ -0,0 +1,334 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -292,7 +292,15 @@ index 000000000000..7c69b7bafbdd
 +  // caret-menu resolution.
 +  if (mEditable.mCaretMenuActive) {
 +    mEditable.mCaretMenuActive = NO;
-+    [[UIMenuController sharedMenuController] hideMenuFromView:self];
++    // -hideMenuFromView: is iOS 13+; fall back on iOS 12 (see
++    // HideChildViewEditMenu in GeckoEditableSupport.mm).
++    UIMenuController* menuController =
++        [UIMenuController sharedMenuController];
++    if ([menuController respondsToSelector:@selector(hideMenuFromView:)]) {
++      [menuController hideMenuFromView:self];
++    } else {
++      [menuController setMenuVisible:NO animated:NO];
++    }
 +  }
 +  if (mEditable.mPendingCaretMenu) {
 +    mEditable.mPendingCaretMenu = NO;

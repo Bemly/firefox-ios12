@@ -32,7 +32,7 @@ final class AddWebsiteLanguageViewController: SettingsTableViewController {
         }
         self.onSelect = onSelect
         
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = NSLocalizedString("Add Language", comment: "")
     }
     
