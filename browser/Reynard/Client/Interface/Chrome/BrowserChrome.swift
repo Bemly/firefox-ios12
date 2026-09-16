@@ -500,8 +500,8 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         _ = updateToolbarTextTransition(textCenterProgress: toolbarTextCenterProgress)
     }
     
-    func updateAddressBarMenu(url: String?, usesDesktopWebsite: Bool?) {
-        addressBar.updateMenu(url: url, usesDesktopWebsite: usesDesktopWebsite)
+    func updateAddressBarMenu(url: String?, usesDesktopWebsite: Bool?, readerMode: ReaderModeState) {
+        addressBar.updateMenu(url: url, usesDesktopWebsite: usesDesktopWebsite, readerMode: readerMode)
     }
     
     func setAddressBarLoadingProgress(_ progress: Float, isLoading: Bool) {

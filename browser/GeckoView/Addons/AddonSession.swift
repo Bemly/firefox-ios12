@@ -31,6 +31,7 @@ public struct AddonUpdateTabDetails {
 
 final class AddonSessionListener: GeckoEventListenerInternal {
     weak var session: GeckoSession?
+    var messageDelegates: [AddonMessageRegistrationKey: WeakAddonMessageDelegate] = [:]
     
     init(session: GeckoSession) {
         self.session = session
@@ -45,12 +46,17 @@ final class AddonSessionListener: GeckoEventListenerInternal {
         "GeckoView:WebExtension:NewTab",
         "GeckoView:WebExtension:UpdateTab",
         "GeckoView:WebExtension:CloseTab",
+        "GeckoView:WebExtension:Connect",
+        "GeckoView:WebExtension:Message",
     ]
     
     @MainActor
     func handleMessage(type: String, message: [String: Any?]?) async throws -> Any? {
         guard let session else {
             throw GeckoHandlerError("session has been destroyed")
+        }
+        if type == "GeckoView:WebExtension:Connect" || type == "GeckoView:WebExtension:Message" {
+            return try await handleAddonMessage(type: type, message: message, session: session)
         }
         return try await AddonRuntime.shared.handleSessionEvent(
             type: type,
@@ -63,5 +69,17 @@ final class AddonSessionListener: GeckoEventListenerInternal {
 public extension GeckoSession {
     func setAddonTabActive(_ active: Bool) {
         dispatcher.dispatch(type: "GeckoView:WebExtension:SetTabActive", message: ["active": active])
+    }
+    
+    func setAddonMessageDelegate(
+        _ delegate: AddonMessageDelegate?,
+        extensionID: String,
+        nativeApp: String
+    ) {
+        addonSessionListener.setMessageDelegate(
+            delegate,
+            extensionID: extensionID,
+            nativeApp: nativeApp
+        )
     }
 }

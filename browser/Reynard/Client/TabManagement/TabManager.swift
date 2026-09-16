@@ -60,6 +60,7 @@ enum TabManagerUpdateReason {
     case loading
     case thumbnail
     case pageBackgroundColor
+    case readerMode
 }
 
 protocol TabManagerDelegate: AnyObject {

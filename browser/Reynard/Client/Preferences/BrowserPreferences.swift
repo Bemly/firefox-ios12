@@ -73,6 +73,8 @@ final class BrowserPreferences {
             key("BrowsingSettings", "openLinksInExternalApps"): true,
             key("BrowsingSettings", "openLinksInNewTabsBehavior"): OpenLinksInNewTabsBehavior.switchTabImmediately.rawValue,
             key("BrowsingSettings", "defaultPageZoomLevel"): PageZoomLevels.defaultLevel,
+            key("BrowsingSettings", "readerViewFontSizeStep"): 3,
+            key("BrowsingSettings", "readerViewFontType"): ReaderViewFontType.serif.rawValue,
             
             // New Tab
             key("NewTabSettings", "newTabDisplayOption"): NewTabDisplayOption.homepage.rawValue,
@@ -333,6 +335,55 @@ final class BrowserPreferences {
                     return
                 }
                 prefs.set(newValue, forSetting: "BrowsingSettings", key: "defaultPageZoomLevel")
+            }
+        }
+        
+        static var readerViewFontSizeStep: Int {
+            get {
+                return min(
+                    ReaderViewAppearance.maximumFontSizeStep,
+                    max(
+                        ReaderViewAppearance.minimumFontSizeStep,
+                        prefs.integer(forSetting: "BrowsingSettings", key: "readerViewFontSizeStep")
+                    )
+                )
+            }
+            set {
+                prefs.set(newValue, forSetting: "BrowsingSettings", key: "readerViewFontSizeStep")
+            }
+        }
+        
+        static var readerViewFontType: ReaderViewFontType {
+            get {
+                let value = prefs.string(forSetting: "BrowsingSettings", key: "readerViewFontType")
+                return ReaderViewFontType(rawValue: value ?? "") ?? .serif
+            }
+            set {
+                prefs.set(newValue.rawValue, forSetting: "BrowsingSettings", key: "readerViewFontType")
+            }
+        }
+        
+        static var readerViewColorScheme: ReaderViewColorScheme {
+            get {
+                if let value = prefs.string(forSetting: "BrowsingSettings", key: "readerViewColorScheme"),
+                   let colorScheme = ReaderViewColorScheme(rawValue: value) {
+                    return colorScheme
+                }
+                switch AppearanceSettings.appAppearance {
+                case .dark:
+                    return .dark
+                case .light:
+                    return .light
+                case .system:
+                    let style = UIApplication.shared.connectedScenes
+                        .compactMap { $0 as? UIWindowScene }
+                        .flatMap(\.windows)
+                        .first?.traitCollection.userInterfaceStyle
+                    return style == .dark ? .dark : .light
+                }
+            }
+            set {
+                prefs.set(newValue.rawValue, forSetting: "BrowsingSettings", key: "readerViewColorScheme")
             }
         }
     }

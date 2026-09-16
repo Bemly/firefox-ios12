@@ -24,7 +24,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
     // MARK: - State
     
     let sessionManager = SessionManager()
-    lazy var tabManager: TabManager = TabManagerImplementation(
+    lazy var tabManager = TabManagerImplementation(
         delegate: self,
         sessionManager: sessionManager
     )
@@ -251,6 +251,9 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
     
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
+        if let readerSettings = presentedViewController as? ReaderSettingsViewController {
+            readerSettings.dismiss(animated: false)
+        }
         performContentLifecycle {
             toolbarController.reset(animated: false)
             coordinator.animate { _ in
@@ -498,6 +501,9 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
         let previousLayout = browserLayout
         browserLayout = resolveBrowserLayout()
         if browserLayout != previousLayout {
+            if let readerSettings = presentedViewController as? ReaderSettingsViewController {
+                readerSettings.dismiss(animated: false)
+            }
             dismissAddressBarEditingAndOverlays()
         }
         applyBrowserLayout(animated: animated)

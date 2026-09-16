@@ -147,11 +147,12 @@ final class AddonCoordinator: NSObject, AddonEmbedderDelegate {
     }
     
     private var menuAddons: [Addon] {
+        let installedAddons = AddonRuntime.shared.installedAddons.filter { !$0.isBuiltIn }
         guard dataSource?.isSelectedAddonTabPrivate == true else {
-            return AddonRuntime.shared.installedAddons
+            return installedAddons
         }
         
-        return AddonRuntime.shared.installedAddons.filter { $0.metaData.allowedInPrivateBrowsing }
+        return installedAddons.filter { $0.metaData.allowedInPrivateBrowsing }
     }
     
     // MARK: - Menu Actions

@@ -39,6 +39,7 @@ final class TabManagerImplementation: NSObject, TabManager {
         promptPresenter: PermissionPromptPresenter(),
         onPromptFinished: requestContentKeyboardFocus
     )
+    private(set) lazy var readerMode = ReaderModeController(delegate: self)
     private lazy var systemMediaSession = SystemMediaSession(playbackObserver: self)
     private lazy var pictureInPictureCoordinator: PictureInPictureCoordinating? = {
         guard Prefs.ExperimentalSettings.isVideoPictureInPictureEnabled,
@@ -220,6 +221,7 @@ final class TabManagerImplementation: NSObject, TabManager {
             history: self,
             permission: permissionCoordinator,
             progress: self,
+            scroll: self,
             prompt: promptCoordinator,
             selectionAction: selectionActionCoordinator,
             mediaSession: systemMediaSession
@@ -703,6 +705,7 @@ final class TabManagerImplementation: NSObject, TabManager {
         tab.state.tabSessionState = sessionState
         let mode: TabMode = isPrivate ? .private : .regular
         sessionManager.adopt(session, asTab: tab.id, url: url, delegates: sessionDelegates)
+        readerMode.registerMessageHandlers(for: session)
         applyTransferredState(to: tab, url: url, title: title)
         recordNavigation(url, for: tab)
         
@@ -1068,8 +1071,8 @@ final class TabManagerImplementation: NSObject, TabManager {
         }
         
         let oldSession = tab.session
-        sessionManager.adopt(session, asTab: tab.id, url: url, delegates: sessionDelegates)
         tab.session = session
+        sessionManager.adopt(session, asTab: tab.id, url: url, delegates: sessionDelegates)
         let sessionState = restorableSessionState(session.currentSessionState, matching: url)
         tab.state.tabSessionState = sessionState
         tab.state.restoreState = .none
@@ -1160,13 +1163,15 @@ final class TabManagerImplementation: NSObject, TabManager {
         isPrivate: Bool,
         opening: SessionOpening? = nil
     ) -> GeckoSession {
-        return sessionManager.createSession(
+        let session = sessionManager.createSession(
             url: url,
             tabID: tabID,
             isPrivate: isPrivate,
             opening: opening ?? .immediate(windowID: windowId),
             delegates: sessionDelegates
         )
+        readerMode.registerMessageHandlers(for: session)
+        return session
     }
 }
 
@@ -1176,6 +1181,27 @@ extension TabManagerImplementation: SystemMediaSessionPlaybackObserver {
         for session: GeckoSession
     ) {
         delegate?.tabManager(self, didChangeMediaPlayback: playbackState == .playing, for: session)
+    }
+}
+
+extension TabManagerImplementation: ReaderModeControllerDelegate {
+    func readerModeController(_ controller: ReaderModeController, tabFor session: GeckoSession) -> Tab? {
+        guard let location = tabLocation(for: session) else { return nil }
+        return tabs(for: location.mode)[location.index]
+    }
+    
+    func readerModeController(_ controller: ReaderModeController, didChangeStateFor tab: Tab) {
+        guard let location = tabLocation(for: tab.id) else { return }
+        notifyUpdate(at: location.index, mode: location.mode, reason: .readerMode)
+    }
+}
+
+extension TabManagerImplementation: ScrollDelegate {
+    func onScrollChanged(session: GeckoSession, scrollX: Int, scrollY: Int) {
+        guard let location = tabLocation(for: session) else { return }
+        let tab = tabs(for: location.mode)[location.index]
+        guard tab.state.readerMode.isActive else { return }
+        tab.state.readerMode.sourceScrollY = scrollY
     }
 }
 
@@ -1377,6 +1403,7 @@ extension TabManagerImplementation: NavigationDelegate {
             return
         }
         let tab = tabs(for: location.mode)[location.index]
+        let url = url.map { readerMode.displayedURL(for: $0, in: tab) }
         
         let normalizedURL = url?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         

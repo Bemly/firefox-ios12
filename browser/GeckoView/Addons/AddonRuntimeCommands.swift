@@ -8,6 +8,21 @@
 import Foundation
 
 public extension AddonRuntime {
+    func ensureBuiltIn(location: String, id: String) async throws -> Addon {
+        let response = try await GeckoEventDispatcherWrapper.runtimeInstance.query(
+            type: "GeckoView:WebExtension:EnsureBuiltIn",
+            message: [
+                "locationUri": location,
+                "webExtensionId": id,
+            ]
+        )
+        guard let payload = response as? [String: Any?],
+              let addonPayload = payload["extension"] as? [String: Any?] else {
+            throw GeckoHandlerError("Invalid built-in extension response")
+        }
+        return Addon(dictionary: addonPayload)
+    }
+    
     func list() async throws -> [Addon] {
         let response = try await GeckoEventDispatcherWrapper.runtimeInstance.query(type: "GeckoView:WebExtension:List")
         guard let payload = response as? [String: Any?] else {
