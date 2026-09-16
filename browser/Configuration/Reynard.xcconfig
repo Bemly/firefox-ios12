@@ -14,4 +14,8 @@ HEADER_SEARCH_PATHS = $(inherited) $(GECKO_DIST)/include $(GECKO_DIST)/include/G
 LIBRARY_SEARCH_PATHS = $(inherited) $(GECKO_DIST)/bin
 FRAMEWORK_SEARCH_PATHS = $(inherited) $(BUILT_PRODUCTS_DIR)
 LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/Frameworks @loader_path/Frameworks
+// iOS 12 Release 必需：Xcode26 -O 让 Swift 大栈帧函数 emit ___chkstk_darwin，
+// iOS 12 libSystem 无此符号 → dyld 启动即 SIGABRT。静态链真实现兜底。
+// 注意：clang/NN 目录号随 Xcode 大版本变化（DT_TOOLCHAIN_DIR 自动跟工具链）。
+OTHER_LDFLAGS = $(inherited) $(DT_TOOLCHAIN_DIR)/usr/lib/clang/21/lib/darwin/libclang_rt.ios.a
 SWIFT_OBJC_BRIDGING_HEADER = $(SRCROOT)/Reynard/Bridging/Reynard-Bridging-Header.h

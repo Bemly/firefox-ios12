@@ -86,6 +86,11 @@
   （`.../Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/lib/darwin/`，
   里面是真实现；换 Xcode 大版本注意 `clang/21` 路径会变）。appex 无此引用，
   全局加 harmless（linker 只拉用到的 member）。
+  **2026-09-17 起该修复已落仓库 `browser/Configuration/Reynard.xcconfig`**
+  （`$(DT_TOOLCHAIN_DIR)/usr/lib/clang/21/...`，工具链路径自动跟随），不再需要
+  命令行临时传。坑：命令行 `xcodebuild OTHER_LDFLAGS=...` 会**整体替换**工程
+  里的链接项（XUL/nss 那串），链接必败——盖版本号走 `-xcconfig` 覆盖文件只改
+  `CURRENT_BUILD`，别在命令行碰 OTHER_LDFLAGS。
   `___darwin_check_fd_set_overflow`（`JITSupport.o`，fortify 的 FD 宏带来，
   iOS 14+ 才有）是 **weak import**（`nm -m` 验证），12 上 resolve 成 NULL，
   头文件里的运行时检查会跳过——不用管。Debug `-Onone` 帧小不触发，
