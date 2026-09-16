@@ -443,6 +443,27 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
 - 自驱补充：App 内有两个 UITextField（地址栏 + 隐藏的页内查找框），
   drive 脚本必须按 delegate 含 `AddressBar` 挑（见 `/tmp/drive2.cy`，重启会丢）。
 
+## JIT 弹窗误报实录（2026-09-16，包 `/tmp/Reynard-jit-silent.ipa` 已装机）
+
+- 现象：YouTube 播视频弹“启用 JIT 失败”（`错误 -30`），但视频本身流畅。
+- 根因：视频触发 Gecko 起了 `type="tab"` 的**真子进程**（“单进程无 tab 子进程”
+  的假设破了，`start()` 注释已过时）；`childProcessDidStart → attachToProcess →
+  handleJITFailure → 弹窗`。`-30 = TSPtraceHelperAttachFailed`：helper 以 mobile
+  跑，ptrace 附着在 iOS 12 上**永远**失败。主进程 JIT 走 platform-binary W^X，
+  本来就是好的；两子进程 CPU 全 0.0%，页面 JS 不在里面——弹窗是纯噪声。
+  （点“启用无 JIT 模式”也无害：`detachAllJITSessions` 只动 debug session，
+  主进程 execmem 不受影响，但点了也没用。）
+- 修：iOS 12 上子进程 attach 失败静默上报 false（`JITController.swift` 的
+  `handleJITFailure` + `handleJITDisconnectNotification` 两处
+  `if #unavailable(iOS 13.0) { return }`），附着尝试保留（以后 root daemon
+  场景还用得上）；13+ 行为不变。
+- 验证：重播 YouTube，helper 照起（pids 6521/6522），弹窗不再出现
+  （`IMG_0180/0181`）。注意当时页面白屏是另一起事故：21:15 `PacketTunnel`
+  崩了，外网全 `SYN_SENT` 黑洞——先重开 VPN 再测页面。
+- 附带未查项：21:06 有一起主进程 `js::Interpret +22984` 空指针 SIGSEGV
+  （`Reynard-2026-09-16-210634.ips`，ime-fix 包，用户播视频期间），与本次
+  弹窗无关，另案跟。
+
 ## 自驱/连接补充
 
 - cycript 合成调用可能打到未走正常装配的实例（如直接调 `showTabOverviewKeyCommand:`

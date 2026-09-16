@@ -248,6 +248,13 @@ final class JITController {
             }
             self.hasHandledFailure = true
             BackgroundAudioManager.shared.stop()
+            // iOS 12: the ptrace helper runs as mobile, so attach to children
+            // can never succeed; main-process JIT does not depend on it.
+            // Report false silently instead of a failure screen that can
+            // never lead to success (YouTube spawns a real "tab" child).
+            if #unavailable(iOS 13.0) {
+                return
+            }
             self.presentEnablementFailureScreen(
                 error: error,
                 showsErrorDetails: error.code != Int(ETIMEDOUT)
@@ -409,9 +416,13 @@ final class JITController {
             guard !self.hasHandledFailure else {
                 return
             }
-            
+
             self.hasHandledFailure = true
             BackgroundAudioManager.shared.stop()
+            // iOS 12: see handleJITFailure, child attach can never succeed.
+            if #unavailable(iOS 13.0) {
+                return
+            }
             self.presentEnablementFailureScreen(error: NSError(domain: "Reynard.JIT", code: Int(ETIMEDOUT), userInfo: nil), showsErrorDetails: false)
         }
     }
