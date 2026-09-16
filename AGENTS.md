@@ -557,6 +557,16 @@ null（3d.bemly.moe 只剩移动按钮）。最终修复只有一行：
   `draw+read: PASS` = 画+readPixels 读回校验）。
   patch regen：`git -C engine/firefox diff HEAD -- mobile/ios/app/mobile.js`
   整文件 diff 覆盖 `patches/mobile/ios/app/mobile.js.patch`，reverse-check 过。
+- 3d.bemly.moe（three.js 实站，bundle 2.5MB）修复后表征改变：WebGL 被禁时
+  只剩摇杆按钮不崩；WebGL 打开后场景真初始化，**加载几秒内触发系统级内存/
+  CPU 风暴**（load 26+，jetam 连杀 App+dropbear/sshd，SSH 断连、连崩溃报告
+  都来不及写）——与 browserscore.dev 702MB 高水位同案（1GB A7 + SWGL 软合成
+  的硬件墙），另案缓解，不是 WebGL 管线问题。注意"设备熄屏"和"内存风暴杀
+  dropbear"都会造成 cycript/截图链路死亡，先 `uptime`+`ps` 分辨（熄屏时
+  uiopen 即可恢复；风暴后 load 依旧很高）。
+- WebGL 修复包：`/tmp/Reynard-webgl-17dd42f.ipa`（Release，装机验证通过；
+  user.js 三条 webgl pref 已清空，纯靠仓库 mobile.js 默认值）。
+
 
 
 ## browserscore.dev 崩溃定性（2026-09-17，Debug 包 + lldb 真机复现）
