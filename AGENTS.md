@@ -75,9 +75,7 @@
 ## Release 构建（2026-09-16 首通，包 `/tmp/Reynard-release.ipa` 已装机验证）
 
 - 命令同 Debug，把 `-configuration` 换成 `Release`，`-derivedDataPath` 换
-  `/tmp/ReynardDD-Release`（与 Debug 隔离），再加 `CURRENT_BUILD=$(git rev-parse
-  HEAD | cut -c1-7)`（否则设置里版本号括号是 `UNKNOWN`——xcconfig 里写死的占位符，
-  正式脚本 `build-app.sh` 也是这么盖 SHA 的）。Release 关断言
+  `/tmp/ReynardDD-Release`（与 Debug 隔离）。Release 关断言
   （`ENABLE_NS_ASSERTIONS=NO`，iOS 12 上等于去掉了一批 SIGTRAP）、strip 符号
   （崩溃回溯弱一截）。Release 无 `Reynard.debug.dylib`（Swift 静态链进主二进制），
   只签主二进制 + appex + Frameworks。
@@ -113,6 +111,16 @@
   `indexPathForCell` 再调一次 didSelect → `scrollToRowAtIndexPath` 滚到底。
   注意 cycript 读 struct（frame/contentSize）直接抛，用纯对象/整数 API；
   App 内有两个 UITextField，drive 按 delegate 含 `AddressBar` 挑（沿用）。
+- 设置 About 区归属（2026-09-17）：诊断 4 行已搬到 高级 > Developer
+  （`DeveloperPreferencesViewController` 新 section）；About 新增
+  `GitHub - @Bemly`（`github.com/Bemly`），“查看源代码”改链
+  `github.com/Bemly/firefox-ios12`；`CURRENT_BUILD = bemly`（本地包括号显示
+  bemly，`build-app.sh` 正式打包仍会 sed 盖 SHA，不冲突）。
+- 启动恢复开关（2026-09-17）：`Prefs.HomepageSettings.restoresTabsOnLaunch`
+ （默认 true，老行为不变），`通用 > 主页 > 启动时` 下多一行 switch；
+  门控在 `TabManagerImpl.restoreTabsIfNeeded()` 开头 early-return false。
+  验证：关 → kill → 冷启动只剩空白新 tab；开 = 原代码路径（未改）。
+  注意 pref 直接写 UserDefaults 要杀进程冷读（内存有 boolCache）。
 
 ## 白屏排查实录（2026-09-15，分支 local/white-screen-probe）
 

@@ -87,6 +87,7 @@ final class BrowserPreferences {
             
             // Homepage
             key("HomepageSettings", "openingScreen"): HomepageOpeningScreen.homepage.rawValue,
+            key("HomepageSettings", "restoresTabsOnLaunch"): true,
             key("HomepageSettings", "showsFavorites"): true,
             key("HomepageSettings", "showsFavoritesInPrivateBrowsing"): false,
             key("HomepageSettings", "favoriteRowCount"): 2,
@@ -601,6 +602,17 @@ final class BrowserPreferences {
             }
             set {
                 prefs.set(newValue.rawValue, forSetting: "HomepageSettings", key: "openingScreen")
+            }
+        }
+
+        /// When false, launching the app starts fresh instead of restoring
+        /// last session's tabs. Defaults to true (previous behavior).
+        static var restoresTabsOnLaunch: Bool {
+            get {
+                return prefs.bool(forSetting: "HomepageSettings", key: "restoresTabsOnLaunch")
+            }
+            set {
+                prefs.set(newValue, forSetting: "HomepageSettings", key: "restoresTabsOnLaunch")
             }
         }
         

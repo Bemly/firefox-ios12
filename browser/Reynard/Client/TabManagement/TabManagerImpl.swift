@@ -399,6 +399,9 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
     
     private func restoreTabsIfNeeded() -> Bool {
+        guard Prefs.HomepageSettings.restoresTabsOnLaunch else {
+            return false
+        }
         guard regularTabs.isEmpty && privateTabs.isEmpty else {
             return true
         }

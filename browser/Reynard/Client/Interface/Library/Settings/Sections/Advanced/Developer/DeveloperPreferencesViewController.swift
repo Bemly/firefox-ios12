@@ -16,15 +16,25 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
     
     private enum Section: CaseIterable {
         case remoteDebugging
-        
+        case diagnostics
+
         var text: SettingsSectionText {
-            return SettingsSectionText(headerTitle: NSLocalizedString("Remote Debugging", comment: ""))
+            switch self {
+            case .remoteDebugging:
+                return SettingsSectionText(headerTitle: NSLocalizedString("Remote Debugging", comment: ""))
+            case .diagnostics:
+                return SettingsSectionText(headerTitle: NSLocalizedString("On-Device Diagnostics", comment: ""))
+            }
         }
     }
-    
+
     private enum Row {
         case remoteDebugging
         case remoteDebuggingPort
+        case diagnosticsJITBench
+        case diagnosticsVideo720
+        case diagnosticsVideo240
+        case diagnosticsAnimation
     }
     
     private var isDebuggingEnabled = Prefs.DeveloperSettings.remoteDebuggingEnabled
@@ -46,10 +56,19 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
         return textField
     }()
     
-    private var displayedRows: [Row] {
-        return isDebuggingEnabled
-        ? [.remoteDebugging, .remoteDebuggingPort]
-        : [.remoteDebugging]
+    private func rows(for section: Section) -> [Row] {
+        switch section {
+        case .remoteDebugging:
+            return isDebuggingEnabled
+            ? [.remoteDebugging, .remoteDebuggingPort]
+            : [.remoteDebugging]
+        case .diagnostics:
+            return [.diagnosticsJITBench, .diagnosticsVideo720, .diagnosticsVideo240, .diagnosticsAnimation]
+        }
+    }
+
+    private func diagnosticsURL(_ name: String) -> URL? {
+        Bundle.main.url(forResource: name, withExtension: "html", subdirectory: "Diagnostics")
     }
     
     init() {
@@ -92,7 +111,7 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
         guard Section.allCases.indices.contains(section) else {
             return 0
         }
-        return displayedRows.count
+        return rows(for: Section.allCases[section]).count
     }
     
     override func sectionText(for section: Int) -> SettingsSectionText {
@@ -145,13 +164,16 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
     }
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        guard Section.allCases.indices.contains(indexPath.section),
-              displayedRows.indices.contains(indexPath.row) else {
+        guard Section.allCases.indices.contains(indexPath.section) else {
             return UITableViewCell()
         }
-        
+        let sectionRows = rows(for: Section.allCases[indexPath.section])
+        guard sectionRows.indices.contains(indexPath.row) else {
+            return UITableViewCell()
+        }
+
         let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
-        switch displayedRows[indexPath.row] {
+        switch sectionRows[indexPath.row] {
         case .remoteDebugging:
             cell.textLabel?.text = NSLocalizedString("Remote Debugging via USB", comment: "")
             cell.accessoryView = debugSwitch
@@ -159,23 +181,56 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
             cell.textLabel?.text = NSLocalizedString("Remote Debugging Port", comment: "")
             cell.accessoryView = portTextField
             portTextField.text = String(Prefs.DeveloperSettings.remoteDebuggingPort)
+        case .diagnosticsJITBench:
+            cell.textLabel?.text = NSLocalizedString("JIT Bench (on-device)", comment: "")
+            cell.textLabel?.textColor = view.tintColor
+            cell.accessoryType = .disclosureIndicator
+        case .diagnosticsVideo720:
+            cell.textLabel?.text = NSLocalizedString("Video Test 720p (on-device)", comment: "")
+            cell.textLabel?.textColor = view.tintColor
+            cell.accessoryType = .disclosureIndicator
+        case .diagnosticsVideo240:
+            cell.textLabel?.text = NSLocalizedString("Video Drops 240p (on-device)", comment: "")
+            cell.textLabel?.textColor = view.tintColor
+            cell.accessoryType = .disclosureIndicator
+        case .diagnosticsAnimation:
+            cell.textLabel?.text = NSLocalizedString("Animation Composite (on-device)", comment: "")
+            cell.textLabel?.textColor = view.tintColor
+            cell.accessoryType = .disclosureIndicator
         }
         cell.selectionStyle = .none
         return cell
     }
-    
+
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         defer { tableView.deselectRow(at: indexPath, animated: true) }
-        guard Section.allCases.indices.contains(indexPath.section),
-              displayedRows.indices.contains(indexPath.row) else {
+        guard Section.allCases.indices.contains(indexPath.section) else {
             return
         }
-        
-        switch displayedRows[indexPath.row] {
+        let sectionRows = rows(for: Section.allCases[indexPath.section])
+        guard sectionRows.indices.contains(indexPath.row) else {
+            return
+        }
+
+        let diagnosticsName: String?
+        switch sectionRows[indexPath.row] {
         case .remoteDebugging:
-            break
+            return
         case .remoteDebuggingPort:
             portTextField.becomeFirstResponder()
+            return
+        case .diagnosticsJITBench:
+            diagnosticsName = "bench"
+        case .diagnosticsVideo720:
+            diagnosticsName = "video"
+        case .diagnosticsVideo240:
+            diagnosticsName = "video240"
+        case .diagnosticsAnimation:
+            diagnosticsName = "anim"
+        }
+        if let name = diagnosticsName,
+           let url = diagnosticsURL(name) {
+            LibrarySharedUtils.openLinkInBrowser(url.absoluteString, from: self)
         }
     }
     

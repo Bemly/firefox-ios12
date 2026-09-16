@@ -47,6 +47,7 @@ final class HomepagePreferencesViewController: SettingsTableViewController {
     private let recommendationsSwitch = UISwitch()
     private let newUpdatesSwitch = UISwitch()
     private let showWallpaperSwitch = UISwitch()
+    private let restoreTabsSwitch = UISwitch()
     private let wallpaperPreviewImageView: UIImageView = {
         let imageView = UIImageView(frame: CGRect(
             x: 0,
@@ -93,7 +94,9 @@ final class HomepagePreferencesViewController: SettingsTableViewController {
         
         switch Section.allCases[section] {
         case .openingScreen:
-            return HomepageOpeningScreen.allCases.count
+            // Checkmark rows for each opening screen, plus a trailing switch
+            // for restoring last session's tabs.
+            return HomepageOpeningScreen.allCases.count + 1
         case .includeOnHomepage:
             return HomepageSectionPreferencesViewController.OverviewRow.allCases.count
         case .homepageBanners:
@@ -118,14 +121,16 @@ final class HomepagePreferencesViewController: SettingsTableViewController {
         
         switch Section.allCases[indexPath.section] {
         case .openingScreen:
-            guard HomepageOpeningScreen.allCases.indices.contains(indexPath.row) else {
-                return UITableViewCell()
-            }
-            
-            let openingScreen = HomepageOpeningScreen.allCases[indexPath.row]
             let cell = SettingsTableViewCell(style: .default, reuseIdentifier: nil)
-            cell.textLabel?.text = openingScreen.title
-            cell.accessoryType = Prefs.HomepageSettings.openingScreen == openingScreen ? .checkmark : .none
+            if HomepageOpeningScreen.allCases.indices.contains(indexPath.row) {
+                let openingScreen = HomepageOpeningScreen.allCases[indexPath.row]
+                cell.textLabel?.text = openingScreen.title
+                cell.accessoryType = Prefs.HomepageSettings.openingScreen == openingScreen ? .checkmark : .none
+                return cell
+            }
+            cell.textLabel?.text = NSLocalizedString("Restore Tabs on Launch", comment: "")
+            cell.selectionStyle = .none
+            cell.accessoryView = restoreTabsSwitch
             return cell
         case .includeOnHomepage:
             guard HomepageSectionPreferencesViewController.OverviewRow.allCases.indices.contains(indexPath.row) else {
@@ -184,9 +189,10 @@ final class HomepagePreferencesViewController: SettingsTableViewController {
         switch Section.allCases[indexPath.section] {
         case .openingScreen:
             guard HomepageOpeningScreen.allCases.indices.contains(indexPath.row) else {
+                // Trailing restore-tabs switch row handles its own changes.
                 return
             }
-            
+
             Prefs.HomepageSettings.openingScreen = HomepageOpeningScreen.allCases[indexPath.row]
             tableView.reloadSections(IndexSet(integer: indexPath.section), with: .none)
         case .includeOnHomepage:
@@ -218,12 +224,14 @@ final class HomepagePreferencesViewController: SettingsTableViewController {
         recommendationsSwitch.addTarget(self, action: #selector(recommendationsSwitchDidChange(_:)), for: .valueChanged)
         newUpdatesSwitch.addTarget(self, action: #selector(newUpdatesSwitchDidChange(_:)), for: .valueChanged)
         showWallpaperSwitch.addTarget(self, action: #selector(showWallpaperSwitchDidChange(_:)), for: .valueChanged)
+        restoreTabsSwitch.addTarget(self, action: #selector(restoreTabsSwitchDidChange(_:)), for: .valueChanged)
     }
-    
+
     private func refreshDisplayedState() {
         recommendationsSwitch.isOn = Prefs.HomepageSettings.showsRecommendations
         newUpdatesSwitch.isOn = Prefs.HomepageSettings.showsNewUpdates
         showWallpaperSwitch.isOn = Prefs.HomepageSettings.showsWallpaper
+        restoreTabsSwitch.isOn = Prefs.HomepageSettings.restoresTabsOnLaunch
     }
     
     @objc private func recommendationsSwitchDidChange(_ sender: UISwitch) {
@@ -236,6 +244,10 @@ final class HomepagePreferencesViewController: SettingsTableViewController {
     
     @objc private func showWallpaperSwitchDidChange(_ sender: UISwitch) {
         Prefs.HomepageSettings.showsWallpaper = sender.isOn
+    }
+
+    @objc private func restoreTabsSwitchDidChange(_ sender: UISwitch) {
+        Prefs.HomepageSettings.restoresTabsOnLaunch = sender.isOn
     }
     
     // MARK: - Wallpaper
