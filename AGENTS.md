@@ -514,6 +514,61 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   （`Reynard-2026-09-16-210634.ips`，ime-fix 包，用户播视频期间），与本次
   弹窗无关，另案跟。
 
+## browserscore.dev 崩溃定性（2026-09-17，Debug 包 + lldb 真机复现）
+
+结论：**不是单个代码 bug，是内存耗尽**。该站是 Lea Verou css3test 变体，对数千个
+CSS 特性跑 `CSS.supports()` + 建巨型结果 DOM，1GB A7 上进程超过 jetsam 高水位
+**702MB** → `EXC_RESOURCE (RESOURCE_TYPE_MEMORY: high watermark)` → jetsam
+SIGKILL。当晚用户自己的会话同样死于该上限（JetsamEvent-2026-09-16-230753.ips：
+Reynard **179712 页 = 702MB**，与上限分毫不差）。
+
+- 复现法：关启动恢复（见下）冷启动 → `cycript -p Reynard /tmp/drive-bscore.cy`
+  驱动地址栏加载 → CPU 80% 猛跑几十秒 → 死。lldb attach 时抓到两次
+  EXC_RESOURCE stop（一次主线程、一次 TaskController #0），命中时主线程栈顶是
+  `imgLoader::LoadImage → malloc(240) → mozjemalloc GetNewEmptyBinRun`——
+  即进程已在 702MB 顶上，任何分配都触发；停止态等 memsum 时被 SIGKILL 不可拦截。
+- 同晚日志里的其他死法（同一页面压力下的次生/独立问题，另案）：
+  22:52 看门狗 SIGKILL（主线程被页面 JS/DOM 饿死 >20s）；22:59
+  **AGXGLDriver SIGSEGV**（WR-GL `draw_instanced_batch` 实例化绘制把 A7 GPU
+  驱动打崩——本分支 GPU 合成实验的真实稳定性数据点）；23:05/23:06
+  `BrowsingContext::Commit` 主线程 SIGSEGV（Debug 包，未复现，疑与内存压力下
+  tab/BC 拆除有关）；23:16 两份 `___chkstk_darwin` DYLD 崩是**旧 Release 包**
+  （build=UNKNOWN，未带 libclang_rt 链接修复）残留，非新问题。
+- 可能的缓解方向（未实施）：user.js 压缓存（image cache
+  `image.mem.max_bytes`、JS GC `javascript.options.mem.*`、WR 纹理缓存），
+  先 `about:memory` 细分再动手；启动恢复风暴同理需做渐进恢复。
+
+### 启动恢复内存风暴（本次新发现，装置现为关闭状态）
+
+- `Prefs.HomepageSettings.restoresTabsOnLaunch=true` 时，冷启动恢复上次会话
+  的多 tab 会在 1GB 设备上引发内存风暴：实测两次冷启动分别于启动后 ~45s/~9s
+  被 jetsam 杀（JetsamEvent-2026-09-17-004242/004637），cycript 都来不及
+  attach。**本机该开关已被关掉**（用户可在设置 > 通用 > 主页 > 启动时 重开）。
+- 绕过法（不用重启 App 的进程内改法没用，boolCache）：App 是 platform
+  application 不走沙盒容器，UserDefaults 直接落在
+  `/var/mobile/Library/Preferences/reynard.bemly.moe.plist`。改法：scp 拉回
+  Mac → `plutil -convert xml1` → 手改 `<true/>` 为 `<false/>`（注意
+  `plutil -replace` 会把 key 里的点当 keypath，**改不动这个扁平键**）→
+  binary1 转回 → scp 上机 `chown mobile:mobile` → `kill cfprefsd` → 冷启动生效。
+
+### 调试链路补充（debugserver12 + lldb 为主，cycript 驱动 UI）
+
+- EXC_RESOURCE（含 memory highwater）是可停的 Mach 异常，lldb 能抓到并 bt；
+  jetsam 的 SIGKILL 抓不到（进程直接消失，且 attach 状态下常不落 JetsamEvent
+  崩溃报告）。所以"活着被 OOM 杀"用 lldb 盯 EXC_RESOURCE，"直接消失"查
+  JetsamEvent。
+- **lldb `expression` 驱动 UI 在本链路不可行**：真机连的是本地 .app、无 iOS
+  SDK，ObjC 表达式编译报 `no known method '-isKindOfClass:'` 等一堆 unknown
+  method/return type——别再试，驱动 UI 用 cycript。
+- cycript 文件模式（`cycript -p Reynard /tmp/xxx.cy`）执行成功但**不回显结果**，
+  别拿"没输出"当失败判据，用 `ps` CPU/RSS 验证是否真的驱动了；pipe 模式经
+  SSH 转义容易把代码打碎（syntax error at 1.xxx），优先 scp 脚本上机走文件模式。
+- debugserver 只能 attach 活着的进程：App 秒死时先解决存活问题（如上述关恢复），
+  别换工具硬凑。批量 SSH 别循环猛打（sshd 限流），中间留 sleep。
+- frida 本轮尝试不可靠（`unable to communicate with remote frida-server` 间歇
+  出现，spawn 大进程时必挂），用户已明确要求不用——调试主链路就是
+  debugserver12 + lldb（26 的），UI 驱动是 cycript。
+
 ## 自驱/连接补充
 
 - cycript 合成调用可能打到未走正常装配的实例（如直接调 `showTabOverviewKeyCommand:`
