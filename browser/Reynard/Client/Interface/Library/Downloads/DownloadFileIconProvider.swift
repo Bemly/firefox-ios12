@@ -14,8 +14,16 @@ final class DownloadFileIconProvider {
     static let shared = DownloadFileIconProvider()
     
     // QLThumbnailGenerator is iOS 13+; accessed inline in generateIcon under #available. 见 AGENTS.md“iOS 12 兼容门禁清单”.
-    private let thumbnailCache = NSCache<NSURL, UIImage>()
-    private let placeholderCache = NSCache<NSString, UIImage>()
+    private let thumbnailCache: NSCache<NSURL, UIImage> = {
+        let cache = NSCache<NSURL, UIImage>()
+        cache.countLimit = 64
+        return cache
+    }()
+    private let placeholderCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 128
+        return cache
+    }()
     private let fileManager = FileManager.default
     
     func placeholderIcon(for fileURL: URL) -> UIImage? {

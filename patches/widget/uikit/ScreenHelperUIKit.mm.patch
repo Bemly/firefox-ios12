@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/ScreenHelperUIKit.mm b/widget/uikit/ScreenHelperUIKit.mm
-index b800da5aaa15..b773928af3f8 100644
+index b800da5aaa15..e78baad88f76 100644
 --- a/widget/uikit/ScreenHelperUIKit.mm
 +++ b/widget/uikit/ScreenHelperUIKit.mm
 @@ -4,8 +4,9 @@
@@ -13,7 +13,7 @@ index b800da5aaa15..b773928af3f8 100644
  #include "mozilla/Logging.h"
  #include "nsObjCExceptions.h"
  
-@@ -21,17 +22,45 @@
+@@ -21,17 +22,45 @@ ScreenHelperUIKit::ScreenHelperUIKit() {
  
    MOZ_LOG(sScreenLog, LogLevel::Debug, ("ScreenHelperUIKit created"));
  
@@ -62,12 +62,14 @@ index b800da5aaa15..b773928af3f8 100644
    LayoutDeviceIntRect rect;
    rect.x = NSToIntRound(bounds.origin.x * contentsScaleFactor.scale);
    rect.y = NSToIntRound(bounds.origin.y * contentsScaleFactor.scale);
-@@ -58,29 +87,33 @@
+@@ -58,29 +87,36 @@ static already_AddRefed<Screen> MakeScreen(UIScreen* aScreen) {
    // values and pretend the SDR content brightness is 100 which is mentioned in
    // Apple docs as typical.
    float displayHDRHeadroom = 1.0f;
--  if (@available(iOS 16.0, *)) {
-+  if ([aScreen respondsToSelector:@selector(potentialEDRHeadroom)]) {
++  // potentialEDRHeadroom is iOS 16+. (Identical behavior to the old
++  // respondsToSelector check; this form also silences
++  // -Wunguarded-availability-new.)
+   if (@available(iOS 16.0, *)) {
      displayHDRHeadroom = [aScreen potentialEDRHeadroom];
    }
    float sdrContentBrightness = 100.0f;

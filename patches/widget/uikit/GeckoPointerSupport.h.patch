@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoPointerSupport.h b/widget/uikit/GeckoPointerSupport.h
 new file mode 100644
-index 000000000000..d79ba43796fb
+index 000000000000..09739f922a08
 --- /dev/null
 +++ b/widget/uikit/GeckoPointerSupport.h
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,46 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -30,8 +30,9 @@ index 000000000000..d79ba43796fb
 +    : NSObject <UIGestureRecognizerDelegate, UIPointerInteractionDelegate>
 +
 +- (instancetype)initWithView:(ChildView*)view geckoChild:(nsWindow*)geckoChild;
-+- (void)requireTextInteractionsToFail:
-+    (NSArray<UITextInteraction*>*)textInteractions;
++// NOTE: untyped NSArray because UITextInteraction is iOS 13+ (annotated);
++// iOS 12 passes an empty array; see nsWindow.mm.
++- (void)requireTextInteractionsToFail:(NSArray*)textInteractions;
 +- (void)setInteractionDelegate:
 +    (id<GeckoViewInteractionDelegate>)interactionDelegate;
 +- (void)handlePointerInputBegan:(NSSet<UITouch*>*)pointerTouches

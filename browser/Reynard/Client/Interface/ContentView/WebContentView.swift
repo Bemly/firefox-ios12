@@ -306,9 +306,21 @@ final class WebContentView: UIView, UIScrollViewDelegate {
         guard captureBounds.width > 1, captureBounds.height > 1 else {
             return nil
         }
-        
-        let renderer = UIGraphicsImageRenderer(size: captureBounds.size)
+
+        // Downscale: tab cards/history show previews a few hundred px wide;
+        // a full-res @2x capture (~12MB on iPad) per tab is unaffordable on
+        // the 1GB A7. Cap the long edge at 672px (~0.5MB). See AGENTS.md.
+        let maxEdge: CGFloat = 672
+        let downscale = min(1, maxEdge / max(captureBounds.width, captureBounds.height))
+        let targetSize = CGSize(
+            width: (captureBounds.width * downscale).rounded(.down),
+            height: (captureBounds.height * downscale).rounded(.down)
+        )
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
         return renderer.image { context in
+            context.cgContext.scaleBy(x: downscale, y: downscale)
             context.cgContext.translateBy(x: -captureBounds.minX, y: -captureBounds.minY)
             layer.render(in: context.cgContext)
         }

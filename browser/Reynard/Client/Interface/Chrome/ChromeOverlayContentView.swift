@@ -81,7 +81,10 @@ final class ChromeOverlayContentView: UIView {
         }
         let view = UIVisualEffectView(effect: effect)
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.contentView.backgroundColor = UIColor.appSystemBackground.withAlphaComponent(UX.backgroundAlpha)
+        view.appDisableBackdropBlurForIOS12()
+        view.contentView.backgroundColor = view.effect == nil
+            ? .appSystemBackground
+            : UIColor.appSystemBackground.withAlphaComponent(UX.backgroundAlpha)
         view.layer.applyContinuousCornerCurve()
         view.layer.masksToBounds = true
         return view

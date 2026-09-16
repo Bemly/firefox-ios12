@@ -347,6 +347,53 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   `configureUnsandboxedAppDataDirectories` 跳过 iOS 12。上游 `cb41797` 删了
   `deviceSensors` 权限提示，合并时同步删（别留着 `.deviceSensors` 引用，会编不过）。
 
+## iOS 12 优化实录（2026-09-16，真机验证）
+
+- Tab 缩略图：`WebContentView.makeThumbnail()` 原来全分辨率 @2x（~12MB/张常驻内存），
+  现长边封顶 672px（~0.5MB），卡片观感无差（TabOverview 截图验证）。
+- `NSCache` 必须用 `countLimit`：插入没带 cost 时 `totalCostLimit` 永不触发。
+  四处（Addon 图标 ×2、下载图标/占位）已加 64/64/64/128。
+- 单进程不需要预热：`dom.ipc.processPrelaunch.enabled=false`
+  （`PreallocatedProcessManager` 在本移植恒为 true，会白起 Helper 子进程；
+  `patches/mobile/ios/app/mobile.js.patch`）。
+- iOS 12 去 blur：backdrop blur 每帧重采样，A7 吃不消。`UICompat.appDisableBackdropBlurForIOS12()`
+  （13+ no-op）+ `view.effect == nil ? 不透明色 : 半透明色`，13 站点（chrome 7 + 主页卡片 6），13+ 零变化。
+- 长按菜单 iOS 12 回退：`UICompat.CompatMenuAction` + `UIView.compatPresentMenu`
+  （actionSheet + popover 锚点），已接 Toolbar 4 菜单和 TabOverview 清除菜单；
+  书签/下载/主页/Web 内容页的长按仍是 no-op（待补）。
+- **视频硬解结论**：VT 解码器默认即被选中（iOS 不在 blocklist，`CanUseHardwareVideoDecoding`
+  默认 true，`force-enabled` 纯多余，别加），session 创建成功；剩余 CPU 是 SWGL 侧
+  NV12→RGB+合成，不是解码器问题，真加速等 GPU 合成工程。隐藏视频法可隔离解码成本
+  （720p 解码约 16-19%，合成约 20-30%）。
+- user.js 生效，但 `false` 等于默认值时不落 prefs.js（别拿 prefs.js 有无当判据）；
+  改完 user.js 必须杀进程重进（退出时会重写 prefs.js，见上文）。
+
+## 警告处理经验（2026-09-16，101 条 `-Wunguarded-availability-new` 清零）
+
+- **`__builtin_available(macOS…)`/`@available(macOS…)` 在 iOS target 上恒为 true**
+  （IR 实证：`br i1 true`，编译器静态折叠）。凡写错平台的守卫分支在 iOS 12 全都会执行，
+  是批量真 crash 来源（修：`__builtin_available(iOS 14.0, macOS 11.0, *)` 双写）。
+- SDK 注解“iOS 17+”的 VT key 是 weak 链接，12 上可能是 nil：字典 key 用前必须
+  nil-check（nil key 进 `CFDictionaryCreate` 直接崩），`Set/Copy` 类调用天然安全
+  （返回错误码）。decoder spec key 已被 session 创建成功反证非空。
+- 消警告三板斧（按顺序选）：① 真 bug 用 `@available` + fallback 修
+  （修出三个：`isSuspended` 缺失导致 iOS 12 相机全隐藏、`IsCGColorOpaqueBlack`、
+  `LogSurface` 的错平台守卫）；② 纯类型提及用 `id`/方括号动态派发
+  （`configureTextInteractionForTouchInput:(id)` + `[obj prop]` 不警告不断链）或
+  `API_AVAILABLE` 注解 delegate 方法（编译器自己会提示）；③ 已实证安全的用窄 pragma
+  （uikit 文件已有先例 `GeckoPointerSupport.mm:71`）。
+- 改完引擎源码必须 regen 对应 `patches/`（`git diff` 生成）+ reverse-check；
+  新文件走 glob 自动发现，无需注册。验证用 touch 定点重编 + grep 日志，不要全量等。
+
+## 自驱/连接补充
+
+- cycript 合成调用可能打到未走正常装配的实例（如直接调 `showTabOverviewKeyCommand:`
+  触发 `presentationContext` 的 `preconditionFailure`，而真按钮路径正常）——
+  验证优先走真实 UI 路径（按钮 tap、长按），少直调 VC 方法。
+- usbmux 僵死时（`idevice_id` 空 + SSH reset，但 `ioreg` 能看到 iPad）先重起 Mac 侧
+  `iproxy`；还不行就走 WiFi SSH 直连（`root@192.168.1.8`，同口令），不用等 USB。
+- cycript 间歇 `InjectLibrary` assert：重启 App 即恢复（顺带验证冷启动）。
+
 ## Git 约定
 
 - `main` 恒等于 `origin/main`，保持干净可编；不要在 main 上堆验证代码。

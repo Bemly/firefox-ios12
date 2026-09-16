@@ -7,6 +7,45 @@
 
 import UIKit
 
+/// iOS 12 long-press fallback for the clear-tabs menu (no context-menu API).
+/// Presents the same choices as `make(_:onClearTabs:onClearTabsOlderThan:)`
+/// as an action sheet.
+final class ClearTabsFallbackTarget: NSObject {
+    private let tabCount: Int
+    private let onClearTabs: () -> Void
+    private let onClearTabsOlderThan: (TabOverviewClearTabsMenu.Age) -> Void
+
+    init(
+        tabCount: Int,
+        onClearTabs: @escaping () -> Void,
+        onClearTabsOlderThan: @escaping (TabOverviewClearTabsMenu.Age) -> Void
+    ) {
+        self.tabCount = tabCount
+        self.onClearTabs = onClearTabs
+        self.onClearTabsOlderThan = onClearTabsOlderThan
+    }
+
+    @objc func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+        guard recognizer.state == .began, let view = recognizer.view else { return }
+        var actions = [
+            CompatMenuAction(
+                title: String.localizedStringWithFormat(
+                    NSLocalizedString("Close %d Tabs", comment: "Tab count"),
+                    tabCount
+                ),
+                style: .destructive,
+                handler: onClearTabs
+            )
+        ]
+        for age in TabOverviewClearTabsMenu.Age.allCases {
+            actions.append(CompatMenuAction(title: age.title) { [onClearTabsOlderThan] in
+                onClearTabsOlderThan(age)
+            })
+        }
+        view.compatPresentMenu(actions)
+    }
+}
+
 enum TabOverviewClearTabsMenu {
     enum Age: Int, CaseIterable {
         case day

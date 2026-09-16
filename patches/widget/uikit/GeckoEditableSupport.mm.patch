@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoEditableSupport.mm b/widget/uikit/GeckoEditableSupport.mm
 new file mode 100644
-index 000000000000..38bfd4ffdc61
+index 000000000000..15ddf2dbfcb6
 --- /dev/null
 +++ b/widget/uikit/GeckoEditableSupport.mm
-@@ -0,0 +1,4277 @@
+@@ -0,0 +1,4278 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -58,7 +58,7 @@ index 000000000000..38bfd4ffdc61
 +// NSInvalidArgumentException, so fall back to the legacy API.
 +static inline void HideChildViewEditMenu(UIMenuController* aMenu,
 +                                         UIView* aView) {
-+  if ([aMenu respondsToSelector:@selector(hideMenuFromView:)]) {
++  if (@available(iOS 13.0, *)) {
 +    [aMenu hideMenuFromView:aView];
 +  } else {
 +    [aMenu setMenuVisible:NO animated:NO];
@@ -67,7 +67,7 @@ index 000000000000..38bfd4ffdc61
 +
 +static inline void ShowChildViewEditMenu(UIMenuController* aMenu,
 +                                         UIView* aView, CGRect aRect) {
-+  if ([aMenu respondsToSelector:@selector(showMenuFromView:rect:)]) {
++  if (@available(iOS 13.0, *)) {
 +    [aMenu showMenuFromView:aView rect:aRect];
 +  } else {
 +    [aMenu setTargetRect:aRect inView:aView];
@@ -475,7 +475,7 @@ index 000000000000..38bfd4ffdc61
 +                           lineEnd:(NSUInteger)aLineEnd
 +                           handler:(widget::TextInputHandler*)aHandler;
 +- (NSRange)deleteBackwardRangeWithHandler:(widget::TextInputHandler*)aHandler;
-+- (void)configureTextInteractionForTouchInput:(UITextInteraction*)aInteraction;
++- (void)configureTextInteractionForTouchInput:(id)aInteraction;
 +- (void)updateTextInteractions;
 +- (void)scheduleResponderBlur;
 +- (void)cancelResponderBlur;
@@ -636,10 +636,9 @@ index 000000000000..38bfd4ffdc61
 +  mEditable.mKoreanComposedText = nil;
 +  [self resetHandleState];
 +
-+  // +textInteractionForMode: is iOS 13+. iOS 12 has an older private
-+  // UITextInteraction class that does not respond to it (raises
-+  // NSInvalidArgumentException), so check before calling.
-+  if ([UITextInteraction respondsToSelector:@selector(textInteractionForMode:)]) {
++  // +textInteractionForMode: is iOS 13+. (@available form both guards
++  // iOS 12 and silences -Wunguarded-availability-new.)
++  if (@available(iOS 13.0, *)) {
 +    mEditable.mEditableTextInteraction = [[UITextInteraction
 +        textInteractionForMode:UITextInteractionModeEditable] retain];
 +    mEditable.mEditableTextInteraction.textInput = self;
@@ -1979,11 +1978,13 @@ index 000000000000..38bfd4ffdc61
 +  [self updateLegacyTextInteractions];
 +}
 +
-+- (void)configureTextInteractionForTouchInput:(UITextInteraction*)aInteraction {
++- (void)configureTextInteractionForTouchInput:(id)aInteraction {
 +  NSArray<NSNumber*>* touchTypes =
 +      @[ @(UITouchTypeDirect), @(UITouchTypePencil) ];
-+  for (UIGestureRecognizer* gestureRecognizer in aInteraction
-+           .gesturesForFailureRequirements) {
++  // Bracket syntax: dynamic dispatch on id neither warns nor crashes here
++  // (callers only pass real UITextInteractions, which exist on iOS 13+).
++  for (UIGestureRecognizer* gestureRecognizer in [aInteraction
++           gesturesForFailureRequirements]) {
 +    gestureRecognizer.allowedTouchTypes = touchTypes;
 +  }
 +}
@@ -3071,7 +3072,7 @@ index 000000000000..38bfd4ffdc61
 +
 +// Lets UIKit text interactions begin and seeds handle tracking.
 +- (BOOL)interactionShouldBegin:(UITextInteraction*)aInteraction
-+                       atPoint:(CGPoint)aPoint {
++                       atPoint:(CGPoint)aPoint API_AVAILABLE(ios(13.0)) {
 +  // Somehow there's a non-owned UITextSelectionInteraction subclass causing
 +  // overlapping duplicated selections on modern path CJK. So we allow only our
 +  // owned interactions to trigger handle tracking.
@@ -3087,7 +3088,7 @@ index 000000000000..38bfd4ffdc61
 +  return YES;
 +}
 +
-+- (void)interactionWillBegin:(UITextInteraction*)aInteraction {
++- (void)interactionWillBegin:(UITextInteraction*)aInteraction API_AVAILABLE(ios(13.0)) {
 +  mEditable.mTextInteractionInProgress = YES;
 +  HideChildViewEditMenu([UIMenuController sharedMenuController], self);
 +  [self becomeFirstResponder];
@@ -3104,7 +3105,7 @@ index 000000000000..38bfd4ffdc61
 +}
 +
 +// Cleans up state after a UIKit text interaction finishes.
-+- (void)interactionDidEnd:(UITextInteraction*)aInteraction {
++- (void)interactionDidEnd:(UITextInteraction*)aInteraction API_AVAILABLE(ios(13.0)) {
 +  mEditable.mTextInteractionInProgress = NO;
 +  if (mEditable.mSelectionDisplayInteraction != nil) {
 +    [self updateHandleVisibility];

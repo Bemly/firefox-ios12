@@ -1,5 +1,5 @@
 diff --git a/toolkit/xre/IOSBootstrap.mm b/toolkit/xre/IOSBootstrap.mm
-index 264320aed775..d2a65793d098 100644
+index 264320aed775..4941319ad495 100644
 --- a/toolkit/xre/IOSBootstrap.mm
 +++ b/toolkit/xre/IOSBootstrap.mm
 @@ -8,13 +8,25 @@
@@ -28,7 +28,7 @@ index 264320aed775..d2a65793d098 100644
  static id<SwiftGeckoViewRuntime> gRuntime;
  
  id<SwiftGeckoViewRuntime> mozilla::widget::GetSwiftRuntime() {
-@@ -22,11 +34,97 @@
+@@ -22,11 +34,97 @@ id<SwiftGeckoViewRuntime> mozilla::widget::GetSwiftRuntime() {
  }
  
  static id<GeckoProcessExtension> gCurrentProcessExtension;
@@ -126,7 +126,22 @@ index 264320aed775..d2a65793d098 100644
  int MainProcessInit(int aArgc, char** aArgv,
                      id<SwiftGeckoViewRuntime> aRuntime) {
    auto bootstrap = mozilla::GetBootstrap();
-@@ -85,6 +183,11 @@ void ChildProcessInit(xpc_connection_t aXpcConnection,
+@@ -56,8 +154,13 @@ void ChildProcessInit(xpc_connection_t aXpcConnection,
+   xpc_connection_set_event_handler(aXpcConnection, [](xpc_object_t aEvent) {
+     xpc_type_t type = xpc_get_type(aEvent);
+     if (type != XPC_TYPE_DICTIONARY) {
++      // xpc_type_get_name is iOS 13+; calling it on iOS 12 crashes.
++      const char* typeName = "unknown";
++      if (@available(iOS 13.0, *)) {
++        typeName = xpc_type_get_name(type);
++      }
+       NSLog(@"[%d] Received unexpected XPC event type: %s\n", getpid(),
+-            xpc_type_get_name(type));
++            typeName);
+       if (!geckoViewStarted && type == XPC_TYPE_ERROR &&
+           (aEvent == XPC_ERROR_CONNECTION_INVALID ||
+            aEvent == XPC_ERROR_TERMINATION_IMMINENT)) {
+@@ -85,6 +188,11 @@ void ChildProcessInit(xpc_connection_t aXpcConnection,
    xpc_connection_activate(aXpcConnection);
  }
  
@@ -138,7 +153,7 @@ index 264320aed775..d2a65793d098 100644
  static int ChildProcessInitImpl(int aArgc, char** aArgv) {
    auto bootstrap = mozilla::GetBootstrap();
    if (bootstrap.isErr()) {
-@@ -102,6 +205,8 @@ static int ChildProcessInitImpl(int aArgc, char** aArgv) {
+@@ -102,6 +210,8 @@ static int ChildProcessInitImpl(int aArgc, char** aArgv) {
    // done later in common code.
    mozilla::SetGeckoProcessType(aArgv[aArgc - 1]);
  
@@ -147,7 +162,7 @@ index 264320aed775..d2a65793d098 100644
    XREChildData childData;
  
    mozilla::SetGeckoChildID(aArgv[aArgc - 2]);
-@@ -111,12 +216,76 @@ static int ChildProcessInitImpl(int aArgc, char** aArgv) {
+@@ -111,12 +221,76 @@ static int ChildProcessInitImpl(int aArgc, char** aArgv) {
        /* aRandomizeSmall */ !XRE_IsContentProcess());
  #endif
  
@@ -224,7 +239,7 @@ index 264320aed775..d2a65793d098 100644
  void HandleBootstrapMessage(xpc_object_t aEvent) {
    // Set up stdout and stderr if they were provided.
    int fd = xpc_dictionary_dup_fd(aEvent, "stdout");
-@@ -132,6 +301,11 @@ void HandleBootstrapMessage(xpc_object_t aEvent) {
+@@ -132,6 +306,11 @@ void HandleBootstrapMessage(xpc_object_t aEvent) {
      close(fd);
    }
  
@@ -236,7 +251,7 @@ index 264320aed775..d2a65793d098 100644
    // Immediately send a reply with our pid
    auto reply = mozilla::AdoptDarwinObject(xpc_dictionary_create_reply(aEvent));
    xpc_dictionary_set_int64(reply.get(), "pid", getpid());
-@@ -198,6 +372,18 @@ void HandleBootstrapMessage(xpc_object_t aEvent) {
+@@ -198,6 +377,18 @@ void HandleBootstrapMessage(xpc_object_t aEvent) {
    }
    argv[argc] = nullptr;
  

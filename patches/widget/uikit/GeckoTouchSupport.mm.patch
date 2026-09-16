@@ -1,6 +1,6 @@
 diff --git a/widget/uikit/GeckoTouchSupport.mm b/widget/uikit/GeckoTouchSupport.mm
 new file mode 100644
-index 000000000000..801ad6838d66
+index 000000000000..5f98dc7d75e9
 --- /dev/null
 +++ b/widget/uikit/GeckoTouchSupport.mm
 @@ -0,0 +1,334 @@
@@ -296,7 +296,7 @@ index 000000000000..801ad6838d66
 +    // HideChildViewEditMenu in GeckoEditableSupport.mm).
 +    UIMenuController* menuController =
 +        [UIMenuController sharedMenuController];
-+    if ([menuController respondsToSelector:@selector(hideMenuFromView:)]) {
++    if (@available(iOS 13.0, *)) {
 +      [menuController hideMenuFromView:self];
 +    } else {
 +      [menuController setMenuVisible:NO animated:NO];

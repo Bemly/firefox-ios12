@@ -1,5 +1,5 @@
 diff --git a/gfx/thebes/CoreTextFontList.cpp b/gfx/thebes/CoreTextFontList.cpp
-index 5d6b500ae028..b09f771bb359 100644
+index 5d6b500ae028..a2473545e255 100644
 --- a/gfx/thebes/CoreTextFontList.cpp
 +++ b/gfx/thebes/CoreTextFontList.cpp
 @@ -352,6 +352,12 @@ nsresult CTFontEntry::ReadCMAP(FontInfoData* aFontInfoData) {
@@ -141,7 +141,23 @@ index 5d6b500ae028..b09f771bb359 100644
  
      SetHasStyles(true);
  
-@@ -1405,6 +1467,22 @@ gfxFontEntry* CoreTextFontList::PlatformGlobalFontFallback(
+@@ -1120,8 +1182,13 @@ void CoreTextFontList::ActivateFontsFromDir(
+     }
+   } while (result != kCFURLEnumeratorEnd);
+ 
+-  CTFontManagerRegisterFontURLs(urls, kCTFontManagerScopeProcess, false,
+-                                nullptr);
++  // CTFontManagerRegisterFontURLs is iOS 13+; calling it on iOS 12
++  // crashes. (MOZ_BUNDLED_FONTS is desktop-only, so this is currently
++  // unreachable on iOS; the guard keeps it safe if that ever changes.)
++  if (__builtin_available(iOS 13.0, *)) {
++    CTFontManagerRegisterFontURLs(urls, kCTFontManagerScopeProcess, false,
++                                  nullptr);
++  }
+ }
+ 
+ void CoreTextFontList::ReadSystemFontList(dom::SystemFontList* aList)
+@@ -1405,6 +1472,22 @@ gfxFontEntry* CoreTextFontList::PlatformGlobalFontFallback(
            }
          }
        }
@@ -164,7 +180,7 @@ index 5d6b500ae028..b09f771bb359 100644
      }
    }
  
-@@ -1899,7 +1977,9 @@ void CoreTextFontList::InitSystemFontNames() {
+@@ -1899,7 +1982,9 @@ void CoreTextFontList::InitSystemFontNames() {
    // shared fontlist to manage "normal" fonts, because the hidden system fonts
    // may be excluded from the font list altogether. This family will be
    // populated based on the given NSFont.
@@ -175,7 +191,7 @@ index 5d6b500ae028..b09f771bb359 100644
    if (fam) {
      nsAutoCString key;
      GenerateFontListKey(mSystemFontFamilyName, key);
-@@ -1910,14 +1990,10 @@ void CoreTextFontList::InitSystemFontNames() {
+@@ -1910,14 +1995,10 @@ void CoreTextFontList::InitSystemFontNames() {
  FontFamily CoreTextFontList::GetDefaultFontForPlatform(
      FontVisibilityProvider* aFontVisibilityProvider, const gfxFontStyle* aStyle,
      nsAtom* aLanguage) {

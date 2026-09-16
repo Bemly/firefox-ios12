@@ -42,6 +42,8 @@ final class PrivateBrowsingSectionViewController: UIViewController {
     
     private let backgroundView: UIVisualEffectView = {
         let view = UIVisualEffectView(effect: UIBlurEffect(style: .appChromeMaterial))
+        view.appDisableBackdropBlurForIOS12()
+        view.contentView.backgroundColor = view.effect == nil ? .appSecondarySystemBackground : .clear
         view.translatesAutoresizingMaskIntoConstraints = false
         view.isUserInteractionEnabled = false
         view.layer.applyContinuousCornerCurve()

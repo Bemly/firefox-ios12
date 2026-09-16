@@ -52,7 +52,11 @@ final class AddonCoordinator: NSObject, AddonEmbedderDelegate {
     private let sessionManager: SessionManager
     private var browserActionsBySession: [ObjectIdentifier: [String: AddonAction]] = [:]
     private var pageActionsBySession: [ObjectIdentifier: [String: AddonAction]] = [:]
-    private let iconCache = NSCache<NSString, UIImage>()
+    private let iconCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.totalCostLimit = 10 * 1024 * 1024
+        return cache
+    }()
     private let iconLoadingQueue = DispatchQueue(label: "reynard.bemly.moe.AddonCoordinator.IconLoadingQueue", qos: .utility)
     private var loadingIconIDs = Set<String>()
     private var pendingAddonDownloadPaths = Set<String>()

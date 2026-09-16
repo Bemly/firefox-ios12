@@ -39,7 +39,11 @@ final class AddonsPreferencesViewController: SettingsTableViewController {
         case updateAll
     }
     
-    private static let sharedIconCache = NSCache<NSString, UIImage>()
+    private static let sharedIconCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.totalCostLimit = 10 * 1024 * 1024
+        return cache
+    }()
     private static var hasLoadedInstalledAddons = false
     
     private let iconLoadingQueue = DispatchQueue(label: "reynard.bemly.moe.AddonsPreferencesViewController.IconLoadingQueue", qos: .utility)

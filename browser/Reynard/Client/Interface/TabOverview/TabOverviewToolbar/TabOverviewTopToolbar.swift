@@ -20,6 +20,7 @@ final class TabOverviewTopToolbar: UIView {
     
     var onClearTabs: (() -> Void)?
     var onClearTabsOlderThan: ((TabOverviewClearTabsMenu.Age) -> Void)?
+    private var clearTabsFallbackTargets: [AnyObject] = []
     var onAddTab: (() -> Void)?
     var onDone: (() -> Void)?
     var onTabModeChange: ((TabOverview.Mode) -> Void)?
@@ -59,12 +60,24 @@ final class TabOverviewTopToolbar: UIView {
                 onClearTabsOlderThan: { [weak self] age in self?.onClearTabsOlderThan?(age) }
             )
             clearTabsButton.installMenu(clearTabsMenu)
-        doneButton.setActionEnabled(hasVisibleTab)
             if #available(iOS 26.0, *) {
                 liquidGlassActionToolbar.items?.first?.menu = clearTabsMenu
                 liquidGlassActionToolbar.items?.last?.isEnabled = hasVisibleTab
             }
+        } else {
+            let target = ClearTabsFallbackTarget(
+                tabCount: visibleTabCount,
+                onClearTabs: { [weak self] in self?.onClearTabs?() },
+                onClearTabsOlderThan: { [weak self] age in self?.onClearTabsOlderThan?(age) }
+            )
+            let recognizer = UILongPressGestureRecognizer(
+                target: target,
+                action: #selector(ClearTabsFallbackTarget.handleLongPress(_:))
+            )
+            clearTabsButton.addGestureRecognizer(recognizer)
+            clearTabsFallbackTargets.append(target)
         }
+        doneButton.setActionEnabled(hasVisibleTab)
     }
     
     private func configureAppearance() {

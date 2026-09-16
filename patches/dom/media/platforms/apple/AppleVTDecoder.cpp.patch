@@ -1,5 +1,5 @@
 diff --git a/dom/media/platforms/apple/AppleVTDecoder.cpp b/dom/media/platforms/apple/AppleVTDecoder.cpp
-index 6ddb554a02cc..9ae4eda89e03 100644
+index 6ddb554a02cc..f3d8c35a9bf6 100644
 --- a/dom/media/platforms/apple/AppleVTDecoder.cpp
 +++ b/dom/media/platforms/apple/AppleVTDecoder.cpp
 @@ -6,6 +6,9 @@
@@ -26,7 +26,52 @@ index 6ddb554a02cc..9ae4eda89e03 100644
  #else
        ,
        mUseSoftwareImages(aKnowsCompositor &&
-@@ -861,9 +870,15 @@ CFDictionaryRef AppleVTDecoder::CreateOutputConfiguration() {
+@@ -602,7 +611,9 @@ void AppleVTDecoder::OutputFrame(CVPixelBufferRef aImage,
+     // Attach a CGColorSpace built from the relevant color information.
+     // The buffer may otherwise have a non-matching colorspace.
+     CFStringRef colorSpaceName = nullptr;
+-    if (__builtin_available(macOS 11.0, *)) {
++    // NOTE: __builtin_available(macOS ...) is constantly true on iOS;
++    // always spell out the iOS version too.
++    if (__builtin_available(iOS 14.0, macOS 11.0, *)) {
+       if (mTransferFunction == gfx::TransferFunction::PQ) {
+         colorSpaceName = kCGColorSpaceITUR_2100_PQ;
+       } else if (mTransferFunction == gfx::TransferFunction::HLG) {
+@@ -744,10 +755,17 @@ MediaResult AppleVTDecoder::InitializeSession() {
+   }
+ 
+   CFBooleanRef isUsingHW = nullptr;
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wunguarded-availability-new"
++  // The HW-decoder query key is annotated iOS 17+ in the SDK but
++  // weak-linked: a missing key only fails this query (flag stays false).
++  // Proven harmless on iOS 12.5.8 (device-tested).
+   rv = VTSessionCopyProperty(
+       mSession,
+       kVTDecompressionPropertyKey_UsingHardwareAcceleratedVideoDecoder,
+       kCFAllocatorDefault, &isUsingHW);
++#pragma clang diagnostic pop
++
+   if (rv == noErr) {
+     mIsHardwareAccelerated = isUsingHW == kCFBooleanTrue;
+     LOG("AppleVTDecoder: {} hardware accelerated decoding",
+@@ -805,8 +823,15 @@ CFDictionaryRef AppleVTDecoder::CreateDecoderExtensions() {
+ }
+ 
+ CFDictionaryRef AppleVTDecoder::CreateDecoderSpecification() {
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wunguarded-availability-new"
++  // The HW spec key is annotated iOS 17+ in the SDK but resolves on
++  // iOS 12 (a nil key would crash CFDictionaryCreate below, yet sessions
++  // create fine on device 12.5.8).
+   const void* specKeys[] = {
+       kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder};
++#pragma clang diagnostic pop
++
+   const void* specValues[1];
+   if (gfx::gfxVars::CanUseHardwareVideoDecoding()) {
+     specValues[0] = kCFBooleanTrue;
+@@ -861,9 +886,15 @@ CFDictionaryRef AppleVTDecoder::CreateOutputConfiguration() {
        std::size(IOSurfaceKeys), &kCFTypeDictionaryKeyCallBacks,
        &kCFTypeDictionaryValueCallBacks));
  

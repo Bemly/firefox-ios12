@@ -150,6 +150,56 @@ extension UIBlurEffect.Style {
     }
 }
 
+/// iOS 12 fallback for the missing context-menu API: an action sheet anchored
+/// to the source view. iOS 13+ keeps the real `UIMenu` paths; call this only
+/// from `else` branches of `#available(iOS 13.0, *)` gates.
+struct CompatMenuAction {
+    let title: String
+    let style: UIAlertAction.Style
+    let handler: () -> Void
+
+    init(title: String, style: UIAlertAction.Style = .default, handler: @escaping () -> Void) {
+        self.title = title
+        self.style = style
+        self.handler = handler
+    }
+}
+
+extension UIView {
+    func compatPresentMenu(_ actions: [CompatMenuAction]) {
+        guard !actions.isEmpty else { return }
+        var responder: UIResponder? = self
+        while responder != nil, !(responder is UIViewController) {
+            responder = responder?.next
+        }
+        guard let viewController = responder as? UIViewController else { return }
+        let sheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        for action in actions {
+            sheet.addAction(UIAlertAction(title: action.title, style: action.style) { _ in
+                action.handler()
+            })
+        }
+        sheet.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: ""), style: .cancel))
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = self
+            popover.sourceRect = bounds
+        }
+        viewController.present(sheet, animated: true)
+    }
+}
+
+extension UIVisualEffectView {    /// iOS 12 backdrop-blur kill-switch. Backdrop blur resamples everything
+    /// underneath every frame (scrolling/video), which the A7 cannot afford;
+    /// on iOS 12 this clears the effect so the caller can use an opaque
+    /// contentView color instead. No-op on iOS 13+.
+    /// Pair with `view.effect == nil ? <opaque> : <translucent>` colors.
+    func appDisableBackdropBlurForIOS12() {
+        if #unavailable(iOS 13.0) {
+            effect = nil
+        }
+    }
+}
+
 extension UIWindow {
     /// Scene activation state on iOS 13+; always true on iOS 12 (no scenes).
     var compatIsForegroundActive: Bool {

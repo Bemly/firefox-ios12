@@ -247,6 +247,35 @@ final class ToolbarButtonMenus {
         }
     }
     
+    // MARK: - iOS 12 fallback (action sheet, no context-menu API)
+
+    private final class FallbackMenuTarget: NSObject {
+        let actionsProvider: (UIView) -> [CompatMenuAction]
+
+        init(_ actionsProvider: @escaping (UIView) -> [CompatMenuAction]) {
+            self.actionsProvider = actionsProvider
+        }
+
+        @objc func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+            guard recognizer.state == .began, let view = recognizer.view else { return }
+            view.compatPresentMenu(actionsProvider(view))
+        }
+    }
+
+    private var fallbackTargets: [AnyObject] = []
+
+    private func attachFallbackMenu(to button: ToolbarButton, actions: @escaping () -> [CompatMenuAction]) {
+        let target = FallbackMenuTarget { _ in actions() }
+        let recognizer = UILongPressGestureRecognizer(target: target, action: #selector(FallbackMenuTarget.handleLongPress(_:)))
+        button.addGestureRecognizer(recognizer)
+        fallbackTargets.append(target)
+    }
+
+    private func fallbackDisplayURL(for value: String) -> String {
+        guard let url = URL(string: value) else { return value }
+        return URLUtils.displayString(for: url)
+    }
+
     // Retained only; the delegates are iOS 13+ types (see below).
     private var navigationMenuDelegates: [AnyObject] = []
     private var recentlyClosedTabsMenuDelegates: [AnyObject] = []
@@ -285,6 +314,12 @@ final class ToolbarButtonMenus {
                 let delegate = LibraryMenuDelegate(onSelect: onSelect)
                 button.addInteraction(UIContextMenuInteraction(delegate: delegate))
                 libraryMenuDelegates.append(delegate)
+            } else {
+                attachFallbackMenu(to: button) {
+                    LibrarySection.allCases.map { section in
+                        CompatMenuAction(title: section.title) { onSelect(section) }
+                    }
+                }
             }
         }
     }
@@ -308,6 +343,16 @@ final class ToolbarButtonMenus {
                 )
                 button.addInteraction(UIContextMenuInteraction(delegate: delegate))
                 tabOverviewMenuDelegates.append(delegate)
+            } else {
+                attachFallbackMenu(to: button) { [weak self] in
+                    self?.tabOverviewFallbackActions(
+                        tabCountProvider: tabCountProvider,
+                        onCloseAllTabs: onCloseAllTabs,
+                        onCloseTab: onCloseTab,
+                        onNewPrivateTab: onNewPrivateTab,
+                        onNewTab: onNewTab
+                    ) ?? []
+                }
             }
         }
     }
@@ -328,6 +373,15 @@ final class ToolbarButtonMenus {
             )
             button.addInteraction(UIContextMenuInteraction(delegate: delegate))
             navigationMenuDelegates.append(delegate)
+        } else {
+            attachFallbackMenu(to: button) { [weak self] in
+                self?.navigationFallbackActions(
+                    direction: direction,
+                    isReversed: isReversed,
+                    itemsProvider: itemsProvider,
+                    onSelect: onSelect
+                ) ?? []
+            }
         }
     }
     
@@ -345,6 +399,67 @@ final class ToolbarButtonMenus {
             )
             button.addInteraction(UIContextMenuInteraction(delegate: delegate))
             recentlyClosedTabsMenuDelegates.append(delegate)
+        } else {
+            attachFallbackMenu(to: button) {
+                guard isAvailable() else { return [] }
+                return itemsProvider().map { item in
+                    let title = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return CompatMenuAction(
+                        title: title.isEmpty ? NSLocalizedString("Untitled", comment: "") : title
+                    ) { onSelect(item.id) }
+                }
+            }
         }
+    }
+
+    private func navigationFallbackActions(
+        direction: NavigationDirection,
+        isReversed: Bool,
+        itemsProvider: (NavigationDirection) -> [NavigationHistoryStore.HistoryItem],
+        onSelect: @escaping (NavigationDirection, Int) -> Void
+    ) -> [CompatMenuAction] {
+        var indexed = itemsProvider(direction).enumerated().map { ($0, $1) }
+        if isReversed { indexed.reverse() }
+        return indexed.map { index, item in
+            let url = fallbackDisplayURL(for: item.url)
+            let title = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let actionTitle = (!title.isEmpty && title != item.url) ? title : url
+            return CompatMenuAction(title: actionTitle) { onSelect(direction, index) }
+        }
+    }
+
+    private func tabOverviewFallbackActions(
+        tabCountProvider: () -> Int,
+        onCloseAllTabs: @escaping () -> Void,
+        onCloseTab: @escaping () -> Void,
+        onNewPrivateTab: @escaping () -> Void,
+        onNewTab: @escaping () -> Void
+    ) -> [CompatMenuAction] {
+        var actions: [CompatMenuAction] = []
+        let tabCount = tabCountProvider()
+        if tabCount > 1 {
+            actions.append(CompatMenuAction(
+                title: String.localizedStringWithFormat(
+                    NSLocalizedString("Close %d Tabs", comment: "Tab count"),
+                    tabCount
+                ),
+                style: .destructive,
+                handler: onCloseAllTabs
+            ))
+        }
+        actions.append(CompatMenuAction(
+            title: NSLocalizedString("Close This Tab", comment: ""),
+            style: .destructive,
+            handler: onCloseTab
+        ))
+        actions.append(CompatMenuAction(
+            title: NSLocalizedString("New Private Tab", comment: ""),
+            handler: onNewPrivateTab
+        ))
+        actions.append(CompatMenuAction(
+            title: NSLocalizedString("New Tab", comment: ""),
+            handler: onNewTab
+        ))
+        return actions
     }
 }

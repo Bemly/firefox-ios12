@@ -52,6 +52,8 @@ final class TopToolbar: UIView {
         }
         let view = UIVisualEffectView(effect: effect)
         view.translatesAutoresizingMaskIntoConstraints = false
+        view.appDisableBackdropBlurForIOS12()
+        view.contentView.backgroundColor = view.effect == nil ? .appSystemBackground : .clear
         return view
     }()
     

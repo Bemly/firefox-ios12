@@ -1,0 +1,163 @@
+diff --git a/dom/media/platforms/apple/AppleVTEncoder.cpp b/dom/media/platforms/apple/AppleVTEncoder.cpp
+index 004560faacd9..6245d7647b9d 100644
+--- a/dom/media/platforms/apple/AppleVTEncoder.cpp
++++ b/dom/media/platforms/apple/AppleVTEncoder.cpp
+@@ -34,13 +34,22 @@ extern LazyLogModule sPEMLog;
+ 
+ static CFDictionaryRef BuildEncoderSpec(const bool aHardwareNotAllowed,
+                                         const bool aLowLatencyRateControl) {
+-  if (__builtin_available(macos 11.3, *)) {
+-    if (aLowLatencyRateControl) {
+-      // If doing low-latency rate control, the hardware encoder
+-      // is required.
+-      const void* keys[] = {
+-          kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder,
+-          kVTVideoEncoderSpecification_EnableLowLatencyRateControl};
++  if (aLowLatencyRateControl) {
++    // If doing low-latency rate control, the hardware encoder
++    // is required.
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wunguarded-availability-new"
++  // Encoder VT keys are annotated iOS 14.5+/16.0+/17.4+ in the SDK but
++  // weak-linked; a missing key arrives as nil and must be omitted
++  // (nil dictionary keys crash). iOS 12 device behavior untested
++  // (encoder needs camera capture); nil-safe by construction.
++    CFStringRef requireHWKey =
++        kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder;
++    CFStringRef lowLatencyKey =
++        kVTVideoEncoderSpecification_EnableLowLatencyRateControl;
++#pragma clang diagnostic pop
++    if (requireHWKey && lowLatencyKey) {
++      const void* keys[] = {requireHWKey, lowLatencyKey};
+       const void* values[] = {kCFBooleanTrue, kCFBooleanTrue};
+ 
+       static_assert(std::size(keys) == std::size(values),
+@@ -49,9 +58,21 @@ static CFDictionaryRef BuildEncoderSpec(const bool aHardwareNotAllowed,
+                                 std::size(keys), &kCFTypeDictionaryKeyCallBacks,
+                                 &kCFTypeDictionaryValueCallBacks);
+     }
+-  }
+-  const void* keys[] = {
+-      kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder};
++    // Missing keys: low-latency HW rate control unavailable; fall through
++    // to the base spec below.
++  }
++  // Omitted key = VideoToolbox default (HW allowed), same outcome.
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wunguarded-availability-new"
++  CFStringRef hwKey =
++      kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder;
++#pragma clang diagnostic pop
++  if (!hwKey) {
++    return CFDictionaryCreate(kCFAllocatorDefault, nullptr, nullptr, 0,
++                              &kCFTypeDictionaryKeyCallBacks,
++                              &kCFTypeDictionaryValueCallBacks);
++  }
++  const void* keys[] = {hwKey};
+   const void* values[] = {aHardwareNotAllowed ? kCFBooleanFalse
+                                               : kCFBooleanTrue};
+ 
+@@ -86,10 +107,17 @@ bool AppleVTEncoder::SetAverageBitrate(uint32_t aBitsPerSec) {
+ bool AppleVTEncoder::SetConstantBitrate(uint32_t aBitsPerSec) {
+   MOZ_ASSERT(mSession);
+ 
+-  if (__builtin_available(macos 13.0, *)) {
++  // Nil key (missing on old OS) behaves like the old-macOS path: false.
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wunguarded-availability-new"
++  CFStringRef cbrKey = kVTCompressionPropertyKey_ConstantBitRate;
++#pragma clang diagnostic pop
++  if (!cbrKey) {
++    return false;
++  }
++  {
+     SessionPropertyManager mgr(mSession);
+-    OSStatus rv = mgr.Set(kVTCompressionPropertyKey_ConstantBitRate,
+-                          AssertedCast<int32_t>(aBitsPerSec));
++    OSStatus rv = mgr.Set(cbrKey, AssertedCast<int32_t>(aBitsPerSec));
+     if (rv == kVTPropertyNotSupportedErr) {
+       LOGE("Constant bitrate not supported.");
+     }
+@@ -126,9 +154,17 @@ bool AppleVTEncoder::SetRealtime(bool aEnabled) {
+     return false;
+   }
+ 
+-  if (__builtin_available(macos 11.0, *)) {
+-    status = mgr.Set(
+-        kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality, aEnabled);
++  // Nil key: behave as if the property rejected the value.
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wunguarded-availability-new"
++  CFStringRef prioritizeKey =
++      kVTCompressionPropertyKey_PrioritizeEncodingSpeedOverQuality;
++#pragma clang diagnostic pop
++  if (!prioritizeKey) {
++    return false;
++  }
++  {
++    status = mgr.Set(prioritizeKey, aEnabled);
+     LOGD("{} PrioritizeEncodingSpeedOverQuality, status: {}",
+          aEnabled ? "Enable" : "Disable", status);
+     if (status != noErr && status != kVTPropertyNotSupportedErr) {
+@@ -560,7 +596,18 @@ MediaResult AppleVTEncoder::InitSession() {
+   }
+ 
+   if (mConfig.mScalabilityMode != ScalabilityMode::None) {
+-    if (__builtin_available(macos 11.3, *)) {
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wunguarded-availability-new"
++    // Weak-linked: nil key would fail the Set below anyway; fail early
++    // with the same graceful error instead of risking a nil dictionary key.
++    CFStringRef baseLayerKey =
++        kVTCompressionPropertyKey_BaseLayerFrameRateFraction;
++#pragma clang diagnostic pop
++    if (!baseLayerKey) {
++      return MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
++                         "SVC base-layer ratio key unavailable"_ns);
++    }
++    {
+       float baseLayerFPSRatio = 1.0f;
+       switch (mConfig.mScalabilityMode) {
+         case ScalabilityMode::L1T2:
+@@ -576,17 +623,13 @@ MediaResult AppleVTEncoder::InitSession() {
+           MOZ_ASSERT_UNREACHABLE("Unhandled value");
+       }
+ 
+-      status = mgr.Set(kVTCompressionPropertyKey_BaseLayerFrameRateFraction,
+-                       baseLayerFPSRatio);
++      status = mgr.Set(baseLayerKey, baseLayerFPSRatio);
+       if (status != noErr) {
+         return MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
+                            RESULT_DETAIL("fail to configure SVC (base ratio: "
+                                          "%f). Error: %d",
+                                          baseLayerFPSRatio, status));
+       }
+-    } else {
+-      return MediaResult(NS_ERROR_DOM_MEDIA_FATAL_ERR,
+-                         "macOS version too old to enable SVC"_ns);
+     }
+   }
+ 
+@@ -625,11 +668,18 @@ MediaResult AppleVTEncoder::InitSession() {
+     return colorSpaceResult;
+   }
+ 
++  // Weak-linked key: nil behaves like a failed query (flag stays false).
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wunguarded-availability-new"
++  CFStringRef usingHWKey =
++      kVTCompressionPropertyKey_UsingHardwareAcceleratedVideoEncoder;
++#pragma clang diagnostic pop
+   bool isUsingHW = false;
+-  status =
+-      mgr.Copy(kVTCompressionPropertyKey_UsingHardwareAcceleratedVideoEncoder,
+-               isUsingHW);
+-  mIsHardwareAccelerated = status == noErr && isUsingHW;
++  status = noErr;
++  if (usingHWKey) {
++    status = mgr.Copy(usingHWKey, isUsingHW);
++  }
++  mIsHardwareAccelerated = usingHWKey && status == noErr && isUsingHW;
+   LOGD("Using hw acceleration: {}", mIsHardwareAccelerated ? "yes" : "no");
+ 
+   errorExit.release();
