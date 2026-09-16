@@ -11,8 +11,9 @@ final class RecentlyClosedTabCollectionViewCell: UICollectionViewCell {
     private enum UX {
         static let horizontalInset: CGFloat = 16
         static let titleFontSize: CGFloat = 15
-        static let pillCornerRadius: CGFloat = 22
-        static let shadowOpacity: Float = 0.12
+        // PERF flat-chrome: rounded corners + shadow removed for compositing test.
+        static let pillCornerRadius: CGFloat = 0
+        static let shadowOpacity: Float = 0
         static let shadowRadius: CGFloat = 5
         static let shadowOffsetWidth: CGFloat = 0
         static let shadowOffsetHeight: CGFloat = 2
@@ -126,17 +127,14 @@ final class RecentlyClosedTabCollectionViewCell: UICollectionViewCell {
     // MARK: - Layout
     
     private func updatePillShape() {
-        let cornerRadius = pillView.bounds.height > 0 ? pillView.bounds.height / 2 : UX.pillCornerRadius
-        pillView.layer.cornerRadius = cornerRadius
-        layer.cornerRadius = cornerRadius
+        // PERF flat-chrome: pill shape flattened (was height/2 capsule).
+        pillView.layer.cornerRadius = 0
+        layer.cornerRadius = 0
     }
     
     private func updatePillShadow() {
-        let cornerRadius = bounds.height > 0 ? bounds.height / 2 : UX.pillCornerRadius
-        layer.shadowPath = UIBezierPath(
-            roundedRect: bounds,
-            cornerRadius: cornerRadius
-        ).cgPath
+        // PERF flat-chrome: shadow removed, no shadowPath needed.
+        layer.shadowPath = nil
     }
     
     // MARK: - Appearance

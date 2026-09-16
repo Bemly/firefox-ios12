@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/TextInputHandler.mm b/widget/uikit/TextInputHandler.mm
-index e8f05ad59f6f..d88782d134d5 100644
+index e8f05ad59f6f..05ba061e7c48 100644
 --- a/widget/uikit/TextInputHandler.mm
 +++ b/widget/uikit/TextInputHandler.mm
 @@ -2,16 +2,22 @@
@@ -25,7 +25,7 @@ index e8f05ad59f6f..d88782d134d5 100644
  #include "mozilla/WidgetUtils.h"
  #include "nsIWidget.h"
  #include "nsObjCExceptions.h"
-@@ -20,21 +26,478 @@
+@@ -20,21 +26,480 @@
  
  mozilla::LazyLogModule gIMELog("TextInputHandler");
  
@@ -193,7 +193,8 @@ index e8f05ad59f6f..d88782d134d5 100644
 +      (aEvent.keyboardFlags & WebEventKeyboardInputModifierFlagsChanged)) {
 +    return true;
 +  }
-+  if ([keyboard handleKeyInputMethodCommandForCurrentEvent]) {
++  if ([keyboard respondsToSelector:@selector(handleKeyInputMethodCommandForCurrentEvent)] &&
++      [keyboard handleKeyInputMethodCommandForCurrentEvent]) {
 +    return true;
 +  }
 +
@@ -368,6 +369,7 @@ index e8f05ad59f6f..d88782d134d5 100644
 +    if (aHasCurrentNativeEvent && !hasShiftModifier) {
 +      currentKeyEvent->mInterpretingInputMethod = true;
 +      const bool inputMethodHandled =
++          [keyboard respondsToSelector:@selector(handleKeyInputMethodCommandForCurrentEvent)] &&
 +          [keyboard handleKeyInputMethodCommandForCurrentEvent];
 +      currentKeyEvent->mInterpretingInputMethod = false;
 +      currentKeyEvent->mInputMethodHandled |= inputMethodHandled;
@@ -506,7 +508,7 @@ index e8f05ad59f6f..d88782d134d5 100644
  }
  
  void TextInputHandler::OnRemovedFrom(
-@@ -43,7 +506,37 @@
+@@ -43,7 +508,37 @@ void TextInputHandler::OnRemovedFrom(
  void TextInputHandler::WillDispatchKeyboardEvent(
      TextEventDispatcher* aTextEventDispatcher,
      WidgetKeyboardEvent& aKeyboardEvent, uint32_t aIndexOfKeypress,
@@ -545,7 +547,7 @@ index e8f05ad59f6f..d88782d134d5 100644
  
  bool TextInputHandler::InsertText(NSString* aText) {
    nsString str;
-@@ -57,6 +550,68 @@
+@@ -57,6 +552,68 @@ bool TextInputHandler::InsertText(NSString* aText) {
      return false;
    }
  
@@ -614,7 +616,7 @@ index e8f05ad59f6f..d88782d134d5 100644
    if (str.Length() == 1) {
      char16_t charCode = str[0];
      if (charCode == 0x0a) {
-@@ -91,6 +646,129 @@
+@@ -91,6 +648,129 @@ bool TextInputHandler::InsertText(NSString* aText) {
    return true;
  }
  
@@ -744,7 +746,7 @@ index e8f05ad59f6f..d88782d134d5 100644
  bool TextInputHandler::HandleCommand(Command aCommand) {
    MOZ_LOG(gIMELog, LogLevel::Info,
            ("%p   TextInputHandler::HandleCommand, aCommand=%s", this,
-@@ -100,6 +778,15 @@
+@@ -100,6 +780,15 @@ bool TextInputHandler::HandleCommand(Command aCommand) {
      return false;
    }
  
@@ -760,7 +762,7 @@ index e8f05ad59f6f..d88782d134d5 100644
    if (aCommand != Command::DeleteCharBackward) {
      return false;
    }
-@@ -128,6 +815,23 @@
+@@ -128,6 +817,23 @@ bool TextInputHandler::HandleCommand(Command aCommand) {
    return true;
  }
  
@@ -784,7 +786,7 @@ index e8f05ad59f6f..d88782d134d5 100644
  static uint32_t ComputeKeyModifiers(uint32_t aCharCode) {
    if (aCharCode >= 'A' && aCharCode <= 'Z') {
      return MODIFIER_SHIFT;
-@@ -233,6 +937,10 @@ static void InitKeyEvent(WidgetKeyboardEvent& aEvent, uint32_t aKeyCode,
+@@ -233,6 +939,10 @@ bool TextInputHandler::EmulateKeyboardEvent(uint32_t aKeyCode,
    return true;
  }
  

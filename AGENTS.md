@@ -375,6 +375,9 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   ActionBar 三件套/ChromeOverlay/TabOverviewToolbar/LibraryActionButton/TabBar 药丸/
   个人收藏（含文件夹 cell）的 cornerRadius 常量归 0、
   `shadowOpacity` 归 0、`layoutSubviews` 里 `shadowPath=nil`（不再算圆角 shadowPath）。
+  后续又拉平：经常访问卡片（`previewCornerRadius`，注意内层用
+  `max(0, radius-padding)` 防负数）、最近关闭药丸（`height/2` 胶囊改 0）、
+  私密浏览卡片。
   `clipsToBounds/masksToBounds` 和 `applyContinuousCornerCurve()` 调用保留原样
  （radius=0 时无离屏 mask 成本；iOS 12 上 continuous 本来就是 no-op）。回退：搜
   `PERF flat-chrome` 恢复常量即可。注意这只影响 UIKit chrome 合成，不影响 Gecko
@@ -415,6 +418,30 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   大规模约 50 分钟，坑位见“坑位速查”引擎条。
 - 验收：沿用 bench 法（http.server + cycript 驱动地址栏 + RUNS warmup 形状 +
   `ps` CPU 对比静态/纯动画/视频三档）。
+
+## 输入法崩溃实录（2026-09-16，包 `/tmp/Reynard-ime-fix.ipa` 已装机）
+
+- 现象：网页输入框（Google 搜索框）敲任意键即 SIGABRT（NSException），
+  `CrashReporter/Reynard-2026-09-16-2039*.ips` 两份同签名（ASLR 基址不同、
+  文件偏移同为 +91155036）。
+- 根因：`TextInputHandler::HandleKeyEvent`（及 Phase2 同名调用）直接调私有
+  `-[UIKeyboardImpl handleKeyInputMethodCommandForCurrentEvent]`，该 selector
+  在 iOS 12.5.8 上根本不存在（cycript 进程内探针实证
+  `instancesRespondToSelector=false`；`deleteFromInputWithFlags:` /
+  `addInputString:withFlags:withInputManagerHint:` 存在，无害）。
+  此前从未有人在网页里敲过字（bench 全走原生地址栏），故一直潜伏。
+- 定位法：atos（`obj-.../dist/bin/XUL` 221MB 未 strip，可直接符号化）→
+  `otool -arch arm64 -tv -p <mangled>` 对偏移，崩溃 +216 恰为该 msgSend 的
+  返回地址（`tbz` 那条）。
+- 修：两处调用加 `respondsToSelector` 守卫（patch：
+  `patches/widget/uikit/TextInputHandler.mm.patch`）。
+- regen 血泪：工作树含已应用的 port 补丁，regen 必须用
+  `git -C engine/firefox diff HEAD -- <path>`；裸 `diff`（相对 index）只吐
+  增量，会把 patch 文件覆盖成十几行（已踩，已恢复）。
+  校验用引擎目录内 `git apply --check -R <patch绝对路径>`
+  （正向 check 必败——patch 是相对 pristine 上游的，不是相对工作树的）。
+- 自驱补充：App 内有两个 UITextField（地址栏 + 隐藏的页内查找框），
+  drive 脚本必须按 delegate 含 `AddressBar` 挑（见 `/tmp/drive2.cy`，重启会丢）。
 
 ## 自驱/连接补充
 

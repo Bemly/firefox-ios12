@@ -11,7 +11,8 @@ final class PrivateBrowsingSectionViewController: UIViewController {
     private enum UX {
         static let horizontalInset: CGFloat = 2
         static let sectionBottomSpacing: CGFloat = 24
-        static let cornerRadius: CGFloat = 17
+        // PERF flat-chrome: rounded corners removed for compositing test.
+        static let cornerRadius: CGFloat = 0
         static let titleFontSize: CGFloat = 28
         static let messageFontSize: CGFloat = 17
         static let labelSpacing: CGFloat = 10

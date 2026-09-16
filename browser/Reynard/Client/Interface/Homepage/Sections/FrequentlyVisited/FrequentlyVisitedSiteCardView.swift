@@ -9,7 +9,8 @@ import UIKit
 
 final class FrequentlyVisitedSiteCardView: UIControl {
     private enum UX {
-        static let previewCornerRadius: CGFloat = 17
+        // PERF flat-chrome: rounded corners + shadow removed for compositing test.
+        static let previewCornerRadius: CGFloat = 0
         static let previewImageViewPadding: CGFloat = 3
         static let previewAspectRatio: CGFloat = 9.0 / 16.0
         static let titleFontSize: CGFloat = 12
@@ -18,7 +19,7 @@ final class FrequentlyVisitedSiteCardView: UIControl {
         static let titleTopSpacing: CGFloat = 3
         static let titleBottomSpacing: CGFloat = 3
         static let titleHorizontalInset: CGFloat = 10
-        static let shadowOpacity: Float = 0.12
+        static let shadowOpacity: Float = 0
         static let shadowRadius: CGFloat = 5
         static let shadowOffsetWidth: CGFloat = 0
         static let shadowOffsetHeight: CGFloat = 2
@@ -46,7 +47,7 @@ final class FrequentlyVisitedSiteCardView: UIControl {
         view.isUserInteractionEnabled = false
         view.backgroundColor = .clear
         view.layer.applyContinuousCornerCurve()
-        view.layer.cornerRadius = UX.previewCornerRadius - UX.previewImageViewPadding
+        view.layer.cornerRadius = max(0, UX.previewCornerRadius - UX.previewImageViewPadding)
         view.clipsToBounds = true
         return view
     }()
@@ -177,10 +178,8 @@ final class FrequentlyVisitedSiteCardView: UIControl {
     // MARK: - Layout
     
     private func updateShadowPath() {
-        layer.shadowPath = UIBezierPath(
-            roundedRect: bounds,
-            cornerRadius: UX.previewCornerRadius
-        ).cgPath
+        // PERF flat-chrome: shadow removed, no shadowPath needed.
+        layer.shadowPath = nil
     }
     
     // MARK: - Appearance
