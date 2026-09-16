@@ -9,7 +9,8 @@ import UIKit
 
 final class ToolbarButton: UIButton {
     private enum UX {
-        static let toolbarButtonCornerRadius: CGFloat = 10
+        // PERF flat-chrome: rounded corners removed for compositing test.
+        static let toolbarButtonCornerRadius: CGFloat = 0
         static let minimumTouchTargetSideLength: CGFloat = 44
         static let downloadButtonSideLength: CGFloat = 44
         static let downloadIconSize: CGFloat = 24
@@ -17,7 +18,7 @@ final class ToolbarButton: UIButton {
         static let downloadProgressTrackWidth: CGFloat = 18
         static let downloadProgressTrackHeight: CGFloat = 2.5
         static let downloadProgressTrackBottomInset: CGFloat = 1
-        static let downloadProgressTrackCornerRadius: CGFloat = 1.25
+        static let downloadProgressTrackCornerRadius: CGFloat = 0
         static let standardButtonSideLength: CGFloat = 30
         static let standardSymbolPointSize: CGFloat = 20
         static let newTabSymbolPointSize: CGFloat = 20

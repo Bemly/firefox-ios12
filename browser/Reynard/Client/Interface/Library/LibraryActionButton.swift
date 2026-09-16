@@ -42,7 +42,8 @@ final class LibraryActionButton: UIButton {
             return
         }
         
-        layer.cornerRadius = bounds.height / UX.cornerRadiusDivisor
+        // PERF flat-chrome: rounded corners removed for compositing test.
+        layer.cornerRadius = 0
     }
     
     // MARK: - Updates
@@ -93,6 +94,6 @@ final class LibraryActionButton: UIButton {
         translatesAutoresizingMaskIntoConstraints = false
         tintColor = .appLabel
         layer.applyContinuousCornerCurve()
-        layer.masksToBounds = true
+        layer.masksToBounds = false
     }
 }

@@ -24,10 +24,11 @@ enum ActionBarStyle {
 final class ActionBar: UIView {
     private enum UX {
         static let closeButtonSize: CGFloat = 28
-        static let closeButtonCornerRadius: CGFloat = 14
+        // PERF flat-chrome: rounded corners + shadow removed for compositing test.
+        static let closeButtonCornerRadius: CGFloat = 0
         static let horizontalInset: CGFloat = 13
         static let closeSymbolPointSize: CGFloat = 10
-        static let shadowOpacity: Float = 0.14
+        static let shadowOpacity: Float = 0
         static let shadowRadius: CGFloat = 8
         static let shadowOffset = CGSize(width: 0, height: 3)
         static let borderWidth: CGFloat = 0.5
@@ -163,10 +164,8 @@ final class ActionBar: UIView {
     
     override func layoutSubviews() {
         super.layoutSubviews()
-        closeShadowView.layer.shadowPath = UIBezierPath(
-            roundedRect: closeShadowView.bounds,
-            cornerRadius: UX.closeButtonCornerRadius
-        ).cgPath
+        // PERF flat-chrome: shadow removed, no shadowPath needed.
+        closeShadowView.layer.shadowPath = nil
     }
     
     // MARK: - Presentation

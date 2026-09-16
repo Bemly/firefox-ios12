@@ -19,12 +19,13 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
         static let controlsWidth: CGFloat = controlButtonWidth * 2 + separatorWidth
         static let controlButtonWidth: CGFloat = 55
         static let separatorWidth: CGFloat = 1
-        static let controlsCornerRadius: CGFloat = 19
+        // PERF flat-chrome: rounded corners + shadow removed for compositing test.
+        static let controlsCornerRadius: CGFloat = 0
         static let controlSymbolPointSize: CGFloat = 14
         static let contentTrailingInset: CGFloat = 53
         static let backgroundAlpha: CGFloat = 0.34
         static let disabledAlpha: CGFloat = 0.32
-        static let shadowOpacity: Float = 0.14
+        static let shadowOpacity: Float = 0
         static let shadowRadius: CGFloat = 8
         static let shadowOffset = CGSize(width: 0, height: 3)
         static let borderWidth: CGFloat = 0.5
@@ -182,12 +183,9 @@ final class FindInPageActionBar: UIView, UITextFieldDelegate {
     override func layoutSubviews() {
         super.layoutSubviews()
         updateSearchContentLayout()
-        [searchBarShadowView, controlsShadowView].forEach { view in
-            view.layer.shadowPath = UIBezierPath(
-                roundedRect: view.bounds,
-                cornerRadius: UX.controlsCornerRadius
-            ).cgPath
-        }
+        // PERF flat-chrome: shadow removed, no shadowPath needed.
+        searchBarShadowView.layer.shadowPath = nil
+        controlsShadowView.layer.shadowPath = nil
     }
     
     // MARK: - Presentation

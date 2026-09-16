@@ -15,10 +15,11 @@ final class ChromeOverlayContentView: UIView {
         static let padPortraitMaximumHeightRatio: CGFloat = 7.0 / 10.0
         static let addressBarWidthExtension: CGFloat = 32
         static let padPortraitWidthExtensionMultiplier: CGFloat = 5
-        static let modernCornerRadius: CGFloat = 36
-        static let cornerRadius: CGFloat = 12
+        // PERF flat-chrome: rounded corners + shadow removed for compositing test.
+        static let modernCornerRadius: CGFloat = 0
+        static let cornerRadius: CGFloat = 0
         static let backgroundAlpha: CGFloat = 0.28
-        static let shadowOpacity: Float = 0.16
+        static let shadowOpacity: Float = 0
         static let shadowOffset = CGSize(width: 0, height: 8)
         static let borderWidth: CGFloat = 0.5
     }
@@ -118,8 +119,9 @@ final class ChromeOverlayContentView: UIView {
     
     override func layoutSubviews() {
         super.layoutSubviews()
+        // PERF flat-chrome: rounded corners + shadow removed (UX constants are 0).
         let cornerRadius = overlayCornerRadius
-        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: cornerRadius).cgPath
+        layer.shadowPath = nil
         backgroundView.layer.cornerRadius = cornerRadius
         contentClipView.layer.cornerRadius = cornerRadius
     }

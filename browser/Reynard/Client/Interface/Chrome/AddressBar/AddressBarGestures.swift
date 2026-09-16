@@ -35,9 +35,10 @@ final class AddressBarGestures: NSObject {
         static let addressBarTabSwitchCancellationDuration: TimeInterval = 0.22
         static let addressBarAutomaticNewTabTranslationRatio: CGFloat = 0.34
         static let addressBarPreviewOutsidePadding: CGFloat = 24
-        static let addressBarPreviewCornerRadius: CGFloat = 22
+        // PERF flat-chrome: rounded corners + shadow removed for compositing test.
+        static let addressBarPreviewCornerRadius: CGFloat = 0
         static let addressBarPreviewBorderWidth: CGFloat = 0.5
-        static let addressBarPreviewShadowOpacity: Float = 0.18
+        static let addressBarPreviewShadowOpacity: Float = 0
         static let addressBarPreviewShadowRadius: CGFloat = 14
         static let addressBarPreviewShadowOffset = CGSize(width: 0, height: 2)
         static let addressBarPreviewHorizontalInset: CGFloat = 12

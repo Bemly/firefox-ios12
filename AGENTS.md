@@ -371,6 +371,13 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   （720p 解码约 16-19%，合成约 20-30%）。
 - user.js 生效，但 `false` 等于默认值时不落 prefs.js（别拿 prefs.js 有无当判据）；
   改完 user.js 必须杀进程重进（退出时会重写 prefs.js，见上文）。
+- 本体 chrome 去圆角阴影实验（`PERF flat-chrome` 标记）：Toolbar/地址栏（含手势预览浮层）/
+  ActionBar 三件套/ChromeOverlay/TabOverviewToolbar/LibraryActionButton 的 cornerRadius 常量归 0、
+  `shadowOpacity` 归 0、`layoutSubviews` 里 `shadowPath=nil`（不再算圆角 shadowPath）。
+  `clipsToBounds/masksToBounds` 和 `applyContinuousCornerCurve()` 调用保留原样
+ （radius=0 时无离屏 mask 成本；iOS 12 上 continuous 本来就是 no-op）。回退：搜
+  `PERF flat-chrome` 恢复常量即可。注意这只影响 UIKit chrome 合成，不影响 Gecko
+  SWGL 网页合成帧率（见“媒体/视频现状”），别拿网页滚动帧率当验收标准。
 
 ## 警告处理经验（2026-09-16，101 条 `-Wunguarded-availability-new` 清零）
 

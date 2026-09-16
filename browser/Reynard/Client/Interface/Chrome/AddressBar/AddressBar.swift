@@ -27,7 +27,8 @@ protocol AddressBarDelegate: AnyObject {
 
 final class AddressBar: UIView {
     private enum UX {
-        static let addressBarBackgroundCornerRadius: CGFloat = 22
+        // PERF flat-chrome: rounded corners + shadow removed for compositing test.
+        static let addressBarBackgroundCornerRadius: CGFloat = 0
         static let addressBarContentHorizontalInset: CGFloat = 12
         static let addressBarButtonToTextSpacing: CGFloat = 8
         static let addressBarDismissButtonSpacing: CGFloat = 9
@@ -38,7 +39,7 @@ final class AddressBar: UIView {
         static let addressBarTextFontSize: CGFloat = 17
         static let addressBarDismissButtonAnimationDuration: TimeInterval = 0.2
         static let addressBarBackgroundDarkModeShadowAlpha: CGFloat = 0.3
-        static let addressBarBackgroundShadowOpacity: Float = 0.18
+        static let addressBarBackgroundShadowOpacity: Float = 0
         static let addressBarBackgroundShadowRadius: CGFloat = 14
         static let addressBarBackgroundShadowOffset = CGSize(width: 0, height: 2)
         static let borderWidth: CGFloat = 0.5
@@ -555,12 +556,8 @@ final class AddressBar: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        // Fixed shadowPath: without it CoreAnimation re-rasterizes the layer
-        // alpha to compute the shadow shape on every frame. See AGENTS.md.
-        addressBarBackground.layer.shadowPath = UIBezierPath(
-            roundedRect: addressBarBackground.bounds,
-            cornerRadius: UX.addressBarBackgroundCornerRadius
-        ).cgPath
+        // PERF flat-chrome: shadow removed, no shadowPath needed.
+        addressBarBackground.layer.shadowPath = nil
     }
 
     private func configureAppearance() {

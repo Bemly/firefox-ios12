@@ -10,7 +10,8 @@ import UIKit
 final class TabOverviewToolbarButton: UIButton {
     private enum UX {
         static let toolbarButtonSideLength: CGFloat = 42
-        static let toolbarButtonCornerRadius: CGFloat = 21
+        // PERF flat-chrome: rounded corners removed for compositing test.
+        static let toolbarButtonCornerRadius: CGFloat = 0
         static let toolbarButtonBorderWidth: CGFloat = 1
         static let toolbarButtonSymbolPointSize: CGFloat = 17
         static let disabledToolbarButtonAlpha: CGFloat = 0.35

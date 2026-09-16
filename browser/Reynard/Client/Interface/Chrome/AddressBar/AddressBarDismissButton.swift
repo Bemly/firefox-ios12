@@ -10,7 +10,8 @@ import UIKit
 final class AddressBarDismissButton: UIButton {
     private enum UX {
         static let dismissButtonCornerRadiusDivisor: CGFloat = 2
-        static let dismissButtonShadowOpacity: Float = 0.2
+        // PERF flat-chrome: dismiss-button shadow removed for compositing test.
+        static let dismissButtonShadowOpacity: Float = 0
         static let dismissButtonDarkModeShadowAlpha: CGFloat = 0.3
         static let dismissButtonShadowRadius: CGFloat = 12
         static let dismissButtonShadowOffset = CGSize(width: 0, height: 4)
@@ -32,9 +33,10 @@ final class AddressBarDismissButton: UIButton {
     
     override func layoutSubviews() {
         super.layoutSubviews()
-        layer.shadowOpacity = UX.dismissButtonShadowOpacity
-        layer.cornerRadius = bounds.height / UX.dismissButtonCornerRadiusDivisor
-        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: layer.cornerRadius).cgPath
+        // PERF flat-chrome: rounded corners + shadow removed.
+        layer.shadowOpacity = 0
+        layer.cornerRadius = 0
+        layer.shadowPath = nil
     }
     
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
