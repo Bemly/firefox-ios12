@@ -206,7 +206,7 @@ public enum AddonPermissionSupport {
     }
     
     public static func formatLocalizedDataCollectionPermissions(_ localizedPermissions: [String]) -> String {
-        // ListFormatter is iOS 13+; fall back to a comma-joined list on iOS 12. See IOS12_GATES.md.
+        // ListFormatter is iOS 13+; fall back to a comma-joined list on iOS 12. 见 AGENTS.md“iOS 12 兼容门禁清单”.
         if #available(iOS 13.0, *) {
             return ListFormatter.localizedString(byJoining: localizedPermissions)
         }

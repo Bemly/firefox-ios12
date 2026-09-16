@@ -5,7 +5,7 @@
 //  iOS 12 compatibility shim for SF Symbols (UIImage(systemName:) is iOS 13+).
 //  On iOS 12 there are no SF Symbols, so this returns nil (the image simply
 //  does not appear). PoC behavior — real bundled-asset fallbacks are TODO.
-//  See IOS12_GATES.md section 3.
+//  见 AGENTS.md“iOS 12 兼容门禁清单” section 3.
 //
 
 import UIKit

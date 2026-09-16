@@ -18,7 +18,7 @@ final class SidebarMenuViewController: UIViewController, UICollectionViewDelegat
     private(set) var shownSection: LibrarySection?
     // Diffable data source is iOS 13+. Stored type-erased so this class stays
     // available on iOS 12, which uses a classic UICollectionViewDataSource
-    // instead (see the iOS 12 data source methods below). See IOS12_GATES.md.
+    // instead (see the iOS 12 data source methods below). 见 AGENTS.md“iOS 12 兼容门禁清单”.
     private var dataSourceStorage: AnyObject?
     @available(iOS 13.0, *)
     private var dataSource: UICollectionViewDiffableDataSource<String, LibrarySection>? {

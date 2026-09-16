@@ -3,7 +3,7 @@
 //  Reynard
 //
 //  SHA-256 hex digest. Uses CryptoKit on iOS 13+, CommonCrypto on iOS 12
-//  (CryptoKit is iOS 13+). See IOS12_GATES.md.
+//  (CryptoKit is iOS 13+). 见 AGENTS.md“iOS 12 兼容门禁清单”.
 //
 
 import Foundation

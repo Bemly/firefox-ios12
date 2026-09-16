@@ -675,7 +675,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
     }
     
     /// Interface orientation via `windowScene` on iOS 13+, via the (deprecated)
-    /// app status-bar orientation on iOS 12. See IOS12_GATES.md section 4.
+    /// app status-bar orientation on iOS 12. 见 AGENTS.md“iOS 12 兼容门禁清单”.
     private var currentInterfaceOrientation: UIInterfaceOrientation {
         if #available(iOS 13.0, *) {
             return view.window?.windowScene?.interfaceOrientation ?? .unknown

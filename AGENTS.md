@@ -304,6 +304,49 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
 - 若要真加速，两块都要动：解码走 VT 硬解零拷贝（IOSurface→合成器）+
   合成端上 GPU（WebRender GL/Metal 而非 SWGL）。属后续工程方向。
 
+## iOS 12 兼容门禁清单（原 browser/IOS12_GATES.md，2026-09-16 并入本文件）
+
+记法：**[SHIM]** = 有真实 fallback（iOS 12 上功能正常）；**[GATE]** = 功能在 iOS 12 上直接缺失，
+以后补 fallback 就按这张表找。新增 iOS 13+ API 门禁时同步更新本节；写法约定：
+整类型/扩展加 `@available(iOS 13.0, *)`，调用点用 `if #available` 包住。
+
+- Helper 扩展点 [SHIM，已真机验证]：`Helper/Info.plist` 的 `NSExtensionPointIdentifier`
+  用 `com.apple.app.non-ui-extension.multiple-instances`（`com.apple.ar.viewer` 是 13.4+，
+  iOS 12 会拒装整个包）。2026-09-16 已验证：可装机 + 网页正常渲染（子进程能起）。
+- Swift 并发运行时（历史教训）：光删 `async/await` 不够，`SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor`
+  + `@MainActor` 会让编译器链接 `libswift_Concurrency.dylib`（最低 iOS 13），iOS 12 上
+  dyld 直接启动崩溃。pbxproj 四处配置已改为 `nonisolated`/`NO`，全仓无 `@MainActor`。
+  合并上游代码时凡见 `async/Task/@MainActor` 一律手工 port 成 completion 风格。
+- 语义色/圆角/材质 [SHIM]：`UICompat.swift` 的 `UIColor.app*`、`UITableView.Style.appGrouped`
+  （`insetGrouped`→`grouped`，26 处）、`CALayer.applyContinuousCornerCurve()`、
+  `UIColor.appDynamic`（`init(dynamicProvider:)` 回退，取浅色分支）、`appResolved`、
+  `UIFont.appMonospacedSystemFont`（Menlo 回退）、`UIStatusBarStyle.compatDarkContent`、
+  `UIBlurEffect.Style.appChromeMaterial/appMaterial`（→`.regular`）。
+  注意批量替换误伤过：`PromptChoice.separator`（布尔属性）、`ContextTarget.link`、
+  `InformationRow.link`、`NSAttributedString.Key.link` 不是颜色，别碰。
+- 上下文菜单（`UIContextMenuInteraction`/`UIMenu`/`UIAction`）[GATE]：iOS 12 无此 API，
+  长按无反应。门禁点：Homepage 三区 delegate、Library（书签/下载菜单）、
+  `ContextMenuCoordinator`、`AddressBar` 扩展 + `addInteraction` 调用点、
+  `ToolbarButtonMenus` 4 个 delegate 类（数组用 `[AnyObject]` 存）、
+  `TabOverview` 清除菜单（`installMenu`/`make` 整体 `@available`）、
+  `ApplicationMenuBuilder` 整文件 `@available`（main.swift 里注册观察者同样门禁）、
+  `UIMenuController` 新旧 API（见坑位速查 UIMenuController 条）。
+- SF Symbols [SHIM]：`reynard.*` 图标已转通用 template `.imageset`（`generate-ios12-icons.py`），
+  `UIImage(named:)` 两端通用；`SymbolConfiguration`/`setPreferredSymbolConfiguration` 调用点
+  用 `if #available` 包住，else 分支用 `compatibleWith: nil` 加载。
+- Scene 生命周期 [GATE]+[SHIM]：`SceneDelegate` 整类 `@available(iOS 13)`；iOS 12 走
+  `main.swift` 里 `didFinishLaunchingNotification` 观察者建窗（引擎调 `UIApplicationMain`
+  用的是自己的 `AppShellDelegate`，`AppDelegate` 方法根本不执行，留空即可）。
+  `windowScene` 一律走 `compatInterfaceOrientation/compatIsForegroundActive` helper；
+  `statusBarOrientation` 替代方向，`statusBarFrame` 替代高度；`AppAppearanceController`
+  在 iOS 12 直接 no-op（无深夜模式）。
+- 零散门禁：`RelativeDateTimeFormatter`→短日期（`UserDataSuggestionCell`）、`UITabBarAppearance`
+  →legacy tint、`QLThumbnailGenerator`→占位图标、`ListFormatter`→逗号拼接、
+  `isModalInPresentation` 直接门禁、`hasDifferentColorAppearance` 门禁（iOS 12 永 false）、
+  `UIKeyCommand.propertyList` 门禁、`UIActivityIndicatorView(style:.large)`→`.whiteLarge`+灰色、
+  `configureUnsandboxedAppDataDirectories` 跳过 iOS 12。上游 `cb41797` 删了
+  `deviceSensors` 权限提示，合并时同步删（别留着 `.deviceSensors` 引用，会编不过）。
+
 ## Git 约定
 
 - `main` 恒等于 `origin/main`，保持干净可编；不要在 main 上堆验证代码。

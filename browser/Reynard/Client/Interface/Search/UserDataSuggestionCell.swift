@@ -22,7 +22,7 @@ final class UserDataSuggestionCell: UITableViewCell {
     private static let faviconStore = FaviconStore.shared
 
     /// Relative date string. Uses `RelativeDateTimeFormatter` on iOS 13+, a short
-    /// absolute date on iOS 12. See IOS12_GATES.md.
+    /// absolute date on iOS 12. 见 AGENTS.md“iOS 12 兼容门禁清单”.
     private static func relativeDateString(for date: Date) -> String {
         if #available(iOS 13.0, *) {
             return RelativeDateTimeFormatter().localizedString(for: date, relativeTo: Date())

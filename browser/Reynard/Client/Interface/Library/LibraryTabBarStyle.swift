@@ -16,7 +16,7 @@ enum LibraryTabBarStyle {
         tabBar.tintColor = .appLabel
         tabBar.unselectedItemTintColor = .appSecondaryLabel
 
-        // UITabBarAppearance is iOS 13+. On iOS 12 use legacy bar styling. See IOS12_GATES.md.
+        // UITabBarAppearance is iOS 13+. On iOS 12 use legacy bar styling. 见 AGENTS.md“iOS 12 兼容门禁清单”.
         guard #available(iOS 13.0, *) else {
             tabBar.barTintColor = .appSystemBackground
             tabBar.isTranslucent = false

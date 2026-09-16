@@ -115,7 +115,7 @@ final class JITFailureView: UIView {
         if #available(iOS 13.0, *) {
             errorLabel.font = .monospacedSystemFont(ofSize: monospacedSize, weight: .regular)
         } else {
-            // monospacedSystemFont is iOS 13+; fall back to Menlo on iOS 12. See IOS12_GATES.md.
+            // monospacedSystemFont is iOS 13+; fall back to Menlo on iOS 12. 见 AGENTS.md“iOS 12 兼容门禁清单”.
             errorLabel.font = UIFont(name: "Menlo", size: monospacedSize) ?? .systemFont(ofSize: monospacedSize)
         }
         

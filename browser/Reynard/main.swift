@@ -46,7 +46,7 @@ private func configureUnsandboxedAppDataDirectories() {
 // Create the browser window ourselves when UIKit finishes launching. UIKit posts
 // this notification regardless of which app delegate is used, and the observer
 // must be registered before UIApplicationMain (inside GeckoRuntime.main) takes
-// over the process. See IOS12_GATES.md.
+// over the process. 见 AGENTS.md“iOS 12 兼容门禁清单”.
 private var legacyRootWindow: UIWindow?
 if #unavailable(iOS 13.0) {
     NotificationCenter.default.addObserver(
@@ -100,7 +100,7 @@ LocalizationBundle.activate()
 // benchmark page is the arbiter.
 JITController.shared.start()
 // configureUnsandboxedAppDataDirectories is available on iOS 13.x only (introduced 13.0,
-// obsoleted 14.0); narrow the guard so it isn't called on iOS 12. See IOS12_GATES.md.
+// obsoleted 14.0); narrow the guard so it isn't called on iOS 12. 见 AGENTS.md“iOS 12 兼容门禁清单”.
 if #available(iOS 13.0, *) {
     if #unavailable(iOS 14.0),
        getEntitlementValue("com.apple.private.security.no-sandbox") {

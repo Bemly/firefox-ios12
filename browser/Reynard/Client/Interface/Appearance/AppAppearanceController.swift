@@ -9,7 +9,7 @@ import UIKit
 
 enum AppAppearanceController {
     static func apply(_ appearance: AppAppearance) {
-        // iOS 12 has no dark mode / overrideUserInterfaceStyle; no-op. See IOS12_GATES.md section 4.
+        // iOS 12 has no dark mode / overrideUserInterfaceStyle; no-op. 见 AGENTS.md“iOS 12 兼容门禁清单”.
         guard #available(iOS 13.0, *) else {
             return
         }

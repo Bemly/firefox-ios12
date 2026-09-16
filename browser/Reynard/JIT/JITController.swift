@@ -368,7 +368,7 @@ final class JITController {
             return false
         }
 
-        // iOS 12 has no scenes; an active application is sufficient. See IOS12_GATES.md section 4.
+        // iOS 12 has no scenes; an active application is sufficient. 见 AGENTS.md“iOS 12 兼容门禁清单”.
         guard #available(iOS 13.0, *) else {
             return true
         }

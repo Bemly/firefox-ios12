@@ -130,7 +130,7 @@ extension CALayer {
 
 extension UISearchBar {
     /// The inner search text field on iOS 13+, or the search bar itself on iOS 12
-    /// (used only for layout alignment). See IOS12_GATES.md.
+    /// (used only for layout alignment). 见 AGENTS.md“iOS 12 兼容门禁清单”.
     var compatAlignmentView: UIView {
         if #available(iOS 13.0, *) { return searchTextField }
         return self

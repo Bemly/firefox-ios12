@@ -9,7 +9,7 @@ import UIKit
 
 extension UIApplication {
     /// The active key window. Resolved via scenes on iOS 13+, and via the
-    /// `windows` array on iOS 12 (which has no scene support). See IOS12_GATES.md section 4.
+    /// `windows` array on iOS 12 (which has no scene support). 见 AGENTS.md“iOS 12 兼容门禁清单”.
     var appKeyWindow: UIWindow? {
         if #available(iOS 13.0, *) {
             return connectedScenes
