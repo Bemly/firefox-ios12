@@ -72,6 +72,46 @@
 - 打包 `Payload/*.app` → zip 改 `.ipa` → `ideviceinstaller install`，启动 `uiopen <bundle-id>`。
 - Debug 包主二进制很小是正常的（~76KB stub），真正代码在 `Reynard.debug.dylib`（~41MB）。
 
+## Release 构建（2026-09-16 首通，包 `/tmp/Reynard-release.ipa` 已装机验证）
+
+- 命令同 Debug，把 `-configuration` 换成 `Release`，`-derivedDataPath` 换
+  `/tmp/ReynardDD-Release`（与 Debug 隔离）。Release 关断言
+  （`ENABLE_NS_ASSERTIONS=NO`，iOS 12 上等于去掉了一批 SIGTRAP）、strip 符号
+  （崩溃回溯弱一截）。Release 无 `Reynard.debug.dylib`（Swift 静态链进主二进制），
+  只签主二进制 + appex + Frameworks。
+- **启动崩坑**：Xcode26 的 Release `-O` 会让 Swift 大栈帧函数 emit
+  `___chkstk_darwin`（本轮是 `SearchViewModel.o` / `TabBarPresentation.o`），
+  iOS 12 的 libSystem 没有这个符号 → dyld 启动即 `SIGABRT`（`2316*.ips`）。
+  修：`OTHER_LDFLAGS` 补 `DEVELOPER_DIR` 同工具链的 `libclang_rt.ios.a`
+  （`.../Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/lib/darwin/`，
+  里面是真实现；换 Xcode 大版本注意 `clang/21` 路径会变）。appex 无此引用，
+  全局加 harmless（linker 只拉用到的 member）。
+  `___darwin_check_fd_set_overflow`（`JITSupport.o`，fortify 的 FD 宏带来，
+  iOS 14+ 才有）是 **weak import**（`nm -m` 验证），12 上 resolve 成 NULL，
+  头文件里的运行时检查会跳过——不用管。Debug `-Onone` 帧小不触发，
+  所以只有 Release 会踩到。
+- 定位法：`llvm-nm -u` 扫主二进制找缺符号 → `llvm-nm -u` 扫
+  `Objects-normal/arm64/*.o` 定到文件 → `otool -rv` 看调用点（Swift 大函数
+  inlining 产物，逐个改源码是打地鼠，必须全局解）。
+
+## 本地诊断页（设置 About 区版本号上方，2026-09-16 已装机验证）
+
+- 测试页收进仓库 `browser/Reynard/Resources/Diagnostics/`（bench/video/video240/
+  anim/hidden/test.html + 两份 mp4，共 ~7MB），设置 About 区版本号上方 4 行入口
+  （JIT Bench / Video 720p / Video Drops 240p / Animation Composite），点开走
+  `file://` 直接加载包内页。验证：`IMG_0187` 点行即开 tab，
+  `RUNS[78,66,67,67]` warmup 形状 = Release 下主进程 JIT 正常。
+- Xcode 的 Resources phase 是**空的**（历史遗留，`Assets.car`/lproj 靠工具链自动编），
+  散文件不会自动进包：打包时 Mac 端 `rm -rf "$APP/Diagnostics" && cp -R ...`
+  拷进去（先删再拷——`cp -R` 到已存在目录会再嵌套一层，已踩一次）。
+- 自驱进设置链（iPad 上 Library = sidebar，不是 modal）：bottom 6-button stack
+  第 4 个 `ToolbarButton` 发 `sendActionsForControlEvents:64` 开书签侧栏 →
+  nav `popToViewController` 回菜单 → 对 menu collectionView 调 delegate
+  `didSelectItemAtIndexPath:item:3`（settings）→ 按 label 文案找 cell +
+  `indexPathForCell` 再调一次 didSelect → `scrollToRowAtIndexPath` 滚到底。
+  注意 cycript 读 struct（frame/contentSize）直接抛，用纯对象/整数 API；
+  App 内有两个 UITextField，drive 按 delegate 含 `AddressBar` 挑（沿用）。
+
 ## 白屏排查实录（2026-09-15，分支 local/white-screen-probe）
 
 现象：壳（主页/快捷方式/设置，原生 Swift UI）正常，任何网页白屏、地址栏叉号常亮。

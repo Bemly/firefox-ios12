@@ -1,0 +1,21 @@
+<!doctype html>
+<html><meta charset="utf-8"><body style="background:#000;margin:0">
+<video id="v" src="video.mp4" autoplay muted playsinline loop
+       style="width:100%;height:auto"></video>
+<pre id="out" style="color:#0f0;font-size:28px">waiting...</pre>
+<script>
+var v = document.getElementById('v');
+function report() {
+  document.getElementById('out').textContent =
+    'VIDEO t=' + v.currentTime.toFixed(1) + 's paused=' + v.paused +
+    ' readyState=' + v.readyState +
+    ' ' + v.videoWidth + 'x' + v.videoHeight;
+}
+v.addEventListener('timeupdate', report);
+v.addEventListener('playing', report);
+v.addEventListener('error', function () {
+  document.getElementById('out').textContent = 'VIDEO ERROR ' +
+    (v.error ? v.error.code + '/' + v.error.message : 'unknown');
+});
+setInterval(report, 500);
+</script></body></html>

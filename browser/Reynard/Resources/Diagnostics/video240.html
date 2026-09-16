@@ -1,0 +1,13 @@
+<!doctype html>
+<html><meta charset="utf-8"><body style="background:#000;margin:0">
+<video id="v" src="video240.mp4" autoplay muted playsinline loop style="width:50%"></video>
+<pre id="out" style="color:#0f0;font-size:24px">waiting...</pre>
+<script>
+var v = document.getElementById('v');
+setInterval(function () {
+  var q = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : null;
+  document.getElementById('out').textContent =
+    't=' + v.currentTime.toFixed(1) + ' paused=' + v.paused +
+    (q ? ' decoded=' + q.totalVideoFrames + ' dropped=' + q.droppedVideoFrames : '');
+}, 500);
+</script></body></html>

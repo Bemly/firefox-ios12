@@ -1,0 +1,12 @@
+<!doctype html>
+<html><meta charset="utf-8"><body style="background:#000;margin:0">
+<video id="v" src="video.mp4" autoplay muted playsinline loop style="display:none"></video>
+<pre id="out" style="color:#0f0;font-size:28px">waiting...</pre>
+<script>
+var v = document.getElementById('v');
+setInterval(function () {
+  document.getElementById('out').textContent =
+    'HIDDEN-VIDEO t=' + v.currentTime.toFixed(1) + 's paused=' + v.paused +
+    ' readyState=' + v.readyState + ' ' + v.videoWidth + 'x' + v.videoHeight;
+}, 500);
+</script></body></html>

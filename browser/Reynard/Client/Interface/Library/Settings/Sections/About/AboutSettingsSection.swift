@@ -11,6 +11,10 @@ import UIKit
 final class AboutSettingsSection {
     enum Row: CaseIterable {
         case experimentalFeatures
+        case diagnosticsJITBench
+        case diagnosticsVideo720
+        case diagnosticsVideo240
+        case diagnosticsAnimation
         case appVersion
         case engineVersion
         case sourceCode
@@ -51,6 +55,14 @@ final class AboutSettingsSection {
         switch displayedRows[index] {
         case .experimentalFeatures:
             return SettingsViewUtils.disclosureCell(title: "Experimental Features")
+        case .diagnosticsJITBench:
+            return linkCell(title: NSLocalizedString("JIT Bench (on-device)", comment: ""))
+        case .diagnosticsVideo720:
+            return linkCell(title: NSLocalizedString("Video Test 720p (on-device)", comment: ""))
+        case .diagnosticsVideo240:
+            return linkCell(title: NSLocalizedString("Video Drops 240p (on-device)", comment: ""))
+        case .diagnosticsAnimation:
+            return linkCell(title: NSLocalizedString("Animation Composite (on-device)", comment: ""))
         case .appVersion:
             let info = Bundle.main.infoDictionary
             let version = info?["CFBundleShortVersionString"] as? String ?? "Unknown"
@@ -88,6 +100,14 @@ final class AboutSettingsSection {
     
     private func url(for row: Row) -> URL? {
         switch row {
+        case .diagnosticsJITBench:
+            return diagnosticsURL("bench")
+        case .diagnosticsVideo720:
+            return diagnosticsURL("video")
+        case .diagnosticsVideo240:
+            return diagnosticsURL("video240")
+        case .diagnosticsAnimation:
+            return diagnosticsURL("anim")
         case .sourceCode:
             return URL(string: "https://github.com/minh-ton/reynard-browser")
         case .supportProject:
@@ -97,6 +117,13 @@ final class AboutSettingsSection {
         case .experimentalFeatures, .appVersion, .engineVersion:
             return nil
         }
+    }
+
+    /// On-device diagnostics pages bundled under Resources/Diagnostics.
+    /// Copied into the .app at package time (see AGENTS.md); kept next to
+    /// their .mp4 assets so relative video URLs resolve.
+    private func diagnosticsURL(_ name: String) -> URL? {
+        Bundle.main.url(forResource: name, withExtension: "html", subdirectory: "Diagnostics")
     }
     
     private func valueCell(title: String, value: String) -> UITableViewCell {
