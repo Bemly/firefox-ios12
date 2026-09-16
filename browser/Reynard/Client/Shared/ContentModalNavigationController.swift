@@ -12,7 +12,12 @@ final class ContentModalNavigationController: UINavigationController {
     
     init(rootViewController: UIViewController, onDismissed: @escaping () -> Void) {
         self.onDismissed = onDismissed
-        super.init(rootViewController: rootViewController)
+        // Don't use super.init(rootViewController:): UIKit's implementation
+        // re-dispatches into initWithNibName:bundle:, whose @objc thunk traps
+        // ("use of unimplemented initializer") because this class defines its
+        // own designated init and no longer inherits that one.
+        super.init(nibName: nil, bundle: nil)
+        viewControllers = [rootViewController]
     }
     
     required init?(coder aDecoder: NSCoder) {
