@@ -552,7 +552,17 @@ final class AddressBar: UIView {
     }
     
     // MARK: - View Setup
-    
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // Fixed shadowPath: without it CoreAnimation re-rasterizes the layer
+        // alpha to compute the shadow shape on every frame. See AGENTS.md.
+        addressBarBackground.layer.shadowPath = UIBezierPath(
+            roundedRect: addressBarBackground.bounds,
+            cornerRadius: UX.addressBarBackgroundCornerRadius
+        ).cgPath
+    }
+
     private func configureAppearance() {
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = .clear

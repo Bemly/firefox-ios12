@@ -100,6 +100,16 @@ final class TabOverviewCard: UICollectionViewCell {
         return imageView
     }()
     
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // Fixed shadowPath (see AddressBar): the preview image changes per
+        // tab, which would otherwise re-trigger shadow shape rasterization.
+        webpagePreviewShadowView.layer.shadowPath = UIBezierPath(
+            roundedRect: webpagePreviewShadowView.bounds,
+            cornerRadius: UX.webpagePreviewCornerRadius
+        ).cgPath
+    }
+
     private let closeTabButton: TabOverviewCardCloseTabButton = {
         let button = TabOverviewCardCloseTabButton(type: .system)
         if #available(iOS 13.4, *) {

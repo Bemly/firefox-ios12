@@ -353,6 +353,10 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   现长边封顶 672px（~0.5MB），卡片观感无差（TabOverview 截图验证）。
 - `NSCache` 必须用 `countLimit`：插入没带 cost 时 `totalCostLimit` 永不触发。
   四处（Addon 图标 ×2、下载图标/占位）已加 64/64/64/128。
+- 阴影必须配 `shadowPath`：只设 `shadowOpacity/Radius/Offset` 不设 path 时，
+  CoreAnimation 每帧离屏光栅化算阴影形状。已补 `AddressBar` 背景和
+  `TabOverviewCard` 预览阴影（`layoutSubviews` 里按 bounds 更新）；其余站点早有。
+  注意阴影只影响合成帧率，不影响加载（网络/解码/排版），别指望动阴影加快加载。
 - 单进程不需要预热：`dom.ipc.processPrelaunch.enabled=false`
   （`PreallocatedProcessManager` 在本移植恒为 true，会白起 Helper 子进程；
   `patches/mobile/ios/app/mobile.js.patch`）。
