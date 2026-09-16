@@ -53,6 +53,21 @@ if [ ! -d "$WASI_SDK_DIR" ]; then
 	rm -rf "$TMP_DIR"
 fi
 
+# mozbuild clang ships no iOS compiler-rt, but our iOS 12 compat code uses
+# @available(iOS 13, *) which clang lowers to __isPlatformVersionAtLeast.
+# Link Xcode's libclang_rt.ios.a explicitly (from the DEVELOPER_DIR toolchain).
+DEV_DIR="${DEVELOPER_DIR:-$(xcode-select -p)}"
+CLANG_RT_IOS=""
+for cand in "$DEV_DIR"/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/*/lib/darwin/libclang_rt.ios.a; do
+	if [ -f "$cand" ]; then
+		CLANG_RT_IOS="$cand"
+		break
+	fi
+done
+if [ -z "$CLANG_RT_IOS" ]; then
+	echo "Warning: libclang_rt.ios.a not found under $DEV_DIR; XUL link may fail on __isPlatformVersionAtLeast" >&2
+fi
+
 if [ -f "$FIREFOX_DIR/.mozconfig" ]; then
 	mv "$FIREFOX_DIR/.mozconfig" "$FIREFOX_DIR/.mozconfig.bak"
 fi
@@ -70,6 +85,9 @@ fi
 	echo "export WASM_CC=$WASI_SDK_DIR/bin/clang"
 	echo "export WASM_CXX=$WASI_SDK_DIR/bin/clang++"
 	echo "ac_add_options --with-wasi-sysroot=$WASI_SDK_DIR/share/wasi-sysroot"
+	if [ -n "$CLANG_RT_IOS" ]; then
+		echo "export LDFLAGS=\"\$LDFLAGS $CLANG_RT_IOS\""
+	fi
 	echo "ac_add_options --disable-tests"
 	echo "ac_add_options --enable-bootstrap"
 	if [ "$USE_SCCACHE" = true ]; then

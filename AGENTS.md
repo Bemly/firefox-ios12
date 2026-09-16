@@ -222,6 +222,15 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   StaticPrefList.yaml 这类全局生成头时。objdir 配置硬编码了已消失的
   `/Applications/Xcode-beta.app`（host 报 `stdio.h file not found` 即此病），解法
   `sudo ln -s Xcode.app Xcode-beta.app`（只补兼容软链，不动 xcode-select）。
+- XUL 链接报 `__isPlatformVersionAtLeast` 未定义：移植的 `@available(iOS 13,*)`
+  兼容代码（`NativeLayerCA.mm`/`nsLookAndFeel.mm` 等）会被 clang 降为该 compiler-rt
+  符号，而 mozbuild clang 自带 runtime 没有 iOS 切片。`build-gecko.sh` 已自动把
+  `DEVELOPER_DIR` 同工具链的 `libclang_rt.ios.a` 补进 `LDFLAGS`（`export` 进
+  `.mozconfig`，只影响 target 链接；找不到会告警，换 Xcode 大版本 glob 仍能命中）。
+- 新文件 patch 的 hunk 头必须是 `@@ -0,0 +...`；写成 `@@ 0,0`（少了 `-`）时
+  `git apply` 不报错但产出 0 字节文件，编译/链接期才爆（已踩两次：
+  `GeckoEditableSupport.h`、`nsIOSNetworkLinkService.mm`）。改完 patch 必跑
+  `repair-headers.py + git apply --check`，并对新文件 `wc -c` 确认非空。
 - Xcode 重编会覆盖 `.app` 内一次性 JS 探针（本次 fix 包已无 gvnav/selfdrive 探针，
   属正常）；但 `dist` rsync 会带上源码级正式修（`patches/` 已应用部分），放心。
 - `browser/Reynard/Entitlements/` 里没有 `Reynard-Helper.private.entitlements`
