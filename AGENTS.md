@@ -10,7 +10,7 @@
 
 ## 测试机
 
-- iPad mini 3 (`iPad4,4`), iOS 12.5.8 (16H88)，checkra1n 越狱
+- iPad mini 2 (`iPad4,4`), iOS 12.5.8 (16H88)，checkra1n 越狱
   （`/var/checkra1n.dmg` + dropbear；Cydia + Sileo + Substrate 共存，loader app 已删）
 - 机上已装: AppSync Unified 102.0 / OpenSSH 8.4 / frida-server 17.17.0 (开机自启)
 - `/usr/local/bin/debugserver12`: 从 Xcode15 的 12.4 DDI 提取 (arm64+arm64e)，已 `ldid -S` 签调试权限
