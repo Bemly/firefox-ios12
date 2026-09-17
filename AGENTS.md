@@ -57,6 +57,22 @@
   `DataUsage.sqlite/ZPROCESS` 里有 Firefox 无 Reynard（侧载的 NineAnimator 在列，
   故非安装来源过滤）。Reynard 因自始被拒、零成功流量 → 无记录 → 无行 → UI 无路可开，
   死锁只能走 CLI；预测 CLI 放行并产生真实流量后该行会出现（待验）。
+
+## 全新 Bundle ID 测试（2026-09-17，分支 `local/netauth-fresh-bid`，A 已死）
+
+- 改动：零逻辑，仅包名 `reynard.bemly.moe` → `reynard.bemly.moe.nettest`
+  （pbxproj 8 处 + 主/Helper entitlements + Info.plist URLName；显示名构建时盖
+  `RNetTest` 以区分；队列 label/菜单 ID 未动）。Debug 包 `/tmp/RNetTest.ipa`。
+- 结果：**全新 ID 安装即 1,1 拒绝**——安装后、首次启动前的快照里条目已在
+  （pre-launch `ne-pre-nettest.plist`），首启截屏（`IMG_0100`）无系统弹窗，
+  cycript 驱动 baidu 加载失败（`IMG_0101`；注意是 proxy 错误页——profile 全局
+  共享，user.js 代理配置被新包继承），`bundle_info` 无 nettest 记录。
+- 结论：残留策略说（A）死——全新 ID 同样秒拒；“App 没触发”（B）也不准确——
+  拒绝决定在 App 首次启动前、安装时已写死。这条侧载安装路径上系统根本不走
+  首次联网授权，直接默认拒绝。不再追弹窗，治本走 CLI/装机脚本化；
+  ZIK 私有触发如要试另起实验。
+- 附带异常：nettest 装机后旧 `reynard.bemly.moe` 从设备消失（install 列表 +
+  container 双确认），机制未知（用户当时在手机上操作，可能手动删的，待认）。
 - **根因二：necko 不认 iOS 系统 WiFi 代理**（HTTP 全局代理也无效，neck 走自家 socket+自家 prefs）：
   无 VPN 时被墙站全死、直连站（baidu）修复根因一后即通。修：设备 profile
   `/var/mobile/Library/Application Support/.mozilla/firefox/*.default/user.js` 加
