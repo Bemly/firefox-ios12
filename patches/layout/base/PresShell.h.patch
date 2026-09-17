@@ -1,8 +1,8 @@
 diff --git a/layout/base/PresShell.h b/layout/base/PresShell.h
-index d59424d0eb60..3a24fbd70fe6 100644
+index 23efeb53f7c7..6ebb640ceb2c 100644
 --- a/layout/base/PresShell.h
 +++ b/layout/base/PresShell.h
-@@ -1640,6 +1640,11 @@ class PresShell final : public nsStubDocumentObserver,
+@@ -1646,6 +1646,11 @@ class PresShell final : public nsStubDocumentObserver,
  
    nsPoint GetVisualViewportOffsetRelativeToLayoutViewport() const;
  
@@ -14,7 +14,7 @@ index d59424d0eb60..3a24fbd70fe6 100644
    // Returns state of the dynamic toolbar.
    DynamicToolbarState GetDynamicToolbarState() const {
      if (!mPresContext) {
-@@ -1652,8 +1657,7 @@ class PresShell final : public nsStubDocumentObserver,
+@@ -1658,8 +1663,7 @@ class PresShell final : public nsStubDocumentObserver,
    // shown/hidden.
    nsSize GetVisualViewportSizeUpdatedByDynamicToolbar() const;
  
@@ -24,7 +24,7 @@ index d59424d0eb60..3a24fbd70fe6 100644
    nsSize GetFixedViewportSize() const;
  
    // Trigger refreshing the MobileViewportManager's size metrics.
-@@ -3409,6 +3413,9 @@ class PresShell final : public nsStubDocumentObserver,
+@@ -3416,6 +3420,9 @@ class PresShell final : public nsStubDocumentObserver,
  
    Maybe<nsPoint> mVisualViewportOffset;
  

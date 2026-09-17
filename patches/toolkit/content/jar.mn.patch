@@ -1,8 +1,8 @@
 diff --git a/toolkit/content/jar.mn b/toolkit/content/jar.mn
-index e5397fe03abb..5fedd3d0284e 100644
+index a54a852c3e7e..a2cd9c750e0f 100644
 --- a/toolkit/content/jar.mn
 +++ b/toolkit/content/jar.mn
-@@ -52,9 +52,7 @@ toolkit.jar:
+@@ -55,9 +55,7 @@ toolkit.jar:
     content/global/buildconfig.css
     content/global/colorpicker.html
     content/global/contentAreaUtils.js

@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/apz/src/AsyncPanZoomController.cpp b/gfx/layers/apz/src/AsyncPanZoomController.cpp
-index 1098039b4217..70291e5aaa0d 100644
+index c50cce23a949..0f28bd4a7b8e 100644
 --- a/gfx/layers/apz/src/AsyncPanZoomController.cpp
 +++ b/gfx/layers/apz/src/AsyncPanZoomController.cpp
 @@ -2810,6 +2810,7 @@ nsEventStatus AsyncPanZoomController::OnPanMayBegin(
@@ -64,7 +64,7 @@ index 1098039b4217..70291e5aaa0d 100644
    CancelAnimation();
  
    return nsEventStatus_eIgnore;
-@@ -4897,6 +4917,20 @@ void AsyncPanZoomController::RequestContentRepaint(
+@@ -4907,6 +4927,20 @@ void AsyncPanZoomController::RequestContentRepaint(
    RepaintRequest request(Metrics(), aDisplayportMargins, aUpdateType,
                           animationType, mScrollGeneration, mLastSnapTargetIds,
                           IsInScrollingGesture());
@@ -85,7 +85,7 @@ index 1098039b4217..70291e5aaa0d 100644
  
    if (request.IsRootContent() && request.GetZoom() != mLastNotifiedZoom &&
        mState != PINCHING && mState != ANIMATING_ZOOM) {
-@@ -4912,6 +4946,8 @@ void AsyncPanZoomController::RequestContentRepaint(
+@@ -4922,6 +4956,8 @@ void AsyncPanZoomController::RequestContentRepaint(
            mLastPaintRequestMetrics.GetDisplayPortMargins(), EPSILON) &&
        request.GetVisualScrollOffset().WithinEpsilonOf(
            mLastPaintRequestMetrics.GetVisualScrollOffset(), EPSILON) &&
@@ -94,7 +94,7 @@ index 1098039b4217..70291e5aaa0d 100644
        request.GetPresShellResolution() ==
            mLastPaintRequestMetrics.GetPresShellResolution() &&
        request.GetZoom() == mLastPaintRequestMetrics.GetZoom() &&
-@@ -5629,6 +5665,11 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+@@ -5639,6 +5675,11 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
        !FuzzyEqualsCoordinate(Metrics().GetVisualScrollOffset().y,
                               lastScrollOffset.y);
  
@@ -106,7 +106,7 @@ index 1098039b4217..70291e5aaa0d 100644
    if (aScrollMetadata.DidContentGetPainted()) {
      mLastContentPaintMetadata = aScrollMetadata;
    }
-@@ -5683,7 +5724,7 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+@@ -5693,7 +5734,7 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
    // TODO if we're in a drag and scrollOffsetUpdated is set then we want to
    // ignore it
  
@@ -115,7 +115,7 @@ index 1098039b4217..70291e5aaa0d 100644
    RepaintUpdateType contentRepaintType = RepaintUpdateType::eNone;
    bool viewportSizeUpdated = false;
    bool needToReclampScroll = false;
-@@ -5756,6 +5797,9 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+@@ -5766,6 +5807,9 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
      // If we're not taking the aLayerMetrics wholesale we still need to pull
      // in some things into our local Metrics() because these things are
      // determined by Gecko and our copy in Metrics() may be stale.
@@ -125,7 +125,7 @@ index 1098039b4217..70291e5aaa0d 100644
  
      if (Metrics().GetLayoutViewport().Size() !=
          aLayerMetrics.GetLayoutViewport().Size()) {
-@@ -5844,6 +5888,20 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+@@ -5854,6 +5898,20 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
            aLayerMetrics.GetCompositionSizeWithoutDynamicToolbar());
        needToReclampScroll = true;
      }
@@ -146,7 +146,7 @@ index 1098039b4217..70291e5aaa0d 100644
      if (Metrics().IsRootContent()) {
        // If the composition size changed, the compositor's layout viewport
        // offset may have changed (to keep the layout viewport enclosing the
-@@ -5960,7 +6018,8 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+@@ -5970,7 +6028,8 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
                     "Smooth relative update should never happen");
          APZC_LOG("%p smooth scrolling to %s\n", this,
                   ToString(scrollUpdate.GetDestination()).c_str());
@@ -156,7 +156,7 @@ index 1098039b4217..70291e5aaa0d 100644
        }
  
        ScrollAnimationKind animationKind =
-@@ -6177,7 +6236,8 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+@@ -6187,7 +6246,8 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
               ToString(aLayerMetrics.GetVisualDestination()).c_str(),
               (int)aLayerMetrics.GetVisualScrollUpdateType());
      bool offsetChanged = Metrics().ClampAndSetVisualScrollOffset(
@@ -166,7 +166,7 @@ index 1098039b4217..70291e5aaa0d 100644
  
      // If this is the first time we got metrics for this content (isDefault) and
      // the update type was none and the offset didn't change then we don't have
-@@ -7247,9 +7307,43 @@ ScreenMargin AsyncPanZoomController::GetFixedLayerMargins(
+@@ -7257,9 +7317,43 @@ ScreenMargin AsyncPanZoomController::GetFixedLayerMargins(
    return mCompositorFixedLayerMargins;
  }
  

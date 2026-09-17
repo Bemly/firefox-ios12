@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/nsWindow.mm b/widget/uikit/nsWindow.mm
-index ba3fc1051a01..09a0186d09bf 100644
+index f8749ea1737c..2315bece15cb 100644
 --- a/widget/uikit/nsWindow.mm
 +++ b/widget/uikit/nsWindow.mm
 @@ -11,9 +11,10 @@
@@ -1509,8 +1509,8 @@ index ba3fc1051a01..09a0186d09bf 100644
  - (void)close {
    if (mWindow) {
      if (IOSView* iosView = mWindow->GetIOSView()) {
-@@ -1260,6 +1862,10 @@ nsresult IOSView::GetInitData(JSContext* aCx,
-     mOuterWindow = nullptr;
+@@ -1260,6 +1857,10 @@ - (void)close {
+     outerWin->ForceClose();
    }
  }
 +

@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/apz/util/APZCCallbackHelper.cpp b/gfx/layers/apz/util/APZCCallbackHelper.cpp
-index 2f77c6ca1893..b8e514dc0806 100644
+index 3fd7f46926d7..f0cd3094a439 100644
 --- a/gfx/layers/apz/util/APZCCallbackHelper.cpp
 +++ b/gfx/layers/apz/util/APZCCallbackHelper.cpp
 @@ -30,6 +30,8 @@

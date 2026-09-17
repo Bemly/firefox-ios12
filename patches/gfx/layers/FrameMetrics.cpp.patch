@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/FrameMetrics.cpp b/gfx/layers/FrameMetrics.cpp
-index 64b40a5c7080..c49ecef8bc36 100644
+index f3b21611cb92..724bd9ba6ffa 100644
 --- a/gfx/layers/FrameMetrics.cpp
 +++ b/gfx/layers/FrameMetrics.cpp
 @@ -88,7 +88,7 @@ void FrameMetrics::RecalculateLayoutViewportOffset(

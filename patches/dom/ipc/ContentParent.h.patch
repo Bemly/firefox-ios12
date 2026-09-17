@@ -1,8 +1,8 @@
 diff --git a/dom/ipc/ContentParent.h b/dom/ipc/ContentParent.h
-index 44097bbffd66..1b53868007a5 100644
+index 1f7b097d0022..8756c25e4543 100644
 --- a/dom/ipc/ContentParent.h
 +++ b/dom/ipc/ContentParent.h
-@@ -731,6 +731,9 @@ class ContentParent final : public PContentParent,
+@@ -732,6 +732,9 @@ class ContentParent final : public PContentParent,
  
    bool WasA11yEverActivated() const { return mWasA11yEverActivated; }
  

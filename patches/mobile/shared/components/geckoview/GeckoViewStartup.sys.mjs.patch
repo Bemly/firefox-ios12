@@ -1,5 +1,5 @@
 diff --git a/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs b/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
-index d58e0276979b..955f99246337 100644
+index fb883b8efb99..dbf551be4ba5 100644
 --- a/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
 +++ b/mobile/shared/components/geckoview/GeckoViewStartup.sys.mjs
 @@ -178,6 +178,11 @@ export class GeckoViewStartup {

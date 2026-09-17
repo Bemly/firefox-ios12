@@ -1,8 +1,8 @@
 diff --git a/dom/ipc/PBrowser.ipdl b/dom/ipc/PBrowser.ipdl
-index 2be0054f75be..d23c251bb829 100644
+index 202bcbdde0e3..93110dfca1fd 100644
 --- a/dom/ipc/PBrowser.ipdl
 +++ b/dom/ipc/PBrowser.ipdl
-@@ -44,6 +44,7 @@ include "mozilla/ipc/TransportSecurityInfoUtils.h";
+@@ -41,6 +41,7 @@ include "mozilla/ipc/TransportSecurityInfoUtils.h";
  include "mozilla/ipc/URIUtils.h";
  
  using struct nsID from "nsID.h";
@@ -10,7 +10,7 @@ index 2be0054f75be..d23c251bb829 100644
  using mozilla::contentanalysis::StringHashSet from "mozilla/contentanalysis/ContentAnalysisIPCTypes.h";
  using mozilla::gfx::Matrix4x4 from "mozilla/gfx/Matrix.h";
  using mozilla::gfx::SurfaceFormat from "mozilla/gfx/Types.h";
-@@ -403,6 +404,7 @@ parent:
+@@ -383,6 +384,7 @@ parent:
                      IPCImage? customCursor,
                      float resolutionX, float resolutionY,
                      uint32_t hotspotX, uint32_t hotspotY, bool force);

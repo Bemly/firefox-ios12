@@ -1,5 +1,5 @@
 diff --git a/layout/base/nsPresContext.h b/layout/base/nsPresContext.h
-index 5f27c288fd02..50d5f0f68734 100644
+index 5cdf0f1aa932..acfac493164d 100644
 --- a/layout/base/nsPresContext.h
 +++ b/layout/base/nsPresContext.h
 @@ -441,12 +441,10 @@ class nsPresContext : public nsISupports,

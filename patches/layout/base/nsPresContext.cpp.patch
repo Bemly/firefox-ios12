@@ -1,5 +1,5 @@
 diff --git a/layout/base/nsPresContext.cpp b/layout/base/nsPresContext.cpp
-index e9f3ce4be656..2cfab817f737 100644
+index 02a771ca9348..fdcdd252e09a 100644
 --- a/layout/base/nsPresContext.cpp
 +++ b/layout/base/nsPresContext.cpp
 @@ -714,7 +714,7 @@ void nsPresContext::Init(nsDeviceContext* aDeviceContext) {
@@ -11,7 +11,7 @@ index e9f3ce4be656..2cfab817f737 100644
    if (IsRootContentDocumentCrossProcess()) {
      if (BrowserChild* browserChild = BrowserChild::GetFrom(GetDocShell())) {
        if (MOZ_LIKELY(!Preferences::HasUserValue(
-@@ -2903,13 +2903,16 @@ void nsPresContext::SetDynamicToolbarMaxHeight(ScreenIntCoord aHeight) {
+@@ -2904,13 +2904,16 @@ void nsPresContext::SetDynamicToolbarMaxHeight(ScreenIntCoord aHeight) {
    AdjustSizeForViewportUnits();
  
    if (RefPtr<mozilla::PresShell> presShell = mPresShell) {
@@ -35,7 +35,7 @@ index e9f3ce4be656..2cfab817f737 100644
    }
  }
  
-@@ -2959,15 +2962,13 @@ void nsPresContext::UpdateDynamicToolbarOffset(ScreenIntCoord aOffset) {
+@@ -2960,15 +2963,13 @@ void nsPresContext::UpdateDynamicToolbarOffset(ScreenIntCoord aOffset) {
      return;
    }
  
@@ -57,7 +57,7 @@ index e9f3ce4be656..2cfab817f737 100644
      mPresShell->MarkStickyFramesForReflow();
      mPresShell->ScheduleResizeEventIfNeeded(
          PresShell::ResizeEventKind::Regular);
-@@ -3050,19 +3051,18 @@ nscoord nsPresContext::GetBimodalDynamicToolbarHeightInAppUnits() const {
+@@ -3051,19 +3052,18 @@ nscoord nsPresContext::GetBimodalDynamicToolbarHeightInAppUnits() const {
               : 0;
  }
  

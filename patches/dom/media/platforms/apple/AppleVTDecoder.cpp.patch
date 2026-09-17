@@ -1,5 +1,5 @@
 diff --git a/dom/media/platforms/apple/AppleVTDecoder.cpp b/dom/media/platforms/apple/AppleVTDecoder.cpp
-index 6ddb554a02cc..f3d8c35a9bf6 100644
+index 6881412889f5..d6d0d8f31858 100644
 --- a/dom/media/platforms/apple/AppleVTDecoder.cpp
 +++ b/dom/media/platforms/apple/AppleVTDecoder.cpp
 @@ -6,6 +6,9 @@
@@ -12,7 +12,7 @@ index 6ddb554a02cc..f3d8c35a9bf6 100644
  
  #include <limits>
  
-@@ -64,7 +67,13 @@ AppleVTDecoder::AppleVTDecoder(const VideoInfo& aConfig,
+@@ -65,7 +68,13 @@ AppleVTDecoder::AppleVTDecoder(const VideoInfo& aConfig,
        mKnowsCompositor(aKnowsCompositor)
  #ifdef MOZ_WIDGET_UIKIT
        ,
@@ -26,20 +26,18 @@ index 6ddb554a02cc..f3d8c35a9bf6 100644
  #else
        ,
        mUseSoftwareImages(aKnowsCompositor &&
-@@ -602,7 +611,9 @@ void AppleVTDecoder::OutputFrame(CVPixelBufferRef aImage,
-     // Attach a CGColorSpace built from the relevant color information.
-     // The buffer may otherwise have a non-matching colorspace.
-     CFStringRef colorSpaceName = nullptr;
--    if (__builtin_available(macOS 11.0, *)) {
-+    // NOTE: __builtin_available(macOS ...) is constantly true on iOS;
-+    // always spell out the iOS version too.
-+    if (__builtin_available(iOS 14.0, macOS 11.0, *)) {
-       if (mTransferFunction == gfx::TransferFunction::PQ) {
-         colorSpaceName = kCGColorSpaceITUR_2100_PQ;
-       } else if (mTransferFunction == gfx::TransferFunction::HLG) {
-@@ -744,10 +755,17 @@ MediaResult AppleVTDecoder::InitializeSession() {
-   }
+@@ -435,7 +435,9 @@
  
+ CFStringRef CGColorSpaceNameForFrame(gfx::TransferFunction aTransferFunction,
+                                      gfx::ColorSpace2 aColorPrimaries) {
+-  if (__builtin_available(macOS 11.0, *)) {
++  // NOTE: __builtin_available(macOS ...) is constantly true on iOS;
++  // always spell out the iOS version too.
++  if (__builtin_available(iOS 14.0, macOS 11.0, *)) {
+     if (aTransferFunction == gfx::TransferFunction::PQ) {
+       return kCGColorSpaceITUR_2100_PQ;
+     }
+@@ -766,7 +766,14 @@ MediaResult AppleVTDecoder::InitializeSession() {
    CFBooleanRef isUsingHW = nullptr;
 +#pragma clang diagnostic push
 +#pragma clang diagnostic ignored "-Wunguarded-availability-new"
@@ -50,14 +48,11 @@ index 6ddb554a02cc..f3d8c35a9bf6 100644
        mSession,
        kVTDecompressionPropertyKey_UsingHardwareAcceleratedVideoDecoder,
        kCFAllocatorDefault, &isUsingHW);
+   if (rv == noErr) {
 +#pragma clang diagnostic pop
 +
-   if (rv == noErr) {
      mIsHardwareAccelerated = isUsingHW == kCFBooleanTrue;
-     LOG("AppleVTDecoder: {} hardware accelerated decoding",
-@@ -805,8 +823,15 @@ CFDictionaryRef AppleVTDecoder::CreateDecoderExtensions() {
- }
- 
+@@ -827,4 +827,9 @@ CFDictionaryRef AppleVTDecoder::CreateDecoderSpecification() {
  CFDictionaryRef AppleVTDecoder::CreateDecoderSpecification() {
 +#pragma clang diagnostic push
 +#pragma clang diagnostic ignored "-Wunguarded-availability-new"
@@ -66,12 +61,8 @@ index 6ddb554a02cc..f3d8c35a9bf6 100644
 +  // create fine on device 12.5.8).
    const void* specKeys[] = {
        kVTVideoDecoderSpecification_EnableHardwareAcceleratedVideoDecoder};
-+#pragma clang diagnostic pop
-+
    const void* specValues[1];
-   if (gfx::gfxVars::CanUseHardwareVideoDecoding()) {
-     specValues[0] = kCFBooleanTrue;
-@@ -861,9 +886,15 @@ CFDictionaryRef AppleVTDecoder::CreateOutputConfiguration() {
+@@ -881,9 +890,15 @@ CFDictionaryRef AppleVTDecoder::CreateOutputConfiguration() {
        std::size(IOSurfaceKeys), &kCFTypeDictionaryKeyCallBacks,
        &kCFTypeDictionaryValueCallBacks));
  

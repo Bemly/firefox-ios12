@@ -1,8 +1,8 @@
 diff --git a/layout/painting/nsDisplayList.cpp b/layout/painting/nsDisplayList.cpp
-index 9aed0b184131..fb1163f0ff51 100644
+index 91e5e5a833bb..933b0eb0511b 100644
 --- a/layout/painting/nsDisplayList.cpp
 +++ b/layout/painting/nsDisplayList.cpp
-@@ -6174,6 +6174,21 @@ nsDisplayAsyncZoom::nsDisplayAsyncZoom(
+@@ -6193,6 +6193,21 @@ nsDisplayAsyncZoom::nsDisplayAsyncZoom(
    MOZ_COUNT_CTOR(nsDisplayAsyncZoom);
  }
  
