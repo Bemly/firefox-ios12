@@ -64,6 +64,9 @@ if #unavailable(iOS 13.0) {
         window.rootViewController = BrowserViewController()
         window.makeKeyAndVisible()
         legacyRootWindow = window
+        // ZY 检测+引导层：常驻监测断网是否权限所致，被拒自动弹自制提示（公开 API，无审核风险）
+        ReynardNetworkAccessibility.start()
+        ReynardNetworkAccessibility.setAlertEnable(true)
     }
 }
 
