@@ -63,5 +63,8 @@ enum RuntimePreferences {
         
         // Remote Debugging
         RemoteDebuggingSettingController.applyRemoteDebugging()
+
+        // Hardware WebRender (Developer opt-in, restart required)
+        HardwareWebRenderPolicyController.applyHardwareWebRender()
     }
 }

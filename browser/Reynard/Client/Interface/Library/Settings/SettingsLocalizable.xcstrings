@@ -22456,6 +22456,116 @@
           }
         }
       }
+    },
+    "Compositing" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Compositing"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "合成"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "合成"
+          }
+        }
+      }
+    },
+    "Hardware WebRender" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Hardware WebRender"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "硬件 WebRender"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "硬體 WebRender"
+          }
+        }
+      }
+    },
+    "Renders web content with the GPU. Takes effect after restarting the app." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Renders web content with the GPU. Takes effect after restarting the app."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "用 GPU 渲染网页内容，重启 App 后生效。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "用 GPU 轉譯網頁內容，重新啟動 App 後生效。"
+          }
+        }
+      }
+    },
+    "Animation CSS (on-device)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Animation CSS (on-device)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "CSS 动画（本机）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "CSS 動畫（本機）"
+          }
+        }
+      }
+    },
+    "WebGL Animation (on-device)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "WebGL Animation (on-device)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "WebGL 动画（本机）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "WebGL 動畫（本機）"
+          }
+        }
+      }
     }
   },
   "version" : "1.2"

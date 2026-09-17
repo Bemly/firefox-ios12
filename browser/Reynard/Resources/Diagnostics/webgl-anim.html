@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>REYNARD WEBGL ANIM</title>
+<style>
+  html,body{margin:0;background:#000;color:#0f0;font:700 20px Menlo,monospace}
+  #hud{padding:6px 10px}
+  canvas{display:block;width:100%;height:70vh}
+</style></head>
+<body>
+<div id="hud">BOOTING...</div>
+<canvas id="cv" width="600" height="600"></canvas>
+<script>
+"use strict";
+var hud = document.getElementById("hud");
+var cv = document.getElementById("cv");
+var gl = cv.getContext("webgl", {failIfMajorPerformanceCaveat: false});
+if (!gl) { hud.textContent = "WEBGL NULL"; }
+else {
+  var vs = "attribute vec2 p; uniform float t; varying vec3 c;" +
+    "void main(){ float a=t; mat2 r=mat2(cos(a),-sin(a),sin(a),cos(a));" +
+    "vec2 q=r*p; c=vec3(p.x*0.5+0.5,p.y*0.5+0.5,0.5+0.5*sin(t));" +
+    "gl_Position=vec4(q,0.0,1.0); }";
+  var fs = "precision mediump float; varying vec3 c;" +
+    "void main(){ gl_FragColor=vec4(c,1.0); }";
+  function sh(t, s) { var o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); return o; }
+  var pr = gl.createProgram();
+  gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs));
+  gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(pr);
+  gl.useProgram(pr);
+  var buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0,0.8, -0.8,-0.6, 0.8,-0.6]), gl.STATIC_DRAW);
+  var loc = gl.getAttribLocation(pr, "p");
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  var tloc = gl.getUniformLocation(pr, "t");
+  var frames = 0, t0 = Date.now();
+  function frame() {
+    var t = (Date.now() - t0) / 1000;
+    gl.viewport(0, 0, cv.width, cv.height);
+    gl.clearColor(0.05, 0.05, 0.1, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.uniform1f(tloc, t);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    frames++;
+    if ((frames & 15) === 0) {
+      var fps = frames / t;
+      hud.textContent = "WEBGL-ANIM frames=" + frames + " fps=" + fps.toFixed(1) +
+        " renderer=" + gl.getParameter(gl.VERSION);
+    }
+    window.requestAnimationFrame(frame);
+  }
+  window.requestAnimationFrame(frame);
+}
+</script></body></html>
