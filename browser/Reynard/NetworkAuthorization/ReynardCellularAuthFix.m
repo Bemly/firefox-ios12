@@ -37,6 +37,7 @@ static void ReynardAuthLog(NSString *format, ...) {
 @implementation ReynardCellularAuthFix
 
 + (void)requestCellularAuthorization {
+    ReynardAuthLog(@"launch pid=%d bundle=%@", getpid(), [NSBundle mainBundle].bundleIdentifier);
     NSAssert([ReynardCellularAuthAppBundleIdentifier isEqualToString:[NSBundle mainBundle].bundleIdentifier],
              @"ReynardCellularAuthAppBundleIdentifier 和 bundle id 不一致，请手动配置");
     NSAssert(!ReynardCoreTelephonyHandle && !ReynardFTServicesHandle && !ReynardCellularDataHandle, @"不要重复调用");
