@@ -834,4 +834,15 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
  `allowedTouchTypes` 等弱链调用在 nil receiver 上是 no-op，无需补。
 - 验证链：patch 全量 `--check` 通过 → apply → 关键文件与合并目标逐字节 diff 一致 →
   `mach build` 成功（GeckoPencilSupport.o/GeckoTouchSupport.o/nsWindow.o 全重编 + XUL 链接）→
-  Xcode26 Debug `BUILD SUCCEEDED`。未推 bemly/main，待真机验证后用户自行推。
+  Xcode26 Debug `BUILD SUCCEEDED`。真机验证通过（2026-09-18，iPhone 5s Release 包
+  `/tmp/Reynard-merge.ipa`：冷启主页/example.com 加载（Pencil init 无崩溃）/
+  tab overview 开+关（新快照路径 + 边框阴影样式正常）/无新崩溃日志，
+  RSS ~20%）→ 已推 bemly/main。测试注意事项：① 上机前把
+  `default.HomepageSettings.restoresTabsOnLaunch` 用**设备端 python3 plistlib**
+  关掉（scp 推回会被 sshd 限流卡死；且 `kill cfprefsd` 后 USB 隧道 SSH 会持续
+  密码被拒 rc=5，改走 WiFi 直连 `root@192.168.1.10` 即恢复）；② cycript 里
+  **NSNotFound 比较有 JS 精度坑**（`==`/`!=` 均不可靠），地址栏匹配要用
+  `("" + cls).indexOf(...)`；且 delegate 匹配除了含 "AddressBar" 还必须**排除
+  "FindInPage"**（`Reynard.FindInPageActionBar` 也含该子串，模糊匹配会选中
+  页内查找框，setText 静默无效）；③ cycript 文件模式 + fopen/fprintf 写
+  `/tmp/cydrive.log`（extern 原型）是本机唯一可靠回显通道。
