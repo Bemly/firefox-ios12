@@ -486,9 +486,41 @@ final class BrowserPreferences {
         }
     }
     
+    // MARK: - Network Proxy
+    // network.proxy.type: 0 = direct, 1 = manual, 5 = system. Raw values mirror Gecko.
+    struct ProxyPreferences {
+        static var mode: NetworkProxyMode {
+            get {
+                let rawValue = prefs.integer(forSetting: "NetworkProxy", key: "mode")
+                return NetworkProxyMode(rawValue: rawValue) ?? .direct
+            }
+            set {
+                prefs.set(newValue.rawValue, forSetting: "NetworkProxy", key: "mode")
+            }
+        }
+
+        static var customHost: String {
+            get {
+                return prefs.string(forSetting: "NetworkProxy", key: "customHost") ?? ""
+            }
+            set {
+                prefs.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forSetting: "NetworkProxy", key: "customHost")
+            }
+        }
+
+        static var customPort: Int {
+            get {
+                let port = prefs.integer(forSetting: "NetworkProxy", key: "customPort")
+                return port > 0 ? port : 8080
+            }
+            set {
+                prefs.set(newValue, forSetting: "NetworkProxy", key: "customPort")
+            }
+        }
+    }
+
     // MARK: - Tracking Protection
-    struct TrackingProtectionPreferences {
-        static var level: TrackingProtectionLevel {
+    struct TrackingProtectionPreferences {        static var level: TrackingProtectionLevel {
             get {
                 let rawValue = prefs.string(forSetting: "TrackingProtection", key: "enhancedTrackingProtectionLevel") ?? TrackingProtectionLevel.standard.rawValue
                 return TrackingProtectionLevel(rawValue: rawValue) ?? .standard

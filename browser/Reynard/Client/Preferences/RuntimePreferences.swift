@@ -57,6 +57,9 @@ enum RuntimePreferences {
         // Tracking Protection
         TrackingProtectionPolicyController.applyEnhancedTrackingProtection()
         TrackingProtectionPolicyController.applyGlobalPrivacyControl()
+
+        // Network Proxy
+        NetworkProxyPolicyController.applyProxy()
         
         // Remote Debugging
         RemoteDebuggingSettingController.applyRemoteDebugging()

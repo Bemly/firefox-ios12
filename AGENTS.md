@@ -13,20 +13,14 @@
 - iPad mini 2 (`iPad4,4`), iOS 12.5.8 (16H88)，checkra1n 越狱
   （`/var/checkra1n.dmg` + dropbear；Cydia + Sileo + Substrate 共存，loader app 已删）
 - 机上已装: AppSync Unified 102.0 / OpenSSH 8.4 / frida-server 17.17.0 (开机自启)
-- `/usr/local/bin/debugserver12`（iPad 上，2026-09-15 实测在）：从 Xcode15 的 12.4 DDI 提取 (arm64+arm64e)，已 `ldid -S` 签调试权限
+- `/usr/local/bin/debugserver12`：从 Xcode15 的 12.4 DDI 提取 (arm64+arm64e)，已 `ldid -S` 签调试权限
   (`com.apple.springboard.debugapplications` + `run-unsigned-code` + `get-task-allow` + `task_for_pid-allow`)。
-  注意 iPhone 5s 上没有这个文件（2026-09-17 实测 `/usr/local/bin/` 为空），要在 iPhone 上断点需重走一遍提取流程。
+  没有的设备自动从`/Applications/Xcode15.app`提取出`debugserver12`装上。
 - SSH root 口令：`alpine`（越狱默认）。用法：`SSHPASS='alpine' sshpass -e ssh -p 2222 ...`。
 - 本机 sudo 口令：`2328`，需提权时用（例如 `echo '2328' | sudo -S ...`）。
 - iPhone 5s (`iPhone6,2`), iOS 12.5.8 (16H88)，checkra1n 越狱（2026-09-17 加入，第二台真机）：
   WiFi SSH 直连 `root@192.168.1.10`；USB iproxy 用 **2233**（`iproxy 2233:22 -u <UDID>`），
   2222 留给 iPad 可并存。两台同 iOS 版本，同一 IPA 可互换验证。
-- iPhone 与 iPad 环境差异（2026-09-17 实测，已按装机后状态修正）：仍无 apt-get/plutil/pkill/lsof；
-  已 dpkg 手装 libactivator 四件套（rocketbootstrap/flipswitch/preferenceloader/libactivator，
-  deb 从 `https://rpetri.ch/repo/debs/` 拉，依赖也在同源）+ network-cmds（`/sbin/netstat`，
-  从设备 Sileo 已刷新的 `/var/lib/apt/lists/*.plist` 里查 `Filename:` 定位 deb URL，BigBoss 索引
-  里搜不到该包定义），另有机上自带 `python3`。设备截图即 `activator send libactivator.system.take-screenshot`。
-  iPhone 上 uiopen 拉不起锁屏状态的 App（报错无进程），自动化前先亮屏解锁。
 
 ## iPhone 5s 排障实录（2026-09-17，"所有网页打不开 + 三个点闪退"，Debug 包 /tmp/Reynard-debug-fix1.ipa 验证通过）
 
