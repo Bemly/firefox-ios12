@@ -784,3 +784,13 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
   全量重打成功。注意 C++/Rust hunks 要下次 `./mach build` 才进 dist（当前 dist 仍是旧的）；
   `.sys.mjs`/manifest 类文本文件下次 Xcode 构建经 rsync 即生效。
   `reset --hard` 前必先对 dirty 树与 `patches/` 覆盖率（本次 349 全对上，含一个删除型 patch）。
+
+## 上游合并实录（分支 `merge/upstream-156`，上游 5d08f38→2e383ee：引擎 156）
+
+- 单提交：submodule 155→156 + 80 个 patch 同步。冲突 4 文件（iOS 适配与同步重叠）：
+  nsDocShell 取上游头（纯行号漂移）；nsWindow 取上游头（PiP hunk 内容一致）；
+  CoreTextFontList = 上游文件 + 我们的 `ActivateFontsFromDir` hunk（mRequiresAAT 被上游收编了）；
+  AppleVTDecoder 三个 hunk 按 156 重锚（`CGColorSpaceNameForFrame` 被上游抽出、`__builtin_available` 双写照跟）。
+- 血泪两条：① 解冲突别手写 hunk（counts/行尾空格必错），用 `diff -U` 从 pristine 生成；
+  ② 全量 `--check` 过之前不要 `reset --hard` 工作树（本次 Pascal 式逐个修：160→156 行号全变）。
+- 本次 submodule 缺 156 tag（`apply-patches.sh` 拒跑）：`git -C engine/firefox fetch origin tag FIREFOX_156_0_RELEASE`。
