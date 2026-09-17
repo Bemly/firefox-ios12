@@ -13,18 +13,19 @@
 - iPad mini 2 (`iPad4,4`), iOS 12.5.8 (16H88)，checkra1n 越狱
   （`/var/checkra1n.dmg` + dropbear；Cydia + Sileo + Substrate 共存，loader app 已删）
 - 机上已装: AppSync Unified 102.0 / OpenSSH 8.4 / frida-server 17.17.0 (开机自启)
-- `/usr/local/bin/debugserver12`: 从 Xcode15 的 12.4 DDI 提取 (arm64+arm64e)，已 `ldid -S` 签调试权限
-  (`com.apple.springboard.debugapplications` + `run-unsigned-code` + `get-task-allow` + `task_for_pid-allow`)
+- `/usr/local/bin/debugserver12`（iPad 上，2026-09-15 实测在）：从 Xcode15 的 12.4 DDI 提取 (arm64+arm64e)，已 `ldid -S` 签调试权限
+  (`com.apple.springboard.debugapplications` + `run-unsigned-code` + `get-task-allow` + `task_for_pid-allow`)。
+  注意 iPhone 5s 上没有这个文件（2026-09-17 实测 `/usr/local/bin/` 为空），要在 iPhone 上断点需重走一遍提取流程。
 - SSH root 口令：`alpine`（越狱默认）。用法：`SSHPASS='alpine' sshpass -e ssh -p 2222 ...`。
 - 本机 sudo 口令：`2328`，需提权时用（例如 `echo '2328' | sudo -S ...`）。
 - iPhone 5s (`iPhone6,2`), iOS 12.5.8 (16H88)，checkra1n 越狱（2026-09-17 加入，第二台真机）：
   WiFi SSH 直连 `root@192.168.1.10`；USB iproxy 用 **2233**（`iproxy 2233:22 -u <UDID>`），
   2222 留给 iPad 可并存。两台同 iOS 版本，同一 IPA 可互换验证。
-- iPhone 与 iPad 环境差异（2026-09-17 实测）：无 apt-get/plutil/netstat/pkill/Activator；
+- iPhone 与 iPad 环境差异（2026-09-17 实测，已按装机后状态修正）：仍无 apt-get/plutil/pkill/lsof；
   已 dpkg 手装 libactivator 四件套（rocketbootstrap/flipswitch/preferenceloader/libactivator，
   deb 从 `https://rpetri.ch/repo/debs/` 拉，依赖也在同源）+ network-cmds（`/sbin/netstat`，
   从设备 Sileo 已刷新的 `/var/lib/apt/lists/*.plist` 里查 `Filename:` 定位 deb URL，BigBoss 索引
-  里搜不到该包定义）。设备截图即 `activator send libactivator.system.take-screenshot`。
+  里搜不到该包定义），另有机上自带 `python3`。设备截图即 `activator send libactivator.system.take-screenshot`。
   iPhone 上 uiopen 拉不起锁屏状态的 App（报错无进程），自动化前先亮屏解锁。
 
 ## iPhone 5s 排障实录（2026-09-17，"所有网页打不开 + 三个点闪退"，Debug 包 /tmp/Reynard-debug-fix1.ipa 验证通过）
@@ -97,9 +98,10 @@
 ## 调试
 
 - 日志：`idevicesyslog`，崩溃：`/var/mobile/Library/Logs/CrashReporter/`。
-- Frida (动态分析首选，server 端已就绪)：Mac 端 `pip install "frida==17.17.0" frida-tools`，
-  然后 `frida-ps -U` / `frida -U -f <bundle-id>`，走 usbmux 不用额外隧道。
-- 真断点 (已端到端验证，2026-09-15 用 main 分支 Debug 包实测通过)：手机
+- Frida：机上 frida-server 17.17.0 在（开机自启），Mac 端 `pip install "frida==17.17.0" frida-tools`。
+  但本轮实测不可靠（`unable to communicate with remote frida-server` 间歇出现，spawn 大进程时必挂），
+  用户已明确要求不用——调试主链路就是 debugserver12 + lldb（26 的），UI 驱动是 cycript（见后文）。
+- 真断点 (已端到端验证，2026-09-15 用 main 分支 Debug 包、iPad 实测通过)：手机
   `/usr/local/bin/debugserver12 0.0.0.0:1234 -a <pid>`，Mac `iproxy 1234:1234`，再用
   **26 的 lldb**（15 的 lldb-1500 会在 `target create` 本工程二进制时崩溃，无 target 裸连才可用）：
   `platform select remote-ios` → `target create <本地.app/二进制>` → `process connect connect://127.0.0.1:1234` →
@@ -113,11 +115,11 @@
 - 子模块刚 `update/reset` 后必须先 `./tools/development/apply-patches.sh`，否则
   `dist/include` 里链回源码的软链是断的（如 `GeckoViewRuntimeSupport.h`），Swift 编译报
   `cannot find type 'DeviceOSVersion' in scope`。打完补丁子模块变脏属正常（工作树补丁流），不要提交。
-- 本机 0 个有效签名证书，`AddGecko.sh` 里写死的 `Apple Development` 会挂。
-  不改仓库文件的做法：`CODE_SIGNING_ALLOWED=NO` + PATH 里放 `codesign` 垫片，
-  把 `--sign "Apple Development"` 映射成 `--sign -`（ad-hoc，见 `/tmp/fakebin/codesign`，重启会丢）。
+- `AddGecko.sh` 已自带 ad-hoc fallback（`SIGN_IDENTITY` 取 `EXPANDED_CODE_SIGN_IDENTITY`，
+  `CODE_SIGNING_ALLOWED=NO` 或空时自动用 `-`），不再需要 `/tmp/fakebin/codesign` 垫片。
+  pbxproj 里四处 `CODE_SIGN_IDENTITY = "Apple Development"` 在 `CODE_SIGNING_ALLOWED=NO` 时不生效，不用管。
 - Debug 构建命令（Xcode 26.6，不动 select）：
-  `PATH=/tmp/fakebin:$PATH DEVELOPER_DIR=/Applications/Xcode26.app/... xcodebuild build
+  `DEVELOPER_DIR=/Applications/Xcode26.app/... xcodebuild build
   -project browser/Reynard.xcodeproj -scheme Reynard -configuration Debug -sdk iphoneos -arch arm64
   CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY="-" -derivedDataPath /tmp/ReynardDD`
 - 装机前 Mac 端 `ldid -S` 重签（AppSync 越狱机可装）：主二进制用
@@ -156,8 +158,8 @@
 
 ## 本地诊断页（设置 About 区版本号上方，2026-09-16 已装机验证）
 
-- 测试页收进仓库 `browser/Reynard/Resources/Diagnostics/`（bench/video/video240/
-  anim/hidden/test.html + 两份 mp4，共 ~7MB），设置 About 区版本号上方 4 行入口
+- 测试页收进仓库 `browser/Reynard/Resources/Diagnostics/`（anim/bench/hidden/test/video/video240 共 6 页
+  + 两份 mp4，扁平存放无子目录），高级 > Developer 下 4 行入口
   （JIT Bench / Video 720p / Video Drops 240p / Animation Composite），点开走
   `file://` 直接加载包内页。验证：`IMG_0187` 点行即开 tab，
   `RUNS[78,66,67,67]` warmup 形状 = Release 下主进程 JIT 正常。
@@ -235,8 +237,8 @@ web 内容（非 system principal）eval 直接放行，与子进程同等对待
 搜索结果页若出 reCAPTCHA"unusual traffic"是 Google 对出口 IP/UA 的服务端
 风控（设备挂 VPN 时常见），不是浏览器问题。
 
-附带发现（真 bug，另案修）：`NavigationDelegate` 的 `.onLoadError` 是空实现，
-加载报错会被吞；`reynard://open?url=` 在 iOS 12 上根本没接（真 delegate 是引擎的
+附带发现（真 bug，`NavigationDelegate` 的 `.onLoadError` 原来是空实现会吞加载报错，
+现已改为 `NSLog` 探针；`reynard://open?url=` 在 iOS 12 上根本没接（真 delegate 是引擎的
 AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 openURL 处理）。
 
 ## JIT 主进程实验实录（2026-09-16 凌晨，分支 local/jit-main-process-a7）
@@ -300,12 +302,13 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   `/var/mobile/Media/DCIM/100APPLE/IMG_*.PNG` → `scp -O -P 2222` 取回看。
   `idevicescreenshot` 在本机不可用（要挂 DeveloperDiskImage，12.5.8 没有对应镜像）。
 - 驱动地址栏加载（cycript，无需点击）：机上有 `/usr/bin/cycript`。
-  找输入框：遍历 `[UIApp keyWindow]` 找 `UITextField`（整个 App 就一个，placeholder
-  是 "Search or enter website name"）；设值后调
+  找输入框：遍历 `[UIApp keyWindow]` 找 `UITextField`（有两个：地址栏 + 隐藏的页内查找框，
+  必须按 delegate 含 `AddressBar` 挑，见下）；设值后调
   `[delegate textFieldShouldReturn:field]`（delegate 是 `Reynard.AddressBar`），
   参考 `/tmp/drive.cy`（重启会丢，用前重建）。键盘弹没弹出不影响。
 - `uiopen <bundle-id>` 可冷启动；`uiopen 'reynard://...'` 在 iOS 12 上无效（见上）。
-- 机上无 `pkill`/`lsof`/`python3`/`nc`，有 `curl`/`wget`/`sqlite3`/`ldid`/`activator`/`uiopen`/`cycript`。
+- 机上无 `pkill`/`lsof`（两台皆无；iPad 存量描述），有 `curl`/`wget`/`sqlite3`/`ldid`/`activator`/`uiopen`/`cycript`；
+  另 iPhone 5s 实测还有 `python3` + `/sbin/netstat`（iPad 上没有）。
 
 ## 坑位速查
 
@@ -329,9 +332,8 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   无 alpha，`assets/logo.png` 保留透明原样给 README 用。
 - 引擎 C++ 改动必须 `./mach build` 重编。单文件/少文件改动只要 ~30 秒（1-2 个对象 +
   链 XUL）；约 50 分钟的量级（603 对象 + gkrust）只出现在大规模改动或动
-  StaticPrefList.yaml 这类全局生成头时。objdir 配置硬编码了已消失的
-  `/Applications/Xcode-beta.app`（host 报 `stdio.h file not found` 即此病），解法
-  `sudo ln -s Xcode.app Xcode-beta.app`（只补兼容软链，不动 xcode-select）。
+  StaticPrefList.yaml 这类全局生成头时。`.mozconfig` 现直接 pin `/Applications/Xcode26.app`
+ （旧文里的 `/Applications/Xcode-beta.app` 兼容软链已不需要，机上也不存在）。
 - XUL 链接报 `__isPlatformVersionAtLeast` 未定义：移植的 `@available(iOS 13,*)`
   兼容代码（`NativeLayerCA.mm`/`nsLookAndFeel.mm` 等）会被 clang 降为该 compiler-rt
   符号，而 mozbuild clang 自带 runtime 没有 iOS 切片。`build-gecko.sh` 已自动把
@@ -394,7 +396,7 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
 - user.js 改偏好无需重编（`user_pref("network.http.spdy.enabled", false);` 这类），
   改完杀进程重进即生效；注意 Firefox 退出时会重写 prefs.js，活着的时候别直接改 prefs.js。
 - `launchctl setenv MOZ_LOG...` 对 SpringBoard 起的 App 不生效，别试了。
-- profile 在 `/var/mobile/Library/Application Support/.mozilla/firefox/ylc3xczg.default/`；
+- profile 在 `/var/mobile/Library/Application Support/.mozilla/firefox/u51lzeog.default/`；
   places.sqlite 可能是 0 字节（本移植历史记录没启用），别拿它当判据。
 - 状态确认三件套：`ps` 看 pid/CPU（转圈≈在干活，0.0%≈卡死）、`netstat -an` 看连接及
   Send-Q/Recv-Q、`ls -lt .../CrashReporter/` 看新崩溃（`0xdead10cc` 是后台握锁被杀，
@@ -402,7 +404,7 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
 
 ## 媒体/视频现状（2026-09-16 实测）
 
-- **视频能放**：本地 720p30 H.264+AAC mp4 全屏播放成功（`MOZ_APPLEMEDIA=1`，
+- **视频能放**：本地 720p30 H.264+AAC mp4 全屏播放成功（
   `AppleDecoderModule` 已注册，ffvpx 软解兜底也在），240p 丢帧约 4%。
 - **但没有可用的硬件加速**：播放时 app CPU 40–95%（720p）/22–65%（240p）；
   纯 CSS 全屏动画（只有合成、无解码）CPU 也有 28–46% → 合成端是 **CPU 软合成**
@@ -425,10 +427,11 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   iOS 12 会拒装整个包）。2026-09-16 已验证：可装机 + 网页正常渲染（子进程能起）。
 - Swift 并发运行时（历史教训）：光删 `async/await` 不够，`SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor`
   + `@MainActor` 会让编译器链接 `libswift_Concurrency.dylib`（最低 iOS 13），iOS 12 上
-  dyld 直接启动崩溃。pbxproj 四处配置已改为 `nonisolated`/`NO`，全仓无 `@MainActor`。
+  dyld 直接启动崩溃。pbxproj 四处配置已改为 `nonisolated`/`NO`，编译目标内无 `@MainActor`
+  （`ThirdParty/BlurUIKit` 内两文件仍有注解，但未编入 target，无害）。
   合并上游代码时凡见 `async/Task/@MainActor` 一律手工 port 成 completion 风格。
 - 语义色/圆角/材质 [SHIM]：`UICompat.swift` 的 `UIColor.app*`、`UITableView.Style.appGrouped`
-  （`insetGrouped`→`grouped`，26 处）、`CALayer.applyContinuousCornerCurve()`、
+  （`insetGrouped`→`grouped`，调用点已收敛为 shim）、`CALayer.applyContinuousCornerCurve()`、
   `UIColor.appDynamic`（`init(dynamicProvider:)` 回退，取浅色分支）、`appResolved`、
   `UIFont.appMonospacedSystemFont`（Menlo 回退）、`UIStatusBarStyle.compatDarkContent`、
   `UIBlurEffect.Style.appChromeMaterial/appMaterial`（→`.regular`）。
@@ -669,16 +672,17 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
   `BrowsingContext::Commit` 主线程 SIGSEGV（Debug 包，未复现，疑与内存压力下
   tab/BC 拆除有关）；23:16 两份 `___chkstk_darwin` DYLD 崩是**旧 Release 包**
   （build=UNKNOWN，未带 libclang_rt 链接修复）残留，非新问题。
-- 可能的缓解方向（未实施）：user.js 压缓存（image cache
-  `image.mem.max_bytes`、JS GC `javascript.options.mem.*`、WR 纹理缓存），
-  先 `about:memory` 细分再动手；启动恢复风暴同理需做渐进恢复。
+- 可能的缓解方向：image/JS GC 缓存已由上文内存预算 pref（7dc188d）压过一轮，
+  剩下 WR 纹理缓存未动；动手前先 `about:memory` 细分；启动恢复风暴同理需做渐进恢复。
 
-### 启动恢复内存风暴（本次新发现，装置现为关闭状态）
+### 启动恢复内存风暴（重装会重置为默认开，注意）
 
 - `Prefs.HomepageSettings.restoresTabsOnLaunch=true` 时，冷启动恢复上次会话
   的多 tab 会在 1GB 设备上引发内存风暴：实测两次冷启动分别于启动后 ~45s/~9s
   被 jetsam 杀（JetsamEvent-2026-09-17-004242/004637），cycript 都来不及
-  attach。**本机该开关已被关掉**（用户可在设置 > 通用 > 主页 > 启动时 重开）。
+  attach。**注意重装 App 会把该开关重置回默认开**（2026-09-17 实测：重装后
+  `reynard.bemly.moe.plist` 只剩 2 键、无此键即默认 true）。
+  用户可在设置 > 通用 > 主页 > 启动时 重开/关闭。
 - 绕过法（不用重启 App 的进程内改法没用，boolCache）：App 是 platform
   application 不走沙盒容器，UserDefaults 直接落在
   `/var/mobile/Library/Preferences/reynard.bemly.moe.plist`。改法：scp 拉回
@@ -715,7 +719,9 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
 
 ## Git 约定
 
-- `main` 恒等于 `origin/main`，保持干净可编；不要在 main 上堆验证代码。
+- `main` 跟踪 `bemly/main`（公开主线），保持干净可编；推送前先确认与 `bemly/main` 同步。
+  `origin/main` 是上游只读存档，早已分叉，不要以它为基准、不要往它推。
+  不要在 main 上堆验证代码。
 - 2026-09-16 起公开仓库为 https://github.com/Bemly/firefox-ios12（remote `bemly`），
   由 `local/jit-main-process-a7` 强推为 `main`。曾用 filter-branch 剥离上游误提交的
   94MB `browser/Reynard/JIT/RPPairing/libidevice_ffi.a`，但改写 SHA 会切断与上游的
