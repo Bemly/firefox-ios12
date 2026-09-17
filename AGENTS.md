@@ -87,6 +87,26 @@
   usage 库无记录（文档前提“仅未决定有效”被实证）；**ZY 检测+自制提示全通**——
   判定正确且 alert 正常弹出（`IMG_0103`）。此前 zik1 轮的日志混乱系现场污染，
   代码本身无辜。方向：main 只收 ZY，ZIK 留分支作阴性记录。
+
+## Soulghost 自写 policy 根治（2026-09-17，分支 `local/netauth-fresh-bid`，包名 zik2，真机全通）
+
+- 方法（Soulghost 2020-05，iOS 13.5b3 以前有效，12.5.8 在射程内）：
+  给 App 签 `com.apple.CommCenter.fine-grained = [spi,phone,identity,data-usage,
+  data-allowed,data-allowed-write]`（已进 `Reynard.private.entitlements`，分支），
+  调设置 App 自己的写入器 `PSAppDataUsagePolicyCache
+  -setUsagePoliciesForBundle:cellular:wifi:`。ldid 可自签该 ent，系统认（platform binary）。
+- 定位：类在 dyld shared cache 里，不在任何 PrivateFrameworks 磁盘文件里；
+  宿主库不用管——**本进程预加载即有该类**（`preloaded=YES`，Gecko 链的东西顺手带进来的），
+  直接 `NSClassFromString` 可用。selector 经 cache strings 确认。
+- 实测（cycript 进程内调用，参数 `zik2/YES/YES`）：调用成功进程不崩，
+  policy 当场 **1,1→2,2**，**无需杀 nesessionmanager、无需重启**，baidu 首页完整渲染
+  （`IMG_0104`）。usage 双库随后出现 zik2（`bundle_info` 36 行 + `ZPROCESS` 1 行），
+  “有流量→Settings 行出现”链只差用户亲手看一眼设置页。
+- 结论：这才是根治——App 侧可**静默自修**，比 ZIK 弹框、比 CLI 都彻底。
+  下一步：把该调用 bake 进 `ReynardCellularAuthFix`（替掉 ZIK nudge），新 ID 验证
+  “零手动首启即通”，再合 main。
+- 附带双现：装新包名会挤掉旧包名应用（old→nettest、nettest/zik1→zik2 两次，
+  install 列表+container 双确认只剩最新），机制未知（疑 installd 按前缀/同名去重，待验）。
 - **根因二：necko 不认 iOS 系统 WiFi 代理**（HTTP 全局代理也无效，neck 走自家 socket+自家 prefs）：
   无 VPN 时被墙站全死、直连站（baidu）修复根因一后即通。修：设备 profile
   `/var/mobile/Library/Application Support/.mozilla/firefox/*.default/user.js` 加
