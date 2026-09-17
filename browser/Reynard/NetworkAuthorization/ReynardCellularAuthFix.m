@@ -12,6 +12,7 @@
 #import "ReynardCellularAuthFix.h"
 #import <UIKit/UIKit.h>
 #import <dlfcn.h>
+#import <objc/message.h>
 #import <CoreTelephony/CTCellularData.h>
 
 static NSString *const ReynardCellularAuthFixedKey = @"ReynardCellularAuthFixed";
@@ -51,8 +52,7 @@ static void ReynardAuthLog(NSString *format, ...) {
         return;
     }
 
-    ReynardCoreTelephonyHandle = dlopen("/System/Library/Frameworks/CoreTelephony.framework/CoreTelephony", RTLD_LAZY);
-    if (ReynardCoreTelephonyHandle) {
+    ReynardCoreTelephonyHandle = dlopen("/System/Library/Frameworks/CoreTelephony.framework/CoreTelephony", RTLD_LAZY);    if (ReynardCoreTelephonyHandle) {
         // since iOS 7
         CFTypeRef (*connectionCreateOnTargetQueue)(CFAllocatorRef, NSString *, dispatch_queue_t, void*) =
             dlsym(ReynardCoreTelephonyHandle, "_CTServerConnectionCreateOnTargetQueue");
@@ -74,6 +74,30 @@ static void ReynardAuthLog(NSString *format, ...) {
         ReynardAuthLog(@"SetCellularUsagePolicy 已调用 rc=%d", rc);
     } else {
         ReynardAuthLog(@"dlopen CoreTelephony 失败");
+    }
+
+    /* Soulghost 根治（iOS 13.5b3 以前有效）：设置 App 自己的写入器，直接把本包
+     policy 写成允许。需 com.apple.CommCenter.fine-grained ent（已签）。
+     真机实测：1,1→2,2 当场生效，无需杀守护/重启，随后即通。
+     类在本进程预加载即有（preloaded），无需 dlopen。 */
+    Class policyCacheClass = NSClassFromString(@"PSAppDataUsagePolicyCache");
+    if (policyCacheClass && [(id)policyCacheClass respondsToSelector:NSSelectorFromString(@"sharedInstance")]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+        id policyCache = [policyCacheClass performSelector:NSSelectorFromString(@"sharedInstance")];
+#pragma clang diagnostic pop
+        SEL setterSEL = NSSelectorFromString(@"setUsagePoliciesForBundle:cellular:wifi:");
+        if (policyCache && [policyCache respondsToSelector:setterSEL]) {
+            void (*setter)(id, SEL, NSString *, BOOL, BOOL) =
+                (void (*)(id, SEL, NSString *, BOOL, BOOL))objc_msgSend;
+            setter(policyCache, setterSEL, ReynardCellularAuthAppBundleIdentifier, YES, YES);
+            ReynardAuthLog(@"PSAppDataUsagePolicyCache 自写 policy 已调用（bundle=%@）",
+                           ReynardCellularAuthAppBundleIdentifier);
+        } else {
+            ReynardAuthLog(@"PSAppDataUsagePolicyCache 无写入 selector，跳过自修");
+        }
+    } else {
+        ReynardAuthLog(@"PSAppDataUsagePolicyCache 类不可用，跳过自修");
     }
 
     ReynardFTServicesHandle = dlopen("/System/Library/PrivateFrameworks/FTServices.framework/FTServices", RTLD_LAZY);

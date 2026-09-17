@@ -68,11 +68,9 @@
   cycript 驱动 baidu 加载失败（`IMG_0101`；注意是 proxy 错误页——profile 全局
   共享，user.js 代理配置被新包继承），`bundle_info` 无 nettest 记录。
 - 结论：残留策略说（A）死——全新 ID 同样秒拒；“App 没触发”（B）也不准确——
-  拒绝决定在 App 首次启动前、安装时已写死。这条侧载安装路径上系统根本不走
+  拒绝决定在 App 首次启动前、安装时已写死。  这条侧载安装路径上系统根本不走
   首次联网授权，直接默认拒绝。不再追弹窗，治本走 CLI/装机脚本化；
   ZIK 私有触发如要试另起实验。
-- 附带异常：nettest 装机后旧 `reynard.bemly.moe` 从设备消失（install 列表 +
-  container 双确认），机制未知（用户当时在手机上操作，可能手动删的，待认）。
 
 ## ZIK+ZY 双探针干净验证（2026-09-17，分支 `local/netauth-fresh-bid`，包名 zik2）
 
@@ -86,7 +84,7 @@
 - 结论：**ZIK 强制弹框对“安装即拒绝”无效**——无系统弹窗、policy 事后仍 1,1、
   usage 库无记录（文档前提“仅未决定有效”被实证）；**ZY 检测+自制提示全通**——
   判定正确且 alert 正常弹出（`IMG_0103`）。此前 zik1 轮的日志混乱系现场污染，
-  代码本身无辜。方向：main 只收 ZY，ZIK 留分支作阴性记录。
+  代码本身无辜。方向：ZIK+ZY+PS 三者全收进 main（用户拍板）。
 
 ## Soulghost 自写 policy 根治（2026-09-17，分支 `local/netauth-fresh-bid`，包名 zik2，真机全通）
 
@@ -103,10 +101,8 @@
   （`IMG_0104`）。usage 双库随后出现 zik2（`bundle_info` 36 行 + `ZPROCESS` 1 行），
   “有流量→Settings 行出现”链只差用户亲手看一眼设置页。
 - 结论：这才是根治——App 侧可**静默自修**，比 ZIK 弹框、比 CLI 都彻底。
-  下一步：把该调用 bake 进 `ReynardCellularAuthFix`（替掉 ZIK nudge），新 ID 验证
-  “零手动首启即通”，再合 main。
-- 附带双现：装新包名会挤掉旧包名应用（old→nettest、nettest/zik1→zik2 两次，
-  install 列表+container 双确认只剩最新），机制未知（疑 installd 按前缀/同名去重，待验）。
+  已 bake 进 `ReynardCellularAuthFix`（与 ZIK nudge 共存，三者全留），包名恢复正式 ID，
+  合 main。测试包覆盖规则更正：之前两轮“装新包挤掉旧包”系用户手动删除，非系统行为。
 - **根因二：necko 不认 iOS 系统 WiFi 代理**（HTTP 全局代理也无效，neck 走自家 socket+自家 prefs）：
   无 VPN 时被墙站全死、直连站（baidu）修复根因一后即通。修：设备 profile
   `/var/mobile/Library/Application Support/.mozilla/firefox/*.default/user.js` 加
