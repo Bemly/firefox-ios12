@@ -1,0 +1,43 @@
+diff --git a/widget/uikit/GeckoPencilSupport.h b/widget/uikit/GeckoPencilSupport.h
+new file mode 100644
+index 000000000000..a81944e53a70
+--- /dev/null
++++ b/widget/uikit/GeckoPencilSupport.h
+@@ -0,0 +1,37 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Sep 2026. */
++
++#ifndef mozilla_widget_GeckoPencilSupport_h
++#define mozilla_widget_GeckoPencilSupport_h
++
++#import <UIKit/UIKit.h>
++
++#include "GeckoViewSwiftSupport.h"
++
++class nsWindow;
++
++@class ChildView;
++
++@interface GeckoPencilSupport : NSObject <UIPencilInteractionDelegate>
++
++- (instancetype)initWithView:(ChildView*)view geckoChild:(nsWindow*)geckoChild;
++- (NSSet<UITouch*>*)pencilTouchesFromTouches:(NSSet<UITouch*>*)touches;
++- (void)setInteractionDelegate:
++    (id<GeckoViewInteractionDelegate>)interactionDelegate;
++- (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
++- (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
++- (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
++- (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
++- (BOOL)resolveTouchSequence:(uint64_t)sequenceId
++                    handling:(GeckoInputHandling)handling
++             scrollableEdges:(GeckoScrollableEdges)scrollableEdges
++              overscrollAxes:(GeckoOverscrollAxes)overscrollAxes;
++- (void)widgetDestroyed;
++
++@end
++
++#endif

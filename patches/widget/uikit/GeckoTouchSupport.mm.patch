@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoTouchSupport.mm b/widget/uikit/GeckoTouchSupport.mm
 new file mode 100644
-index 000000000000..7c69b7bafbdd
+index 000000000000..cd56d997baf4
 --- /dev/null
 +++ b/widget/uikit/GeckoTouchSupport.mm
-@@ -0,0 +1,326 @@
+@@ -0,0 +1,350 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -16,6 +16,7 @@ index 000000000000..7c69b7bafbdd
 +#import <objc/message.h>
 +
 +#include "GeckoEditableSupport.h"
++#include "GeckoPencilSupport.h"
 +#include "GeckoPointerSupport.h"
 +#include "nsWindow.h"
 +
@@ -29,6 +30,7 @@ index 000000000000..7c69b7bafbdd
 + @public
 +  nsWindow* mGeckoChild;
 +  GeckoEditableState mEditable;
++  GeckoPencilSupport* mPencilSupport;
 +  GeckoTouchSupport* mTouchSupport;
 +}
 +- (void)setSelectionHandlesVisible:(BOOL)visible;
@@ -40,7 +42,7 @@ index 000000000000..7c69b7bafbdd
 +- (NSSet<UITouch*>*)indirectPointerTouchesFromTouches:(NSSet<UITouch*>*)touches;
 +- (void)sendTouchEvent:(EventMessage)type touches:(NSSet<UITouch*>*)touches;
 +- (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
-+- (void)touchesCancelled:(NSSet<UITouch*>*)touches;
++- (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
 +- (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
 +- (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event;
 +@end
@@ -63,6 +65,7 @@ index 000000000000..7c69b7bafbdd
 +  ChildView* mView;
 +  nsWindow* mGeckoChild;
 +  GeckoPointerSupport* mPointerSupport;
++  GeckoPencilSupport* mPencilSupport;
 +  id<GeckoViewInteractionDelegate> mInteractionDelegate;
 +  NSMapTable<UITouch*, NSNumber*>* mTouches;
 +  int mNextTouchID;
@@ -71,7 +74,8 @@ index 000000000000..7c69b7bafbdd
 +
 +- (instancetype)initWithView:(ChildView*)view
 +                  geckoChild:(nsWindow*)geckoChild
-+              pointerSupport:(GeckoPointerSupport*)pointerSupport {
++              pointerSupport:(GeckoPointerSupport*)pointerSupport
++               pencilSupport:(GeckoPencilSupport*)pencilSupport {
 +  self = [super init];
 +  if (!self) {
 +    return nil;
@@ -80,6 +84,7 @@ index 000000000000..7c69b7bafbdd
 +  mView = view;
 +  mGeckoChild = geckoChild;
 +  mPointerSupport = pointerSupport;
++  mPencilSupport = pencilSupport;
 +  mTouches = [[NSMapTable alloc] init];
 +  mNextTouchID = 0;
 +  return self;
@@ -88,12 +93,13 @@ index 000000000000..7c69b7bafbdd
 +- (void)setInteractionDelegate:
 +    (id<GeckoViewInteractionDelegate>)interactionDelegate {
 +  mInteractionDelegate = interactionDelegate;
++  [mPencilSupport setInteractionDelegate:interactionDelegate];
 +}
 +
 +- (NSSet<UITouch*>*)directTouchesFromTouches:(NSSet<UITouch*>*)touches {
 +  NSMutableSet<UITouch*>* directTouches = [NSMutableSet set];
 +  for (UITouch* touch in touches) {
-+    if (!IsIndirectPointerTouch(touch)) {
++    if (!IsIndirectPointerTouch(touch) && touch.type != UITouchTypePencil) {
 +      [directTouches addObject:touch];
 +    }
 +  }
@@ -146,6 +152,8 @@ index 000000000000..7c69b7bafbdd
 +}
 +
 +- (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
++  [mPencilSupport touchesBegan:[mPencilSupport pencilTouchesFromTouches:touches]
++                     withEvent:event];
 +  [mPointerSupport
 +      handlePointerInputBegan:[self indirectPointerTouchesFromTouches:touches]
 +                    withEvent:event];
@@ -165,7 +173,10 @@ index 000000000000..7c69b7bafbdd
 +               touches:[self directTouchesFromTouches:event.allTouches]];
 +}
 +
-+- (void)touchesCancelled:(NSSet<UITouch*>*)touches {
++- (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
++  [mPencilSupport
++      touchesCancelled:[mPencilSupport pencilTouchesFromTouches:touches]
++             withEvent:event];
 +  [mPointerSupport handlePointerInputCancelled:
 +                       [self indirectPointerTouchesFromTouches:touches]];
 +
@@ -185,6 +196,8 @@ index 000000000000..7c69b7bafbdd
 +}
 +
 +- (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
++  [mPencilSupport touchesEnded:[mPencilSupport pencilTouchesFromTouches:touches]
++                     withEvent:event];
 +  [mPointerSupport
 +      handlePointerInputEnded:[self indirectPointerTouchesFromTouches:touches]
 +                    withEvent:event];
@@ -205,6 +218,8 @@ index 000000000000..7c69b7bafbdd
 +}
 +
 +- (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
++  [mPencilSupport touchesMoved:[mPencilSupport pencilTouchesFromTouches:touches]
++                     withEvent:event];
 +  [mPointerSupport
 +      handlePointerInputMoved:[self indirectPointerTouchesFromTouches:touches]
 +                    withEvent:event];
@@ -222,6 +237,12 @@ index 000000000000..7c69b7bafbdd
 +                    handling:(GeckoInputHandling)handling
 +             scrollableEdges:(GeckoScrollableEdges)scrollableEdges
 +              overscrollAxes:(GeckoOverscrollAxes)overscrollAxes {
++  if ([mPencilSupport resolveTouchSequence:sequenceId
++                                  handling:handling
++                           scrollableEdges:scrollableEdges
++                            overscrollAxes:overscrollAxes]) {
++    return;
++  }
 +  if (sequenceId != mTouchSequenceID || mTouches.count == 0) {
 +    return;
 +  }
@@ -248,6 +269,7 @@ index 000000000000..7c69b7bafbdd
 +  [mTouches release];
 +  mView = nil;
 +  mPointerSupport = nil;
++  mPencilSupport = nil;
 +  [super dealloc];
 +}
 +
@@ -282,7 +304,9 @@ index 000000000000..7c69b7bafbdd
 +    [self becomeFirstResponder];
 +  }
 +  if (touches.count > 0) {
-+    [self setSelectionHandlesVisible:directTouches.count > 0];
++    BOOL hasPencilTouch =
++        [mPencilSupport pencilTouchesFromTouches:touches].count > 0;
++    [self setSelectionHandlesVisible:directTouches.count > 0 || hasPencilTouch];
 +  }
 +
 +  [super touchesBegan:touches withEvent:event];
@@ -310,7 +334,7 @@ index 000000000000..7c69b7bafbdd
 +
 +- (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
 +  [super touchesCancelled:touches withEvent:event];
-+  [mTouchSupport touchesCancelled:touches];
++  [mTouchSupport touchesCancelled:touches withEvent:event];
 +}
 +
 +- (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {

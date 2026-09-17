@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoTouchSupport.h b/widget/uikit/GeckoTouchSupport.h
 new file mode 100644
-index 000000000000..55ef2d8122b5
+index 000000000000..b71f36993fb3
 --- /dev/null
 +++ b/widget/uikit/GeckoTouchSupport.h
-@@ -0,0 +1,36 @@
+@@ -0,0 +1,38 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -21,13 +21,15 @@ index 000000000000..55ef2d8122b5
 +class nsWindow;
 +
 +@class ChildView;
++@class GeckoPencilSupport;
 +@class GeckoPointerSupport;
 +
 +@interface GeckoTouchSupport : NSObject
 +
 +- (instancetype)initWithView:(ChildView*)view
 +                  geckoChild:(nsWindow*)geckoChild
-+              pointerSupport:(GeckoPointerSupport*)pointerSupport;
++              pointerSupport:(GeckoPointerSupport*)pointerSupport
++               pencilSupport:(GeckoPencilSupport*)pencilSupport;
 +- (void)setInteractionDelegate:
 +    (id<GeckoViewInteractionDelegate>)interactionDelegate;
 +- (void)resolveTouchSequence:(uint64_t)sequenceId

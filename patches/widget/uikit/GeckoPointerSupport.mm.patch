@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoPointerSupport.mm b/widget/uikit/GeckoPointerSupport.mm
 new file mode 100644
-index 000000000000..e2eb2b66a809
+index 000000000000..d8ec993deb1a
 --- /dev/null
 +++ b/widget/uikit/GeckoPointerSupport.mm
-@@ -0,0 +1,789 @@
+@@ -0,0 +1,790 @@
 +/* This Source Code Form is subject to the terms of the Mozilla Public
 + * License, v. 2.0. If a copy of the MPL was not distributed with this
 + * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -158,6 +158,7 @@ index 000000000000..e2eb2b66a809
 +  mHoverRecognizer =
 +      [[UIHoverGestureRecognizer alloc] initWithTarget:self
 +                                                action:@selector(handleHover:)];
++  mHoverRecognizer.allowedTouchTypes = @[ @(UITouchTypeIndirectPointer) ];
 +  [mView addGestureRecognizer:mHoverRecognizer];
 +
 +  mScrollRecognizer = [[GeckoScrollGestureRecognizer alloc]
