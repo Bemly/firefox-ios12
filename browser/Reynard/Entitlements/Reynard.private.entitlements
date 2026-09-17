@@ -40,5 +40,15 @@
 	<!-- I'm not sure if this will work, but anyways -->
 	<key>com.apple.developer.web-browser</key>
 	<true/>
+	<!-- Soulghost 国行网络修复：调 PSAppDataUsagePolicyCache 自写 policy（iOS 13.5b3 以前有效，12.5.8 在射程内） -->
+	<key>com.apple.CommCenter.fine-grained</key>
+	<array>
+		<string>spi</string>
+		<string>phone</string>
+		<string>identity</string>
+		<string>data-usage</string>
+		<string>data-allowed</string>
+		<string>data-allowed-write</string>
+	</array>
 </dict>
 </plist>
