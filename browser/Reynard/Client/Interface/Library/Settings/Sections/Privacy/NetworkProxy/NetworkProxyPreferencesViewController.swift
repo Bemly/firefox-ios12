@@ -70,12 +70,12 @@ final class NetworkProxyPreferencesViewController: SettingsTableViewController, 
         case .mode:
             return SettingsSectionText(
                 headerTitle: NSLocalizedString("Network Proxy", tableName: "SettingsLocalizable", comment: ""),
-                footerTitle: NSLocalizedString("Gecko uses its own network stack and does not read the iOS Wi-Fi proxy automatically. Applied to new connections.", tableName: "SettingsLocalizable", comment: "")
+                footerTitle: NSLocalizedString("System mode uses the proxy of the current iOS Wi-Fi network. Changes apply to new connections.", tableName: "SettingsLocalizable", comment: "")
             )
         case .custom:
             return SettingsSectionText(
-                headerTitle: NSLocalizedString("Custom Proxy", comment: ""),
-                footerTitle: NSLocalizedString("HTTP, HTTPS and SOCKS share this host and port. Localhost is never proxied.", comment: "")
+                headerTitle: NSLocalizedString("Custom Proxy", tableName: "SettingsLocalizable", comment: ""),
+                footerTitle: NSLocalizedString("HTTP, HTTPS and SOCKS share this host and port. Localhost is never proxied.", tableName: "SettingsLocalizable", comment: "")
             )
         }
     }
@@ -135,8 +135,8 @@ final class NetworkProxyPreferencesViewController: SettingsTableViewController, 
 
     private func modeCell(for mode: NetworkProxyMode) -> UITableViewCell {
         let cell = SettingsTableViewCell(style: .subtitle, reuseIdentifier: nil)
-        cell.textLabel?.text = NSLocalizedString(mode.title, comment: "Proxy mode")
-        cell.detailTextLabel?.text = NSLocalizedString(mode.subtitle, comment: "Proxy mode")
+        cell.textLabel?.text = mode.title
+        cell.detailTextLabel?.text = mode.subtitle
         cell.detailTextLabel?.textColor = .appSecondaryLabel
         cell.detailTextLabel?.numberOfLines = UX.subtitleLineCount
         cell.accessoryType = mode == displayedMode ? .checkmark : .none
@@ -154,11 +154,11 @@ final class NetworkProxyPreferencesViewController: SettingsTableViewController, 
         cell.textField.autocapitalizationType = .none
         cell.textField.clearButtonMode = .whileEditing
         if row == .host {
-            cell.textField.placeholder = NSLocalizedString("Host", comment: "")
+            cell.textField.placeholder = NSLocalizedString("Host", tableName: "SettingsLocalizable", comment: "")
             cell.textField.text = Prefs.ProxyPreferences.customHost
             cell.textField.keyboardType = .URL
         } else {
-            cell.textField.placeholder = NSLocalizedString("Port", comment: "")
+            cell.textField.placeholder = NSLocalizedString("Port", tableName: "SettingsLocalizable", comment: "")
             cell.textField.text = String(Prefs.ProxyPreferences.customPort)
             cell.textField.keyboardType = .numberPad
         }

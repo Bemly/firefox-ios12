@@ -22,49 +22,6 @@
   WiFi SSH 直连 `root@192.168.1.10`；USB iproxy 用 **2233**（`iproxy 2233:22 -u <UDID>`），
   2222 留给 iPad 可并存。两台同 iOS 版本，同一 IPA 可互换验证。
 
-## iPhone 5s 排障实录（2026-09-17，"所有网页打不开 + 三个点闪退"，Debug 包 /tmp/Reynard-debug-fix1.ipa 验证通过）
-
-- **根因一：iOS 按 App 无线数据权限把 App 整个断网**（首要坑，影响任何装机流程）：
-  症状=每个网页都 Gecko DNS 错误页（"could not be found"），但设备 shell 里 curl 一切正常。
-  实质：该 App **全部 socket（TCP/UDP、含局域网 IP）在内核层秒拒 `EHOSTUNREACH`（errno 65）**，
-  nw_path_monitor 永不回调，mDNSResponder 查询也死——系统级按 App 断网（设置→无线局域网→
-  「使用无线局域网与蜂窝网络的应用」），首启弹窗被拒/误点即中。iPad 一直没事因为从没弹过/允许过。
-  诊断链（可照抄）：设备 curl OK → cycript dlopen 进程内探针 dylib（constructor 写 /tmp 日志：
-  getaddrinfo/res_query/原始 TCP/UDP/csops）→ 全挂但 csops=0x2600100f 平台位正常、profile 照写
-  全局路径（=no-sandbox 正常）→ 读 `/var/preferences/com.apple.networkextension.plist`
-  （NSKeyedArchiver，拉回 Mac plistlib 解）：每 App 记录 `WiFiBehavior/CellularBehavior`，
-  **1=拒绝 2=允许**（全表佐证：Safari/AppStore/Firefox/Cydia 全 2，越狱工具+reynard 全 1）。
-  修（CLI 法）：`kill nesessionmanager` → Mac 上 python plistlib 把 reynard 两条 1→2 二进制回写 →
-  scp 回 `/var/preferences/`（root:wheel 644）→ 杀 App 重启即通（launchd 自动拉起守护重读）。
-  已留备份 `/var/preferences/com.apple.networkextension.plist.bak-20260917`。
-  GUI 法：设置→无线局域网→底部列表→Reynard→选「WLAN 与蜂窝网络」。
-  注意：该列表里可能根本没有 Reynard（2026-09-17 iPhone 上实测无此行），此时只能走 CLI 法。
-  恢复验证（2026-09-17）：备份拷回原位 + `kill nesessionmanager` 即回 1=拒绝；
-  `ideviceinstaller uninstall + install /tmp/Reynard-release-4943d0d.ipa` 正常重装后
-  策略条目仍在（1,1，表内索引会漂移），卸载重装**不清**该策略、也不会重弹首启弹窗。
-  想复现弹窗需另想办法清条目；允许态可从机上
-  `/var/preferences/com.apple.networkextension.plist.pre-restore-20260917` 拷回。
-  设置行缺失之谜（2026-09-17）：iPhone 设置→Reynard 页没有“无线数据”行（Firefox 有），
-  但两家 Info.plist 都没有相关声明（此开关本就没有 app 侧可写的 key；相机的
-  NSCameraUsageDescription 是经 pbxproj `INFOPLIST_KEY_*` 注入的，不在 Resources/Info.plist 里）。
-  机上实证该行是**按流量使用记录驱动**：`CellularUsage.db/bundle_info` 与
-  `DataUsage.sqlite/ZPROCESS` 里有 Firefox 无 Reynard（侧载的 NineAnimator 在列，
-  故非安装来源过滤）。Reynard 因自始被拒、零成功流量 → 无记录 → 无行 → UI 无路可开，
-  死锁只能走 CLI；预测 CLI 放行并产生真实流量后该行会出现（待验）。
-
-## 全新 Bundle ID 测试（2026-09-17，分支 `local/netauth-fresh-bid`，A 已死）
-
-- 改动：零逻辑，仅包名 `reynard.bemly.moe` → `reynard.bemly.moe.nettest`
-  （pbxproj 8 处 + 主/Helper entitlements + Info.plist URLName；显示名构建时盖
-  `RNetTest` 以区分；队列 label/菜单 ID 未动）。Debug 包 `/tmp/RNetTest.ipa`。
-- 结果：**全新 ID 安装即 1,1 拒绝**——安装后、首次启动前的快照里条目已在
-  （pre-launch `ne-pre-nettest.plist`），首启截屏（`IMG_0100`）无系统弹窗，
-  cycript 驱动 baidu 加载失败（`IMG_0101`；注意是 proxy 错误页——profile 全局
-  共享，user.js 代理配置被新包继承），`bundle_info` 无 nettest 记录。
-- 结论：残留策略说（A）死——全新 ID 同样秒拒；“App 没触发”（B）也不准确——
-  拒绝决定在 App 首次启动前、安装时已写死。  这条侧载安装路径上系统根本不走
-  首次联网授权，直接默认拒绝。不再追弹窗，治本走 CLI/装机脚本化；
-  ZIK 私有触发如要试另起实验。
 
 ## ZIK+ZY 双探针干净验证（2026-09-17，分支 `local/netauth-fresh-bid`，包名 zik2）
 
@@ -97,11 +54,6 @@
 - 结论：这才是根治——App 侧可**静默自修**，比 ZIK 弹框、比 CLI 都彻底。
   已 bake 进 `ReynardCellularAuthFix`（与 ZIK nudge 共存，三者全留），包名恢复正式 ID，
   合 main。测试包覆盖规则更正：之前两轮“装新包挤掉旧包”系用户手动删除，非系统行为。
-- **根因二：necko 不认 iOS 系统 WiFi 代理**（HTTP 全局代理也无效，neck 走自家 socket+自家 prefs）：
-  无 VPN 时被墙站全死、直连站（baidu）修复根因一后即通。修：设备 profile
-  `/var/mobile/Library/Application Support/.mozilla/firefox/*.default/user.js` 加
-  `network.proxy.type=1` + `http/ssl/socks → 192.168.1.5:7890`（Mac 上 Clash），杀进程重进。
-  实测 google 首页完整渲染（Debug 包 + 代理）。iPad 靠 VPN 不需要这套。
 - **根因三（已修，commit 4943d0d）：三个点闪退 = iPhone-only 上游潜伏 bug**：
   `ContentModalNavigationController` 自定义 designated init（`init(rootViewController:onDismissed:)`）
   后，Swift 不再继承 `init(nibName:bundle:)`，编译器生成的 @objc thunk 直接 trap
@@ -145,10 +97,7 @@
 ## 调试
 
 - 日志：`idevicesyslog`，崩溃：`/var/mobile/Library/Logs/CrashReporter/`。
-- Frida：机上 frida-server 17.17.0 在（开机自启），Mac 端 `pip install "frida==17.17.0" frida-tools`。
-  但本轮实测不可靠（`unable to communicate with remote frida-server` 间歇出现，spawn 大进程时必挂），
-  用户已明确要求不用——调试主链路就是 debugserver12 + lldb（26 的），UI 驱动是 cycript（见后文）。
-- 真断点 (已端到端验证，2026-09-15 用 main 分支 Debug 包、iPad 实测通过)：手机
+- 真断点：手机
   `/usr/local/bin/debugserver12 0.0.0.0:1234 -a <pid>`，Mac `iproxy 1234:1234`，再用
   **26 的 lldb**（15 的 lldb-1500 会在 `target create` 本工程二进制时崩溃，无 target 裸连才可用）：
   `platform select remote-ios` → `target create <本地.app/二进制>` → `process connect connect://127.0.0.1:1234` →

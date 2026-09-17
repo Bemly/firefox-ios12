@@ -15,22 +15,22 @@ enum NetworkProxyMode: Int, CaseIterable {
     var title: String {
         switch self {
         case .direct:
-            return "No Proxy"
+            return NSLocalizedString("No Proxy", tableName: "SettingsLocalizable", comment: "Proxy mode")
         case .manual:
-            return "Custom Proxy"
+            return NSLocalizedString("Custom Proxy", tableName: "SettingsLocalizable", comment: "Proxy mode")
         case .system:
-            return "System Proxy"
+            return NSLocalizedString("System Proxy", tableName: "SettingsLocalizable", comment: "Proxy mode")
         }
     }
 
     var subtitle: String {
         switch self {
         case .direct:
-            return "Connect directly without a proxy."
+            return NSLocalizedString("Connect directly without a proxy.", tableName: "SettingsLocalizable", comment: "Proxy mode")
         case .manual:
-            return "Use the host and port configured below."
+            return NSLocalizedString("Use the host and port configured below.", tableName: "SettingsLocalizable", comment: "Proxy mode")
         case .system:
-            return "Use the proxy configured in iOS Settings."
+            return NSLocalizedString("Use the proxy configured in iOS Settings.", tableName: "SettingsLocalizable", comment: "Proxy mode")
         }
     }
 }
