@@ -1,5 +1,5 @@
 diff --git a/dom/media/platforms/apple/AppleVTDecoder.cpp b/dom/media/platforms/apple/AppleVTDecoder.cpp
-index 6ddb554a02cc..9ae4eda89e03 100644
+index 6881412889f5..d6d0d8f31858 100644
 --- a/dom/media/platforms/apple/AppleVTDecoder.cpp
 +++ b/dom/media/platforms/apple/AppleVTDecoder.cpp
 @@ -6,6 +6,9 @@
@@ -12,7 +12,7 @@ index 6ddb554a02cc..9ae4eda89e03 100644
  
  #include <limits>
  
-@@ -64,7 +67,13 @@ AppleVTDecoder::AppleVTDecoder(const VideoInfo& aConfig,
+@@ -65,7 +68,13 @@ AppleVTDecoder::AppleVTDecoder(const VideoInfo& aConfig,
        mKnowsCompositor(aKnowsCompositor)
  #ifdef MOZ_WIDGET_UIKIT
        ,
@@ -26,7 +26,7 @@ index 6ddb554a02cc..9ae4eda89e03 100644
  #else
        ,
        mUseSoftwareImages(aKnowsCompositor &&
-@@ -861,9 +870,15 @@ CFDictionaryRef AppleVTDecoder::CreateOutputConfiguration() {
+@@ -881,9 +890,15 @@ CFDictionaryRef AppleVTDecoder::CreateOutputConfiguration() {
        std::size(IOSurfaceKeys), &kCFTypeDictionaryKeyCallBacks,
        &kCFTypeDictionaryValueCallBacks));
  

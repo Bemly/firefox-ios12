@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/wr/WebRenderBridgeChild.cpp b/gfx/layers/wr/WebRenderBridgeChild.cpp
-index d113429c1f98..0c18face2f7d 100644
+index c059d535e310..751567f3277b 100644
 --- a/gfx/layers/wr/WebRenderBridgeChild.cpp
 +++ b/gfx/layers/wr/WebRenderBridgeChild.cpp
 @@ -221,6 +221,8 @@ struct FontFileDataSink {

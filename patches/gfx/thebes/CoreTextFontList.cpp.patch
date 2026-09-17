@@ -1,11 +1,11 @@
 diff --git a/gfx/thebes/CoreTextFontList.cpp b/gfx/thebes/CoreTextFontList.cpp
-index 5d6b500ae028..b09f771bb359 100644
+index b6696c70c4b9..2398f93e44bd 100644
 --- a/gfx/thebes/CoreTextFontList.cpp
 +++ b/gfx/thebes/CoreTextFontList.cpp
-@@ -352,6 +352,12 @@ nsresult CTFontEntry::ReadCMAP(FontInfoData* aFontInfoData) {
+@@ -351,6 +351,12 @@ nsresult CTFontEntry::ReadCMAP(FontInfoData* aFontInfoData) {
+   } else {
      // if error occurred, initialize to null cmap
      charmap = new gfxCharacterMap(0);
-     mHasCmapTable = false;
 +    if (!mIsDataUserFont) {
 +      // If cmap access is unavailable on iOS system fonts, force
 +      // CoreText shaping for this face instead of HarfBuzz table-driven
@@ -63,7 +63,7 @@ index 5d6b500ae028..b09f771bb359 100644
  CTFontEntry::CTFontEntry(const nsACString& aPostscriptName, CGFontRef aFontRef,
                           WeightRange aWeight, WidthRange aWidth,
                           SlantStyleRange aStyle, bool aIsDataUserFont,
-@@ -481,9 +519,26 @@ gfxFontEntry* CTFontEntry::Clone() const {
+@@ -481,6 +519,17 @@ gfxFontEntry* CTFontEntry::Clone() const {
    fe->mStyleRange = mStyleRange;
    fe->mWidthRange = mWidthRange;
    fe->mFixedPitch = mFixedPitch;
@@ -81,6 +81,10 @@ index 5d6b500ae028..b09f771bb359 100644
    return fe;
  }
  
+@@ -552,6 +601,12 @@ void CTFontEntry::InitSkrifaFontFace() {
+ }
+ #endif
+ 
 +bool CTFontEntry::TestCharacterMap(uint32_t aCh) {
 +  return gfxFontEntry::TestCharacterMap(aCh) ||
 +         (mCharacterSet &&
@@ -90,7 +94,7 @@ index 5d6b500ae028..b09f771bb359 100644
  CGFontRef CTFontEntry::GetFontRef() {
    {
      AutoReadLock lock(mLock);
-@@ -918,7 +973,7 @@ void CTFontFamily::FindStyleVariationsLocked(FontInfoData* aFontInfoData) {
+@@ -986,7 +1041,7 @@ void CTFontFamily::FindStyleVariationsLocked(FontInfoData* aFontInfoData) {
    AUTO_PROFILER_LABEL_DYNAMIC_NSCSTRING("CTFontFamily::FindStyleVariations",
                                          LAYOUT, mName);
  
@@ -99,7 +103,7 @@ index 5d6b500ae028..b09f771bb359 100644
      MOZ_ASSERT(gfxPlatform::HasVariationFontSupport());
  
      auto addToFamily = [&](CTFontRef aFont) MOZ_REQUIRES(mLock) {
-@@ -928,8 +983,14 @@ void CTFontFamily::FindStyleVariationsLocked(FontInfoData* aFontInfoData) {
+@@ -996,8 +1051,14 @@ void CTFontFamily::FindStyleVariationsLocked(FontInfoData* aFontInfoData) {
        GetStringForCFString(psName, nameUTF16);
        CopyUTF16toUTF8(nameUTF16, nameUTF8);
  
@@ -114,7 +118,7 @@ index 5d6b500ae028..b09f771bb359 100644
  
        // Set the appropriate style, assuming it may not have a variation range.
        CTFontSymbolicTraits traits = CTFontGetSymbolicTraits(aFont);
-@@ -942,17 +1003,18 @@ void CTFontFamily::FindStyleVariationsLocked(FontInfoData* aFontInfoData) {
+@@ -1010,17 +1071,18 @@ void CTFontFamily::FindStyleVariationsLocked(FontInfoData* aFontInfoData) {
        AddFontEntryLocked(fe);
      };
  
@@ -141,7 +145,7 @@ index 5d6b500ae028..b09f771bb359 100644
  
      SetHasStyles(true);
  
-@@ -1405,6 +1467,22 @@ gfxFontEntry* CoreTextFontList::PlatformGlobalFontFallback(
+@@ -1473,6 +1535,22 @@ gfxFontEntry* CoreTextFontList::PlatformGlobalFontFallback(
            }
          }
        }
@@ -164,7 +168,7 @@ index 5d6b500ae028..b09f771bb359 100644
      }
    }
  
-@@ -1899,7 +1977,9 @@ void CoreTextFontList::InitSystemFontNames() {
+@@ -1967,7 +2045,9 @@ void CoreTextFontList::InitSystemFontNames() {
    // shared fontlist to manage "normal" fonts, because the hidden system fonts
    // may be excluded from the font list altogether. This family will be
    // populated based on the given NSFont.
@@ -175,7 +179,7 @@ index 5d6b500ae028..b09f771bb359 100644
    if (fam) {
      nsAutoCString key;
      GenerateFontListKey(mSystemFontFamilyName, key);
-@@ -1910,14 +1990,10 @@ void CoreTextFontList::InitSystemFontNames() {
+@@ -1978,14 +2058,10 @@ void CoreTextFontList::InitSystemFontNames() {
  FontFamily CoreTextFontList::GetDefaultFontForPlatform(
      FontVisibilityProvider* aFontVisibilityProvider, const gfxFontStyle* aStyle,
      nsAtom* aLanguage) {

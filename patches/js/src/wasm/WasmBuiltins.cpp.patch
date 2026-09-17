@@ -1,5 +1,5 @@
 diff --git a/js/src/wasm/WasmBuiltins.cpp b/js/src/wasm/WasmBuiltins.cpp
-index b19961501566..a9fc3632ad5d 100644
+index c079845f8173..296ef6134082 100644
 --- a/js/src/wasm/WasmBuiltins.cpp
 +++ b/js/src/wasm/WasmBuiltins.cpp
 @@ -2284,8 +2284,10 @@ bool wasm::EnsureBuiltinThunksInitialized(

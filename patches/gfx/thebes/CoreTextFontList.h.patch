@@ -1,8 +1,8 @@
 diff --git a/gfx/thebes/CoreTextFontList.h b/gfx/thebes/CoreTextFontList.h
-index c74fc4592196..f6dd96f4ba1b 100644
+index 3909c507609b..1bcbe0d62196 100644
 --- a/gfx/thebes/CoreTextFontList.h
 +++ b/gfx/thebes/CoreTextFontList.h
-@@ -30,6 +30,11 @@ class CTFontEntry final : public gfxFontEntry {
+@@ -35,6 +35,11 @@ class CTFontEntry final : public gfxFontEntry {
    CTFontEntry(const nsACString& aPostscriptName, WeightRange aWeight,
                bool aIsStandardFace = false, double aSizeHint = 0.0);
  
@@ -14,7 +14,7 @@ index c74fc4592196..f6dd96f4ba1b 100644
    // for use with data fonts
    CTFontEntry(const nsACString& aPostscriptName, CGFontRef aFontRef,
                WeightRange aWeight, WidthRange aWidth, SlantStyleRange aStyle,
-@@ -74,10 +79,22 @@ class CTFontEntry final : public gfxFontEntry {
+@@ -77,7 +82,17 @@ class CTFontEntry final : public gfxFontEntry {
  
   protected:
    // Protected destructor, to discourage deletion outside of Release():
@@ -33,12 +33,14 @@ index c74fc4592196..f6dd96f4ba1b 100644
  
    gfxFont* CreateFontInstance(const gfxFontStyle* aFontStyle) override;
  
+@@ -89,11 +104,18 @@ class CTFontEntry final : public gfxFontEntry {
+ 
+   bool HasFontTableInternal(uint32_t aTableTag) override;
+ 
 +  bool TestCharacterMap(uint32_t aCh) override;
 +
-   bool HasFontTable(uint32_t aTableTag) override;
- 
    static void DestroyBlobFunc(void* aUserData);
-@@ -85,6 +102,11 @@ class CTFontEntry final : public gfxFontEntry {
+ 
    FontTableCache* GetFontTableCache(bool aCreate) override { return nullptr; }
  
    CGFontRef mFontRef MOZ_GUARDED_BY(mLock);  // owning reference
@@ -50,7 +52,7 @@ index c74fc4592196..f6dd96f4ba1b 100644
  
    const double mSizeHint;
  
-@@ -118,13 +140,15 @@ class CTFontFamily : public gfxFontFamily {
+@@ -127,13 +149,15 @@ class CTFontFamily : public gfxFontFamily {
    CTFontFamily(const nsACString& aName, FontVisibility aVisibility)
        : gfxFontFamily(aName, aVisibility) {}
  
@@ -69,7 +71,7 @@ index c74fc4592196..f6dd96f4ba1b 100644
    }
  
    virtual ~CTFontFamily() = default;
-@@ -140,7 +164,9 @@ class CTFontFamily : public gfxFontFamily {
+@@ -149,7 +173,9 @@ class CTFontFamily : public gfxFontFamily {
    // If non-null, this is a family representing the system UI font, and should
    // use the given CTFontRef as the basis for initialization as the normal
    // font-manager APIs based on family name won't handle it.

@@ -1,5 +1,5 @@
 diff --git a/layout/generic/nsIFrame.cpp b/layout/generic/nsIFrame.cpp
-index ed4fadbd6761..29b3c8c48a93 100644
+index dec5c78038de..b2acd284539a 100644
 --- a/layout/generic/nsIFrame.cpp
 +++ b/layout/generic/nsIFrame.cpp
 @@ -3436,6 +3436,9 @@ void nsIFrame::BuildDisplayListForStackingContext(

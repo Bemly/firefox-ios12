@@ -1,5 +1,5 @@
 diff --git a/docshell/base/CanonicalBrowsingContext.cpp b/docshell/base/CanonicalBrowsingContext.cpp
-index 4a2127ed9b7e..a9a60408f36e 100644
+index 1fa976de8af7..f51ba9ffb2b5 100644
 --- a/docshell/base/CanonicalBrowsingContext.cpp
 +++ b/docshell/base/CanonicalBrowsingContext.cpp
 @@ -332,6 +332,10 @@ void CanonicalBrowsingContext::ReplacedBy(

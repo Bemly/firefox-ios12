@@ -1,8 +1,8 @@
 diff --git a/third_party/libwebrtc/moz.build b/third_party/libwebrtc/moz.build
-index cfd8935a5b07..565006036ffc 100644
+index 1ee4e85707c0..0b71c4f4b227 100644
 --- a/third_party/libwebrtc/moz.build
 +++ b/third_party/libwebrtc/moz.build
-@@ -556,9 +556,6 @@ if CONFIG["OS_TARGET"] == "Darwin":
+@@ -553,9 +553,6 @@ if CONFIG["OS_TARGET"] == "Darwin":
  
      DIRS += [
          "/third_party/libwebrtc/common_audio/fir_filter_gn",
@@ -12,7 +12,7 @@ index cfd8935a5b07..565006036ffc 100644
          "/third_party/libwebrtc/rtc_base/system/cocoa_threading_gn",
          "/third_party/libwebrtc/rtc_base/system/gcd_helpers_gn",
          "/third_party/libwebrtc/sdk/base_objc_gn",
-@@ -567,6 +564,13 @@ if CONFIG["OS_TARGET"] == "Darwin":
+@@ -564,6 +561,13 @@ if CONFIG["OS_TARGET"] == "Darwin":
          "/third_party/libwebrtc/sdk/videoframebuffer_objc_gn"
      ]
  

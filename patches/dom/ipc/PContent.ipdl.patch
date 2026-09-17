@@ -1,8 +1,8 @@
 diff --git a/dom/ipc/PContent.ipdl b/dom/ipc/PContent.ipdl
-index 3bb04a55ab7c..e805dcdc31fb 100644
+index 78edbcaac198..7a043db33f9e 100644
 --- a/dom/ipc/PContent.ipdl
 +++ b/dom/ipc/PContent.ipdl
-@@ -575,6 +575,10 @@ parent:
+@@ -578,6 +578,10 @@ parent:
      async UpdateRemotePrintSettings(MaybeDiscardedBrowsingContext aBc,
                                      PrintData aPrintData);
  
@@ -13,7 +13,7 @@ index 3bb04a55ab7c..e805dcdc31fb 100644
      async PExtensions();
  
  child:
-@@ -608,7 +612,8 @@ child:
+@@ -611,7 +615,8 @@ child:
        Endpoint<PImageBridgeChild> imageBridge,
        Endpoint<PVRManagerChild> vr,
        Endpoint<PRemoteMediaManagerChild> video,
@@ -23,7 +23,7 @@ index 3bb04a55ab7c..e805dcdc31fb 100644
  
      // Re-create the rendering stack using the given endpoints. This is sent
      // after the compositor process has crashed. The new endpoints may be to a
-@@ -618,7 +623,8 @@ child:
+@@ -621,7 +626,8 @@ child:
        Endpoint<PImageBridgeChild> bridge,
        Endpoint<PVRManagerChild> vr,
        Endpoint<PRemoteMediaManagerChild> video,

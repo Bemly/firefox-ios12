@@ -1,5 +1,5 @@
 diff --git a/docshell/base/nsDocShell.cpp b/docshell/base/nsDocShell.cpp
-index 5a6d13023782..e8b479ead4eb 100644
+index 6fe906d34382..51d5aa5ffb91 100644
 --- a/docshell/base/nsDocShell.cpp
 +++ b/docshell/base/nsDocShell.cpp
 @@ -2336,6 +2336,48 @@ nsDocShell::ClearCachedUserAgent() {
@@ -103,7 +103,7 @@ index 5a6d13023782..e8b479ead4eb 100644
  }
  
  NS_IMETHODIMP
-@@ -8489,6 +8545,41 @@ static void MaybeConvertToReplaceLoad(nsDocShellLoadState* aLoadState,
+@@ -8491,6 +8547,41 @@ static void MaybeConvertToReplaceLoad(nsDocShellLoadState* aLoadState,
    }
  }
  
@@ -145,7 +145,7 @@ index 5a6d13023782..e8b479ead4eb 100644
  // InternalLoad performs several of the steps from
  // https://html.spec.whatwg.org/#navigate.
  nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
-@@ -8542,6 +8633,15 @@ nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
+@@ -8544,6 +8635,15 @@ nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
  
    MOZ_TRY(CheckDisallowedJavascriptLoad(aLoadState));
  
@@ -161,7 +161,7 @@ index 5a6d13023782..e8b479ead4eb 100644
    // If we don't have a target, we're loading into ourselves, and our load
    // delegate may want to intercept that load.
    SameDocumentNavigationState sameDocumentNavigationState;
-@@ -12175,6 +12275,15 @@ nsresult nsDocShell::OnLinkClick(
+@@ -12206,6 +12306,15 @@ nsresult nsDocShell::OnLinkClick(
  
    bool noOpenerImplied = false;
    nsAutoString target(aTargetSpec);

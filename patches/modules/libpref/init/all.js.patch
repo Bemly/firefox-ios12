@@ -1,5 +1,5 @@
 diff --git a/modules/libpref/init/all.js b/modules/libpref/init/all.js
-index 29ff922cb70d..c22ee4ddab81 100644
+index 37cba58e2091..435aa3e864d9 100644
 --- a/modules/libpref/init/all.js
 +++ b/modules/libpref/init/all.js
 @@ -66,6 +66,10 @@ pref("security.crash_tracking.js_load_1.maxCrashes", 1);
@@ -13,7 +13,7 @@ index 29ff922cb70d..c22ee4ddab81 100644
  pref("general.config.obscure_value", 13); // for MCD .cfg files
  
  // Whether middle button click with a modifier key starts to autoscroll or
-@@ -1898,7 +1902,7 @@ pref("dom.ipc.processCount.privilegedabout", 1);
+@@ -1896,7 +1900,7 @@ pref("dom.ipc.processCount.privilegedabout", 1);
  pref("dom.ipc.processCount.privilegedmozilla", 1);
  
  // Maximum number of isolated content processes per-origin.

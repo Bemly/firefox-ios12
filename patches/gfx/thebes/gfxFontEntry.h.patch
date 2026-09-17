@@ -1,0 +1,13 @@
+diff --git a/gfx/thebes/gfxFontEntry.h b/gfx/thebes/gfxFontEntry.h
+index b8961bfdd4af..afeeaf8c12da 100644
+--- a/gfx/thebes/gfxFontEntry.h
++++ b/gfx/thebes/gfxFontEntry.h
+@@ -818,7 +818,7 @@ class gfxFontEntry {
+       FontInfoData* aFontInfoData, uint32_t& aUVSOffset);
+ 
+   // helper for HasCharacter(), which is what client code should call
+-  bool TestCharacterMap(uint32_t aCh) MOZ_EXCLUDES(mLock);
++  virtual bool TestCharacterMap(uint32_t aCh) MOZ_EXCLUDES(mLock);
+ 
+   // Try to set mShmemCharacterMap, based on the char map in mShmemFace;
+   // return true if successful, false if it remains null (maybe the parent

@@ -1,5 +1,5 @@
 diff --git a/gfx/thebes/gfxMacFont.cpp b/gfx/thebes/gfxMacFont.cpp
-index 3fc42a27d586..197979b45998 100644
+index 57b7827cd839..7d6c348d0da4 100644
 --- a/gfx/thebes/gfxMacFont.cpp
 +++ b/gfx/thebes/gfxMacFont.cpp
 @@ -25,6 +25,14 @@
@@ -17,7 +17,7 @@ index 3fc42a27d586..197979b45998 100644
  template <class T>
  struct TagEquals {
    bool Equals(const T& aIter, uint32_t aTag) const {
-@@ -444,8 +452,10 @@ int32_t gfxMacFont::GetGlyphWidth(uint16_t aGID) {
+@@ -448,8 +456,10 @@ int32_t gfxMacFont::GetGlyphWidth(uint16_t aGID) {
    if (!mCTFont) {
      bool isInstalledFont =
          !mFontEntry->IsUserFont() || mFontEntry->IsLocalUserFont();
@@ -29,7 +29,7 @@ index 3fc42a27d586..197979b45998 100644
      if (!mCTFont) {  // shouldn't happen, but let's be safe
        NS_WARNING("failed to create CTFontRef to measure glyph width");
        return 0;
-@@ -501,8 +511,12 @@ bool gfxMacFont::GetGlyphBounds(uint16_t aGID, gfxRect* aBounds, bool aTight) {
+@@ -505,8 +515,12 @@ bool gfxMacFont::GetGlyphBounds(uint16_t aGID, gfxRect* aBounds, bool aTight) {
  // for sfnts, including ALL downloadable fonts, we prefer to use
  // InitMetricsFromSfntTables and avoid platform APIs.
  void gfxMacFont::InitMetricsFromPlatform() {

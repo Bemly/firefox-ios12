@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/ipc/CompositorManagerParent.cpp b/gfx/layers/ipc/CompositorManagerParent.cpp
-index 190e53262888..acb2c68b0d20 100644
+index 4f67e9d7d9fe..9fa69490b911 100644
 --- a/gfx/layers/ipc/CompositorManagerParent.cpp
 +++ b/gfx/layers/ipc/CompositorManagerParent.cpp
 @@ -15,6 +15,7 @@
@@ -10,7 +10,7 @@ index 190e53262888..acb2c68b0d20 100644
  
  namespace mozilla {
  namespace layers {
-@@ -332,13 +333,42 @@ mozilla::ipc::IPCResult CompositorManagerParent::RecvReportSharedSurfacesMemory(
+@@ -346,13 +347,42 @@ mozilla::ipc::IPCResult CompositorManagerParent::RecvReportSharedSurfacesMemory(
    return IPC_OK();
  }
  

@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/opengl/TextureHostOGL.cpp b/gfx/layers/opengl/TextureHostOGL.cpp
-index c0717f67c4db..33681d9cbf66 100644
+index ef42d34d4a1f..15a34cb09ae3 100644
 --- a/gfx/layers/opengl/TextureHostOGL.cpp
 +++ b/gfx/layers/opengl/TextureHostOGL.cpp
 @@ -21,7 +21,7 @@
@@ -11,7 +11,7 @@ index c0717f67c4db..33681d9cbf66 100644
  #  include "mozilla/layers/MacIOSurfaceTextureHostOGL.h"
  #endif
  
-@@ -111,7 +111,7 @@ already_AddRefed<TextureHost> CreateTextureHostOGL(
+@@ -116,7 +116,7 @@ already_AddRefed<TextureHost> CreateTextureHostOGL(
      }
  #endif
  

@@ -1,5 +1,5 @@
 diff --git a/docshell/base/nsDocShell.h b/docshell/base/nsDocShell.h
-index 5b17b1b5a7b6..502906176f20 100644
+index c3fcd2985a2e..b6ca8f6bb751 100644
 --- a/docshell/base/nsDocShell.h
 +++ b/docshell/base/nsDocShell.h
 @@ -69,16 +69,18 @@ class nsIDocShellTreeOwner;
