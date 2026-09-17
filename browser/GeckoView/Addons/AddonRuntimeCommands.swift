@@ -8,6 +8,29 @@
 import Foundation
 
 public extension AddonRuntime {
+    // Ported from upstream ensureBuiltIn (async -> completion, iOS 12 has no Concurrency runtime).
+    func ensureBuiltIn(location: String, id: String, completion: @escaping (Result<Addon, Error>) -> Void) {
+        GeckoEventDispatcherWrapper.runtimeInstance.query(
+            type: "GeckoView:WebExtension:EnsureBuiltIn",
+            message: [
+                "locationUri": location,
+                "webExtensionId": id,
+            ]
+        ) { result in
+            switch result {
+            case .failure(let error):
+                completion(.failure(error))
+            case .success(let response):
+                guard let payload = response as? [String: Any?],
+                      let addonPayload = payload["extension"] as? [String: Any?] else {
+                    completion(.failure(GeckoHandlerError("Invalid built-in extension response")))
+                    return
+                }
+                completion(.success(Addon(dictionary: addonPayload)))
+            }
+        }
+    }
+
     func list(completion: @escaping (Result<[Addon], Error>) -> Void) {
         GeckoEventDispatcherWrapper.runtimeInstance.query(type: "GeckoView:WebExtension:List") { result in
             switch result {

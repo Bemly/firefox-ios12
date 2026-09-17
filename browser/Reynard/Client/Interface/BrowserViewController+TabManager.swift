@@ -231,6 +231,11 @@ extension BrowserViewController: TabManagerDelegate {
             }
             let tab = tabManager.activeTabs[index]
             contentView.setPageBackgroundColor(sessionManager.pageBackgroundColor(for: tab.session))
+            
+        case .readerMode:
+            if index == tabManager.selectedTabIndex {
+                refreshAddressBar()
+            }
         }
     }
     

@@ -1,17 +1,18 @@
 diff --git a/dom/events/ContentEventHandler.cpp b/dom/events/ContentEventHandler.cpp
-index 676c358f6e54..0767ea509114 100644
+index 676c358f6e54..22859b159152 100644
 --- a/dom/events/ContentEventHandler.cpp
 +++ b/dom/events/ContentEventHandler.cpp
-@@ -6,6 +6,8 @@
+@@ -6,6 +6,9 @@
  
  #include <algorithm>
  
 +#include "AnchorPositioningUtils.h"
 +#include "ScrollContainerFrame.h"
++#include "StickyScrollContainer.h"
  #include "mozilla/Assertions.h"
  #include "mozilla/CheckedInt.h"
  #include "mozilla/ContentIterator.h"
-@@ -33,6 +35,7 @@
+@@ -33,6 +36,7 @@
  #include "nsCaret.h"
  #include "nsContentUtils.h"
  #include "nsCopySupport.h"
@@ -19,7 +20,7 @@ index 676c358f6e54..0767ea509114 100644
  #include "nsElementTable.h"
  #include "nsFocusManager.h"
  #include "nsFontMetrics.h"
-@@ -43,6 +46,7 @@
+@@ -43,6 +47,7 @@
  #include "nsPresContext.h"
  #include "nsQueryObject.h"
  #include "nsRange.h"
@@ -27,7 +28,7 @@ index 676c358f6e54..0767ea509114 100644
  #include "nsTextFrame.h"
  
  // Work around conflicting define in rpcndr.h
-@@ -443,6 +447,9 @@ Result<nsRange*, nsresult> ContentEventHandler::InitRootContent(
+@@ -443,6 +448,9 @@ Result<nsRange*, nsresult> ContentEventHandler::InitRootContent(
    return rangeInRootElement;
  }
  
@@ -37,7 +38,7 @@ index 676c358f6e54..0767ea509114 100644
  nsresult ContentEventHandler::InitCommon(EventMessage aEventMessage,
                                           SelectionType aSelectionType,
                                           bool aRequireFlush) {
-@@ -570,7 +577,8 @@ nsresult ContentEventHandler::Init(WidgetQueryContentEvent* aEvent) {
+@@ -570,7 +578,8 @@ nsresult ContentEventHandler::Init(WidgetQueryContentEvent* aEvent) {
  
    aEvent->mReply->mContentsRoot = mRootElement.get();
    aEvent->mReply->mIsEditableContent =
@@ -47,7 +48,7 @@ index 676c358f6e54..0767ea509114 100644
  
    nsRect r;
    nsIFrame* frame = nsCaret::GetGeometry(mSelection, &r);
-@@ -628,6 +636,15 @@ nsresult ContentEventHandler::QueryContentRect(
+@@ -628,6 +637,15 @@ nsresult ContentEventHandler::QueryContentRect(
  
    aEvent->mReply->mRect = LayoutDeviceIntRect::FromAppUnitsToOutside(
        resultRect, presContext->AppUnitsPerDevPixel());
@@ -63,7 +64,7 @@ index 676c358f6e54..0767ea509114 100644
    // Returning empty rect may cause native IME confused, let's make sure to
    // return non-empty rect.
    EnsureNonEmptyRect(aEvent->mReply->mRect);
-@@ -635,6 +652,53 @@ nsresult ContentEventHandler::QueryContentRect(
+@@ -635,6 +653,53 @@ nsresult ContentEventHandler::QueryContentRect(
    return NS_OK;
  }
  
@@ -117,7 +118,7 @@ index 676c358f6e54..0767ea509114 100644
  // Editor places a padding <br> element under its root content if the editor
  // doesn't have any text. This happens even for single line editors.
  // When we get text content and when we change the selection,
-@@ -2525,6 +2589,48 @@ nsresult ContentEventHandler::OnQueryTextRect(WidgetQueryContentEvent* aEvent) {
+@@ -2525,6 +2590,48 @@ nsresult ContentEventHandler::OnQueryTextRect(WidgetQueryContentEvent* aEvent) {
    }
    DOMRangeAndAdjustedOffsetInFlattenedText domRangeAndAdjustedOffset =
        domRangeAndAdjustedOffsetOrError.unwrap();
@@ -166,7 +167,7 @@ index 676c358f6e54..0767ea509114 100644
    nsString string;
    if (NS_WARN_IF(NS_FAILED(
            GenerateFlatTextContent(domRangeAndAdjustedOffset.mRange, string)))) {
-@@ -2862,6 +2968,76 @@ nsresult ContentEventHandler::OnQueryEditorRect(
+@@ -2862,6 +2969,76 @@ nsresult ContentEventHandler::OnQueryEditorRect(
      }
    }
  
@@ -243,7 +244,7 @@ index 676c358f6e54..0767ea509114 100644
    if (NS_WARN_IF(NS_FAILED(QueryContentRect(mRootElement, aEvent)))) {
      return NS_ERROR_FAILURE;
    }
-@@ -3408,13 +3584,34 @@ nsresult ContentEventHandler::ConvertToRootRelativeOffset(nsIFrame* aFrame,
+@@ -3408,13 +3585,78 @@ nsresult ContentEventHandler::ConvertToRootRelativeOffset(nsIFrame* aFrame,
    if (NS_WARN_IF(!rootPC)) {
      return NS_ERROR_FAILURE;
    }
@@ -256,24 +257,68 @@ index 676c358f6e54..0767ea509114 100644
  
    aRect = nsLayoutUtils::TransformFrameRectToAncestor(aFrame, aRect, rootFrame);
  
-+  const auto& topMargin = rootPresShell->GetFixedPositionTopMargin();
-+  if (topMargin && rootPC->IsKeyboardHiddenOrResizesContentMode() &&
++  const auto& fixedMargins = rootPresShell->GetFixedPositionMargins();
++  if (fixedMargins && rootPC->IsKeyboardHiddenOrResizesContentMode() &&
 +      nsDisplayOwnLayer::HasDynamicToolbar(rootFrame)) {
++    auto* rootScrollFrame = rootPresShell->GetRootScrollContainerFrame();
++    const CSSPoint callbackOffset =
++        nsLayoutUtils::GetCumulativeApzCallbackTransform(rootScrollFrame);
++    nsMargin margins = CSSPixel::ToAppUnits(*fixedMargins);
++    const nscoord originOffset =
++        CSSPixel::ToAppUnits(std::min(callbackOffset.y, CSSCoord(0)));
++    margins.top += originOffset;
++    margins.bottom -= originOffset;
++
++    AutoTArray<nsIFrame*, 4> stickyFrames;
 +    for (nsIFrame* frame = aFrame; frame && frame != rootFrame;
 +         frame = nsLayoutUtils::GetCrossDocParentFrameInProcess(frame)) {
 +      if (frame->GetParent() == rootFrame &&
 +          frame->StyleDisplay()->mPosition == StylePositionProperty::Fixed &&
-+          (nsLayoutUtils::GetSideBitsForFixedPositionContent(frame) &
-+           SideBits::eTop) &&
 +          !AnchorPositioningUtils::GetAnchorThatFrameScrollsWith(frame,
 +                                                                 nullptr)) {
-+        const CSSPoint callbackOffset =
-+            nsLayoutUtils::GetCumulativeApzCallbackTransform(
-+                rootPresShell->GetRootScrollContainerFrame());
-+        aRect.y += CSSPixel::ToAppUnits(*topMargin + callbackOffset.y);
++        const SideBits sides =
++            nsLayoutUtils::GetSideBitsForFixedPositionContent(frame);
++        aRect.y += (sides & SideBits::eTop) ? margins.top : -margins.bottom;
++        stickyFrames.Clear();
 +        break;
 +      }
++
++      if (frame->StyleDisplay()->mPosition == StylePositionProperty::Sticky) {
++        auto* sticky = StickyScrollContainer::GetOrCreateForFrame(frame);
++        if (sticky && sticky->ScrollContainer() == rootScrollFrame) {
++          stickyFrames.AppendElement(frame);
++        }
++      }
 +    }
++
++    nscoord offset = 0;
++
++    while (!stickyFrames.IsEmpty()) {
++      nsIFrame* frame = stickyFrames.PopLastElement();
++      nsRectAbsolute outer;
++      nsRectAbsolute inner;
++      StickyScrollContainer::GetOrCreateForFrame(frame)->GetScrollRanges(
++          frame, &outer, &inner);
++      const nscoord delta = -offset;
++      const bool stuckAtTop = inner.YMost() <= delta && delta <= outer.YMost();
++      const bool stuckAtBottom = outer.Y() <= delta && delta <= inner.Y();
++      nscoord adjustment = stuckAtBottom ? -margins.bottom : 0;
++
++      if (nsLayoutUtils::GetSideBitsForFixedPositionContent(frame) &
++          SideBits::eTop) {
++        const nscoord topAdjustment =
++            std::clamp(delta + margins.top, inner.YMost(), outer.YMost()) -
++            std::clamp(delta, inner.YMost(), outer.YMost());
++        if (topAdjustment || stuckAtTop) {
++          adjustment = topAdjustment;
++        }
++      }
++      offset += std::clamp(delta, inner.YMost(), outer.YMost()) -
++                std::clamp(nscoord(0), inner.YMost(), outer.YMost()) +
++                std::clamp(delta, outer.Y(), inner.Y()) -
++                std::clamp(nscoord(0), outer.Y(), inner.Y()) + adjustment;
++    }
++    aRect.y += offset;
 +  }
 +
    // TransformFrameRectToAncestor returned the rect in the ancestor's appUnits,

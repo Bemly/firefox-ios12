@@ -15,8 +15,8 @@ struct GeckoHandlerError: Error {
     }
 }
 
-protocol GeckoEventListenerInternal {
-    
+protocol GeckoEventListenerInternal: AnyObject {
+
     func handleMessage(type: String, message: [String: Any?]?, callback: EventCallback?)
 }
 
@@ -52,6 +52,19 @@ public class GeckoEventDispatcherWrapper: NSObject, SwiftEventDispatcher {
     
     func addListener(type: String, listener: GeckoEventListenerInternal) {
         listeners[type, default: []] += [listener]
+    }
+    
+    func removeListener(type: String, listener: GeckoEventListenerInternal) {
+        listeners[type]?.removeAll { $0 === listener }
+        if listeners[type]?.isEmpty == true {
+            listeners.removeValue(forKey: type)
+        }
+    }
+    
+    static func removeDispatcher(named name: String, matching dispatcher: GeckoEventDispatcherWrapper) {
+        if dispatchers[name] === dispatcher {
+            dispatchers.removeValue(forKey: name)
+        }
     }
     
     public func dispatch(

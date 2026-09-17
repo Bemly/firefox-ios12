@@ -13,6 +13,7 @@ protocol AddressBarDelegate: AnyObject {
     func addressBarAddonItems(_ addressBar: AddressBar) -> [AddressBarMenu.AddonItem]
     func addressBar(_ addressBar: AddressBar, didSelectAddon item: AddonMenuItem)
     func addressBarDidRequestFindInPage(_ addressBar: AddressBar)
+    func addressBarDidRequestReader(_ addressBar: AddressBar)
     func addressBarDidRequestPageZoom(_ addressBar: AddressBar)
     func addressBarDidRequestWebsiteModeChange(_ addressBar: AddressBar)
     func addressBarDidRequestHideToolbar(_ addressBar: AddressBar)
@@ -119,6 +120,7 @@ final class AddressBar: UIView {
     // and stored properties can't be @available-gated. Cast to UIMenu inside
     // `if #available(iOS 13.0, *)` at use sites.
     private var addonsMenu: Any?
+    private var isReaderActive = false
     
     private var lastEditingText = ""
     private var lastEditWasDelete = false
@@ -363,12 +365,21 @@ final class AddressBar: UIView {
         applyState()
     }
     
-    func updateMenu(url: String?, usesDesktopWebsite: Bool?) {
+    func updateMenu(url: String?, usesDesktopWebsite: Bool?, readerMode: ReaderModeState) {
+        isReaderActive = readerMode.isActive
         if #available(iOS 13.0, *) {
             addonsMenu = AddressBarMenu.makeMenu(
                 selectedURL: url,
                 usesDesktopWebsite: usesDesktopWebsite,
                 addonItems: delegate?.addressBarAddonItems(self) ?? [],
+                isReaderable: readerMode.isReaderable,
+                onShowReader: { [weak self] in
+                    guard let self else { return }
+                    self.performAfterMenuDismissal { [weak self] in
+                        guard let self else { return }
+                        self.delegate?.addressBarDidRequestReader(self)
+                    }
+                },
                 onAddonSelected: { [weak self] item in
                     guard let self else { return }
                     self.delegate?.addressBar(self, didSelectAddon: item)
@@ -668,6 +679,7 @@ final class AddressBar: UIView {
             addressBarContent.addInteraction(UIContextMenuInteraction(delegate: self))
         }
         textField.addTarget(self, action: #selector(textFieldDidChange), for: .editingChanged)
+        leadingButton.addTarget(self, action: #selector(handleReaderButtonTap), for: .touchUpInside)
         trailingButton.addTarget(self, action: #selector(handleTrailingButtonTap), for: .touchUpInside)
         trailingButton.addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(handleTrailingButtonLongPress)))
         autocompleteButton.addTarget(self, action: #selector(handleOverlayButtonTap), for: .touchUpInside)
@@ -725,6 +737,7 @@ final class AddressBar: UIView {
     
     private func resolveLeadingButtonState(for content: ContentState) -> LeadingButtonState {
         guard editingState == .inactive else { return .hidden }
+        if isReaderActive { return .menu }
         if case .loading = loadingState { return .loading }
         switch content {
         case .placeholder:
@@ -782,6 +795,11 @@ final class AddressBar: UIView {
         }
     }
     
+    @objc private func handleReaderButtonTap() {
+        guard isReaderActive else { return }
+        delegate?.addressBarDidRequestReader(self)
+    }
+    
     private func applyLeadingButtonState(_ state: LeadingButtonState) {
         guard state != .hidden else {
             leadingButton.isHidden = true
@@ -815,11 +833,14 @@ final class AddressBar: UIView {
         }
 
         leadingButton.tintColor = .appLabel
-        leadingButton.setImage(UIImage(named: "reynard.list.bullet.below.rectangle"), for: .normal)
-        if #available(iOS 13.0, *) {
-            leadingButton.setMenuPreservingPresentation(addonsMenu as? UIMenu)
+        leadingButton.setImage(UIImage(named: isReaderActive ? "reynard.text.page" : "reynard.list.bullet.below.rectangle"), for: .normal)
+        if #available(iOS 14.0, *) {
+            leadingButton.showsMenuAsPrimaryAction = !isReaderActive
         }
-        leadingButton.isUserInteractionEnabled = addonsMenu != nil
+        if #available(iOS 13.0, *) {
+            leadingButton.setMenuPreservingPresentation(isReaderActive ? nil : addonsMenu as? UIMenu)
+        }
+        leadingButton.isUserInteractionEnabled = isReaderActive || addonsMenu != nil
     }
     
     private func applyTrailingButtonState(_ state: TrailingButtonState) {

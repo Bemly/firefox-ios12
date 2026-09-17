@@ -116,6 +116,12 @@ public class GeckoSession {
         set { progressHandler.setDelegate(newValue) }
     }
     
+    lazy var scrollHandler = newScrollHandler(self)
+    public var scrollDelegate: ScrollDelegate? {
+        get { scrollHandler.delegate(as: ScrollDelegate.self) }
+        set { scrollHandler.setDelegate(newValue) }
+    }
+    
     lazy var promptHandler: GeckoSessionHandler = {
         let handler = newPromptHandler(self)
         return handler
@@ -161,6 +167,7 @@ public class GeckoSession {
         historyHandler,
         permissionHandler,
         progressHandler,
+        scrollHandler,
         promptHandler,
         selectionActionHandler,
         mediaSessionHandler,
@@ -256,6 +263,7 @@ public class GeckoSession {
         historyDelegate = nil
         permissionDelegate = nil
         progressDelegate = nil
+        scrollDelegate = nil
         promptDelegate = nil
         selectionActionDelegate = nil
         mediaSessionDelegate?.onDeactivated(session: self)

@@ -1,0 +1,39 @@
+diff --git a/mobile/ios/app/readerview/manifest.json b/mobile/ios/app/readerview/manifest.json
+new file mode 100644
+index 000000000000..f4b4587804ec
+--- /dev/null
++++ b/mobile/ios/app/readerview/manifest.json
+@@ -0,0 +1,33 @@
++{
++  "manifest_version": 2,
++  "browser_specific_settings": {
++    "gecko": {
++      "id": "readerview@mozac.org"
++    }
++  },
++  "name": "Mozilla Android Components - ReaderView",
++  "version": "1.0",
++  "content_scripts": [
++    {
++      "matches": ["<all_urls>"],
++      "js": [
++        "readability/readability-readerable-0.4.2.js",
++        "readerview-content.js"
++      ],
++      "run_at": "document_idle"
++    }
++  ],
++  "background": {
++    "scripts": ["readerview-background.js"],
++    "persistent": false
++  },
++  "permissions": [
++    "mozillaAddons",
++    "geckoViewAddons",
++    "nativeMessaging",
++    "nativeMessagingFromContent",
++    "storage",
++    "tabs",
++    "<all_urls>"
++  ]
++}

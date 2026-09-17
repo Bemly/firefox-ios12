@@ -8949,6 +8949,17 @@
         }
       }
     },
+    "Dark" : {
+      "comment" : "Reader mode background color",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dark"
+          }
+        }
+      }
+    },
     "Date Added" : {
       "comment" : "Sort option",
       "localizations" : {
@@ -9063,6 +9074,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "淺色"
+          }
+        }
+      }
+    },
+    "Decrease Font Size" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Decrease Font Size"
           }
         }
       }
@@ -12150,6 +12171,16 @@
         }
       }
     },
+    "Hide Reader" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hide Reader"
+          }
+        }
+      }
+    },
     "Hide Toolbar" : {
       "localizations" : {
         "cs" : {
@@ -12668,6 +12699,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不相容"
+          }
+        }
+      }
+    },
+    "Increase Font Size" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Increase Font Size"
           }
         }
       }
@@ -13774,6 +13815,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "進一步瞭解「%@」保護…"
+          }
+        }
+      }
+    },
+    "Light" : {
+      "comment" : "Reader mode background color",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Light"
           }
         }
       }
@@ -18669,6 +18721,16 @@
         }
       }
     },
+    "Reader" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reader"
+          }
+        }
+      }
+    },
     "Recently Closed Tabs" : {
       "localizations" : {
         "cs" : {
@@ -20297,6 +20359,17 @@
         }
       }
     },
+    "Sans Serif" : {
+      "comment" : "Reader mode font",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sans Serif"
+          }
+        }
+      }
+    },
     "Save" : {
       "localizations" : {
         "cs" : {
@@ -21337,6 +21410,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "選取選項"
+          }
+        }
+      }
+    },
+    "Sepia" : {
+      "comment" : "Reader mode background color",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sepia"
+          }
+        }
+      }
+    },
+    "Serif" : {
+      "comment" : "Reader mode font",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serif"
           }
         }
       }
@@ -22382,6 +22477,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示或隱藏側邊欄"
+          }
+        }
+      }
+    },
+    "Show Reader" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show Reader"
           }
         }
       }

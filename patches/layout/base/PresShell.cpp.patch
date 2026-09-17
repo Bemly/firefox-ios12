@@ -1,5 +1,5 @@
 diff --git a/layout/base/PresShell.cpp b/layout/base/PresShell.cpp
-index 0be20c4ea8b9..e872f22a8d49 100644
+index 0be20c4ea8b9..4e049d3330cd 100644
 --- a/layout/base/PresShell.cpp
 +++ b/layout/base/PresShell.cpp
 @@ -47,6 +47,7 @@
@@ -48,11 +48,11 @@ index 0be20c4ea8b9..e872f22a8d49 100644
    return GetVisualViewportOffset() - GetLayoutViewportOffset();
  }
  
-+void PresShell::SetFixedPositionTopMargin(const Maybe<CSSCoord>& aMargin) {
-+  if (mFixedPositionTopMargin == aMargin) {
++void PresShell::SetFixedPositionMargins(const Maybe<CSSMargin>& aMargins) {
++  if (mFixedPositionMargins == aMargins) {
 +    return;
 +  }
-+  mFixedPositionTopMargin = aMargin;
++  mFixedPositionMargins = aMargins;
 +  if (nsIWidget* widget = GetOwnWidget();
 +      widget && widget->GetInputContext().mIMEState.IsEditable()) {
 +    IMEStateManager::NotifyIME(widget::NOTIFY_IME_OF_POSITION_CHANGE, widget);

@@ -1,14 +1,14 @@
 diff --git a/layout/base/PresShell.h b/layout/base/PresShell.h
-index d59424d0eb60..1f10041e221d 100644
+index d59424d0eb60..3a24fbd70fe6 100644
 --- a/layout/base/PresShell.h
 +++ b/layout/base/PresShell.h
 @@ -1640,6 +1640,11 @@ class PresShell final : public nsStubDocumentObserver,
  
    nsPoint GetVisualViewportOffsetRelativeToLayoutViewport() const;
  
-+  void SetFixedPositionTopMargin(const Maybe<CSSCoord>& aMargin);
-+  const Maybe<CSSCoord>& GetFixedPositionTopMargin() const {
-+    return mFixedPositionTopMargin;
++  void SetFixedPositionMargins(const Maybe<CSSMargin>& aMargins);
++  const Maybe<CSSMargin>& GetFixedPositionMargins() const {
++    return mFixedPositionMargins;
 +  }
 +
    // Returns state of the dynamic toolbar.
@@ -28,8 +28,8 @@ index d59424d0eb60..1f10041e221d 100644
  
    Maybe<nsPoint> mVisualViewportOffset;
  
-+  // The compositor's top margin for viewport-fixed content, in CSS pixels.
-+  Maybe<CSSCoord> mFixedPositionTopMargin;
++  // Compositor margins relative to the last content paint, in CSS pixels.
++  Maybe<CSSMargin> mFixedPositionMargins;
 +
    // A pending visual scroll offset that we will ask APZ to scroll to
    // during the next transaction. Cleared when we send the transaction.

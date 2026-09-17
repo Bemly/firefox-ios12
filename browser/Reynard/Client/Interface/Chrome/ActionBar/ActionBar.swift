@@ -12,6 +12,7 @@ enum ActionBarStyle {
     case standard
     
     var height: CGFloat {
+        if #available(iOS 26.0, *) { return 68 }
         switch self {
         case .compact:
             return 41
@@ -82,11 +83,19 @@ final class ActionBar: UIView {
         return item == .keyboardDismissal && !isHidden && alpha > 0
     }
     
+    var isKeyboardDocked = false {
+        didSet {
+            if #available(iOS 26.0, *) { updateHeight() }
+        }
+    }
+    
     private let findInPageActionBar = FindInPageActionBar()
     private let pageZoomActionBar = PageZoomActionBar()
     private let keyboardDismissalActionBar = KeyboardDismissalActionBar()
     private var hasPreparedFindInPageDismissal = false
+    private var hasDismissedModernContent = false
     private var heightConstraint: NSLayoutConstraint!
+    private var findInPageBottomConstraint: NSLayoutConstraint!
     
     private let closeShadowView: UIView = {
         let view = UIView()
@@ -162,15 +171,37 @@ final class ActionBar: UIView {
         fatalError("init(coder:) has not been implemented")
     }
     
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        if #available(iOS 26.0, *) { updateHeight() }
+    }
+    
     override func layoutSubviews() {
         super.layoutSubviews()
         // PERF flat-chrome: shadow removed, no shadowPath needed.
         closeShadowView.layer.shadowPath = nil
     }
     
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if #available(iOS 26.0, *), item == .pageZoom {
+            guard !isHidden, alpha > 0, isUserInteractionEnabled else { return nil }
+            return pageZoomActionBar.hitTest(pageZoomActionBar.convert(point, from: self), with: event)
+        }
+        return super.hitTest(point, with: event)
+    }
+    
     // MARK: - Presentation
     
     func setItem(_ item: Item?) {
+        if #available(iOS 26.0, *), hasDismissedModernContent {
+            UIView.performWithoutAnimation {
+                pageZoomActionBar.setModernContentHidden(false)
+                findInPageActionBar.setModernContentHidden(false)
+                pageZoomActionBar.transform = .identity
+                findInPageActionBar.transform = .identity
+            }
+            hasDismissedModernContent = false
+        }
         if item != .findInPage {
             prepareForDismissal()
         }
@@ -179,12 +210,42 @@ final class ActionBar: UIView {
             findInPageActionBar.prepareForPresentation()
         }
         self.item = item
-        heightConstraint.constant = item?.style.height ?? ActionBarStyle.standard.height
+        updateHeight()
         isHidden = item == nil
         findInPageActionBar.isHidden = item != .findInPage
         pageZoomActionBar.isHidden = item != .pageZoom
         keyboardDismissalActionBar.isHidden = item != .keyboardDismissal
-        closeShadowView.isHidden = item == .keyboardDismissal
+        if #unavailable(iOS 26.0) {
+            closeShadowView.isHidden = item == .keyboardDismissal
+        }
+    }
+    
+    @available(iOS 26.0, *)
+    func dismissModernContent(translationY: CGFloat, fadeDuration: TimeInterval) {
+        hasDismissedModernContent = true
+        UIView.animate(
+            withDuration: fadeDuration,
+            delay: 0,
+            options: [.overrideInheritedDuration, .beginFromCurrentState]
+        ) {
+            switch self.item {
+            case .pageZoom:
+                self.pageZoomActionBar.setModernContentHidden(true)
+            case .findInPage:
+                self.findInPageActionBar.setModernContentHidden(true)
+            default:
+                break
+            }
+        }
+        let transform = CGAffineTransform(translationX: 0, y: translationY)
+        switch item {
+        case .pageZoom:
+            pageZoomActionBar.transform = transform
+        case .findInPage:
+            findInPageActionBar.transform = transform
+        default:
+            break
+        }
     }
     
     func prepareForDismissal() {
@@ -219,6 +280,10 @@ final class ActionBar: UIView {
     private func configureAppearance() {
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = .clear
+        if #available(iOS 26.0, *) {
+            closeShadowView.isHidden = true
+            topBorderView.isHidden = true
+        }
     }
     
     private func configureHierarchy() {
@@ -231,7 +296,17 @@ final class ActionBar: UIView {
         addSubview(topBorderView)
     }
     
+    private func updateHeight() {
+        var bottomInset: CGFloat = 0
+        if #available(iOS 26.0, *), item == .findInPage, !isKeyboardDocked {
+            bottomInset = safeAreaInsets.bottom
+        }
+        heightConstraint.constant = (item?.style.height ?? ActionBarStyle.standard.height) + bottomInset
+        findInPageBottomConstraint.constant = -bottomInset
+    }
+    
     private func configureConstraints() {
+        findInPageBottomConstraint = findInPageActionBar.bottomAnchor.constraint(equalTo: bottomAnchor)
         heightConstraint = heightAnchor.constraint(equalToConstant: ActionBarStyle.standard.height)
         NSLayoutConstraint.activate([
             heightConstraint,
@@ -244,7 +319,7 @@ final class ActionBar: UIView {
             findInPageActionBar.topAnchor.constraint(equalTo: topAnchor),
             findInPageActionBar.leadingAnchor.constraint(equalTo: leadingAnchor),
             findInPageActionBar.trailingAnchor.constraint(equalTo: trailingAnchor),
-            findInPageActionBar.bottomAnchor.constraint(equalTo: bottomAnchor),
+            findInPageBottomConstraint,
             
             keyboardDismissalActionBar.topAnchor.constraint(equalTo: topAnchor),
             keyboardDismissalActionBar.leadingAnchor.constraint(equalTo: leadingAnchor),

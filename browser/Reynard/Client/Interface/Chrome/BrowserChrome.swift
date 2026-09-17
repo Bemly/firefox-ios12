@@ -11,7 +11,11 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
     private enum UX {
         static let overlayTopSpacing: CGFloat = 12
         static let actionBarSpacing: CGFloat = 0
-        static let actionBarAnimationDuration: TimeInterval = 0.12
+        static let actionBarFlyOutDuration: TimeInterval = 0.18
+        static var actionBarFadeDuration: TimeInterval {
+            if #available(iOS 26.0, *) { return 0.05 }
+            return 0.12
+        }
         static let minimizedToolbarContentHeight: CGFloat = 24
         static let minimizedTextFontSize: CGFloat = 13
         static let textShrinkTravelFraction: CGFloat = 0.75
@@ -101,6 +105,13 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
     
     private let overlayContentView = ChromeOverlayContentView()
     private let actionBar = ActionBar()
+    private lazy var pageZoomDismissView: UIControl = {
+        let view = UIControl()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.isHidden = true
+        view.addTarget(self, action: #selector(pageZoomOutsideTapped), for: .touchUpInside)
+        return view
+    }()
     
     private var overlayWidthConstraint: NSLayoutConstraint!
     private var overlayHeightConstraint: NSLayoutConstraint!
@@ -110,6 +121,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
     private var actionBarBottomConstraint: NSLayoutConstraint?
     private var actionBarKeyboardBottomConstraint: NSLayoutConstraint?
     private var actionBarDockOffset: CGFloat = 0
+    private var modernActionBarDismissalID: UUID?
     
     private var state: State?
     private var toolbarCollapseProgress: CGFloat = 0
@@ -135,6 +147,9 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
     }
     
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if !pageZoomDismissView.isHidden {
+            return super.hitTest(point, with: event)
+        }
         if let hitView = bottomToolbar.hitTestAddressBar(
             at: bottomToolbar.convert(point, from: self),
             with: event
@@ -243,6 +258,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
     
     func dockActionBar(offset: CGFloat) {
         actionBarDockOffset = offset
+        actionBar.isKeyboardDocked = offset != 0
         if offset == 0 {
             actionBarKeyboardBottomConstraint?.isActive = false
             actionBarKeyboardBottomConstraint = nil
@@ -280,8 +296,12 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
             return
         }
         
+        modernActionBarDismissalID = nil
         let wasShowingFindInPage = actionBar.isShowingFindInPage
         actionBar.setItem(item)
+        if #available(iOS 26.0, *) {
+            pageZoomDismissView.isHidden = item != .pageZoom
+        }
         if wasShowingFindInPage != actionBar.isShowingFindInPage {
             onFindInPageVisibilityChanged?(actionBar.isShowingFindInPage)
         }
@@ -289,7 +309,42 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
     }
     
     func dismissActionBar(animated: Bool) {
+        pageZoomDismissView.isHidden = true
         guard !actionBar.isHidden else { return }
+        if #available(iOS 26.0, *), animated,
+           actionBar.item == .pageZoom || actionBar.item == .findInPage {
+            guard modernActionBarDismissalID == nil else { return }
+            let dismissalID = UUID()
+            modernActionBarDismissalID = dismissalID
+            let wasShowingFindInPage = actionBar.isShowingFindInPage
+            let shouldSlide = (actionBar.item == .pageZoom || actionBarDockOffset == 0)
+            && !UIAccessibility.isReduceMotionEnabled
+            let screenBottom = window.map { convert($0.bounds, from: $0).maxY } ?? bounds.maxY
+            let translationY = shouldSlide
+            ? max(0, screenBottom - actionBar.frame.minY)
+            : 0
+            UIView.animate(
+                withDuration: shouldSlide ? UX.actionBarFlyOutDuration : UX.actionBarFadeDuration,
+                delay: 0,
+                options: [.beginFromCurrentState, .curveEaseIn]
+            ) {
+                self.actionBar.dismissModernContent(
+                    translationY: translationY,
+                    fadeDuration: UX.actionBarFadeDuration
+                )
+            } completion: { _ in
+                guard self.modernActionBarDismissalID == dismissalID else { return }
+                self.modernActionBarDismissalID = nil
+                self.actionBar.alpha = 0
+                self.actionBar.setItem(nil)
+                self.dockActionBar(offset: 0)
+                if wasShowingFindInPage {
+                    self.onFindInPageVisibilityChanged?(false)
+                }
+            }
+            return
+        }
+        modernActionBarDismissalID = nil
         
         dockActionBar(offset: 0)
         actionBar.prepareForDismissal()
@@ -309,7 +364,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
             return
         }
         
-        UIView.animate(withDuration: UX.actionBarAnimationDuration, animations: {
+        UIView.animate(withDuration: UX.actionBarFadeDuration, animations: {
             self.actionBar.alpha = 0
         }) { _ in
             finish()
@@ -445,8 +500,8 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         _ = updateToolbarTextTransition(textCenterProgress: toolbarTextCenterProgress)
     }
     
-    func updateAddressBarMenu(url: String?, usesDesktopWebsite: Bool?) {
-        addressBar.updateMenu(url: url, usesDesktopWebsite: usesDesktopWebsite)
+    func updateAddressBarMenu(url: String?, usesDesktopWebsite: Bool?, readerMode: ReaderModeState) {
+        addressBar.updateMenu(url: url, usesDesktopWebsite: usesDesktopWebsite, readerMode: readerMode)
     }
     
     func setAddressBarLoadingProgress(_ progress: Float, isLoading: Bool) {
@@ -749,6 +804,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         addSubview(toolbarTextLabel)
         addSubview(overlayDismissView)
         addSubview(overlayContentView)
+        addSubview(pageZoomDismissView)
         addSubview(actionBar)
     }
     
@@ -776,6 +832,11 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
             overlayWidthConstraint,
             overlayHeightConstraint,
             
+            pageZoomDismissView.topAnchor.constraint(equalTo: topAnchor),
+            pageZoomDismissView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            pageZoomDismissView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            pageZoomDismissView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            
             actionBar.leadingAnchor.constraint(equalTo: leadingAnchor),
             actionBar.trailingAnchor.constraint(equalTo: trailingAnchor),
         ])
@@ -794,6 +855,10 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
     
     @objc private func overlayDismissViewTapped() {
         onOverlayDismiss?()
+    }
+    
+    @objc private func pageZoomOutsideTapped() {
+        dismissActionBar(animated: true)
     }
     
     // MARK: - State Resolution
@@ -856,7 +921,7 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
             return
         }
         
-        UIView.animate(withDuration: UX.actionBarAnimationDuration, animations: animations)
+        UIView.animate(withDuration: UX.actionBarFadeDuration, animations: animations)
     }
     
     private func resolvedTopState(for state: State) -> TopToolbar.LayoutState {

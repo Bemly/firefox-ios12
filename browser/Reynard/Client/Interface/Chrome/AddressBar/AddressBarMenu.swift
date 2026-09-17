@@ -24,6 +24,8 @@ enum AddressBarMenu {
         selectedURL: String?,
         usesDesktopWebsite: Bool?,
         addonItems: [AddonItem],
+        isReaderable: Bool,
+        onShowReader: @escaping () -> Void,
         onAddonSelected: @escaping (AddonMenuItem) -> Void,
         onFindInPage: @escaping () -> Void,
         onPageZoom: @escaping () -> Void,
@@ -78,7 +80,12 @@ enum AddressBarMenu {
             pageActions.append(UIAction(title: NSLocalizedString("Page Zoom", comment: ""), image: UIImage(named: "reynard.textformat.size")) { _ in
                 onPageZoom()
             })
-            pageActions.append(UIAction(title: NSLocalizedString("Find in Page", comment: ""), image: UIImage(named: "reynard.magnifyingglass")) { _ in
+            if isReaderable {
+                pageActions.append(UIAction(title: NSLocalizedString("Show Reader", comment: ""), image: UIImage(named: "reynard.text.page")) { _ in
+                    onShowReader()
+                })
+            }
+            pageActions.append(UIAction(title: NSLocalizedString("Find in Page", comment: ""), image: UIImage(named: "reynard.text.page.badge.magnifyingglass")) { _ in
                 onFindInPage()
             })
         }

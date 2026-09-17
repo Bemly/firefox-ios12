@@ -1,0 +1,81 @@
+diff --git a/gfx/layers/apz/src/WRHitTester.cpp b/gfx/layers/apz/src/WRHitTester.cpp
+index c3ce7dd54ed9..18b2cf77dc00 100644
+--- a/gfx/layers/apz/src/WRHitTester.cpp
++++ b/gfx/layers/apz/src/WRHitTester.cpp
+@@ -91,6 +91,7 @@ IAPZHitTester::HitTestResult WRHitTester::GetAPZCAtPoint(
+       wr->HitTest(wr::ToWorldPoint(aHitTestPoint));
+ 
+   Maybe<wr::WrHitResult> chosenResult;
++  RefPtr<HitTestingTreeNode> targetNode;
+   // It's possible for the WebRender hit test to produce a result with
+   // a LayersId whose corresponding layer tree has already been
+   // torn down (e.g. during window/tab shutdown, or navigation to
+@@ -164,6 +165,7 @@ IAPZHitTester::HitTestResult WRHitTester::GetAPZCAtPoint(
+     APZCTM_LOG("selecting as chosen result.\n");
+     chosenResult = Some(result);
+     hit.mTargetApzc = node->GetApzc();
++    targetNode = node;
+     if (flags & EventRegionsOverride::ForceDispatchToContent) {
+       chosenResult->mHitInfo += CompositorHitTestFlags::eApzAwareListeners;
+     }
+@@ -214,9 +216,8 @@ IAPZHitTester::HitTestResult WRHitTester::GetAPZCAtPoint(
+   }
+ 
+   hit.mFixedPosSides = sideBits;
++  RefPtr<HitTestingTreeNode> positionedNode;
+   if (animationId.isSome()) {
+-    RefPtr<HitTestingTreeNode> positionedNode = nullptr;
+-
+     positionedNode = BreadthFirstSearch<ReverseIterator>(
+         GetRootNode(), [&](HitTestingTreeNode* aNode) {
+           return (aNode->GetFixedPositionAnimationId() == animationId ||
+@@ -229,16 +230,15 @@ IAPZHitTester::HitTestResult WRHitTester::GetAPZCAtPoint(
+       MOZ_ASSERT((positionedNode->GetFixedPositionAnimationId().isSome() ||
+                   positionedNode->GetStickyPositionAnimationId().isSome()),
+                  "A a matching fixed/sticky position node should be found");
+-      InitializeHitTestingTreeNodeAutoLock(hit.mNode, aProofOfTreeLock,
+-                                           positionedNode);
+     }
+ 
+ #if defined(MOZ_WIDGET_ANDROID)
+-    if (hit.mNode && hit.mNode->GetFixedPositionAnimationId().isSome()) {
++    if (positionedNode &&
++        positionedNode->GetFixedPositionAnimationId().isSome()) {
+       // If the hit element is a fixed position element, the side bits from
+       // the hit-result item tag are used. For now just ensure that these
+       // match what is found in the hit-testing tree node.
+-      MOZ_ASSERT(sideBits == hit.mNode->GetFixedPosSides(),
++      MOZ_ASSERT(sideBits == positionedNode->GetFixedPosSides(),
+                  "Fixed position side bits do not match");
+     } else if (hit.mTargetApzc && hit.mTargetApzc->IsRootContent()) {
+       // If the hit element is not a fixed position element, then the hit test
+@@ -249,6 +249,29 @@ IAPZHitTester::HitTestResult WRHitTester::GetAPZCAtPoint(
+ #endif
+   }
+ 
++  if (hit.mTargetApzc && !hit.mTargetApzc->IsRootContent()) {
++    // A nested scroller's hit tag can omit its positioned ancestors.
++    // Keep the nearest sticky node unless a fixed ancestor is found.
++    // Only the outermost fixed node receives the toolbar translation,
++    // which also moves sticky descendants inside it.
++    for (auto* node = positionedNode ? positionedNode.get() : targetNode.get();
++         node && node->GetLayersId() == hit.mLayersId;
++         node = node->GetParent()) {
++      if (node->GetFixedPositionAnimationId() ||
++          (!positionedNode && node->GetStickyPositionAnimationId())) {
++        positionedNode = node;
++      }
++      if (node->GetApzc() && node->GetApzc()->IsRootContent()) {
++        break;
++      }
++    }
++  }
++
++  if (positionedNode) {
++    InitializeHitTestingTreeNodeAutoLock(hit.mNode, aProofOfTreeLock,
++                                         positionedNode);
++  }
++
+   hit.mHitOverscrollGutter =
+       hit.mTargetApzc && hit.mTargetApzc->IsInOverscrollGutter(aHitTestPoint);
+ 

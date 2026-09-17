@@ -26,7 +26,7 @@ final class ToolbarController {
         static let manualCollapseSpeedMultiplier: CGFloat = 2
         static let maxTextCenterDuration: TimeInterval = 0.2
         static let snapDelay: TimeInterval = 0.1
-        static let snapDuration: TimeInterval = 0.3
+        static let snapDuration: TimeInterval = 0.2
     }
     
     private unowned let browserChrome: BrowserChrome
@@ -310,9 +310,16 @@ final class ToolbarController {
     }
     
     func restoreBottomToolbar() {
+        guard isBottomToolbarCollapsed else { return }
         cancelAnimation()
         isBottomToolbarCollapsed = false
-        setTransitionOffset(transitionOffset, refresh: true, animatesContent: false)
+        UIView.animate(
+            withDuration: UIAccessibility.isReduceMotionEnabled ? 0 : UX.snapDuration,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseOut]
+        ) {
+            self.setTransitionOffset(self.transitionOffset, refresh: true, animatesContent: false)
+        }
     }
     
     func collapse(animated: Bool = true) {

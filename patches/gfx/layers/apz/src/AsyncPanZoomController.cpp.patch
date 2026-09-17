@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/apz/src/AsyncPanZoomController.cpp b/gfx/layers/apz/src/AsyncPanZoomController.cpp
-index 1098039b4217..b55854ba5652 100644
+index 1098039b4217..70291e5aaa0d 100644
 --- a/gfx/layers/apz/src/AsyncPanZoomController.cpp
 +++ b/gfx/layers/apz/src/AsyncPanZoomController.cpp
 @@ -2810,6 +2810,7 @@ nsEventStatus AsyncPanZoomController::OnPanMayBegin(
@@ -64,7 +64,7 @@ index 1098039b4217..b55854ba5652 100644
    CancelAnimation();
  
    return nsEventStatus_eIgnore;
-@@ -4897,6 +4917,14 @@ void AsyncPanZoomController::RequestContentRepaint(
+@@ -4897,6 +4917,20 @@ void AsyncPanZoomController::RequestContentRepaint(
    RepaintRequest request(Metrics(), aDisplayportMargins, aUpdateType,
                           animationType, mScrollGeneration, mLastSnapTargetIds,
                           IsInScrollingGesture());
@@ -72,23 +72,50 @@ index 1098039b4217..b55854ba5652 100644
 +      (!Metrics().IsSoftwareKeyboardVisible() ||
 +       Metrics().GetInteractiveWidget() ==
 +           dom::InteractiveWidget::ResizesContent)) {
-+    request.SetFixedPositionTopMargin(Some(ToCSSPixels(ViewAs<ParentLayerPixel>(
-+        mCompositorFixedLayerMargins.top,
-+        PixelCastJustification::ScreenIsParentLayerForRoot))));
++    const ScreenMargin margins = mCompositorFixedLayerMargins -
++                                 mLastContentPaintMetrics.GetFixedLayerMargins();
++    request.SetFixedPositionMargins(Some(CSSMargin(
++        ToCSSPixels(ViewAs<ParentLayerPixel>(
++            margins.top, PixelCastJustification::ScreenIsParentLayerForRoot)),
++        0,
++        ToCSSPixels(ViewAs<ParentLayerPixel>(
++            margins.bottom, PixelCastJustification::ScreenIsParentLayerForRoot)),
++        0)));
 +  }
  
    if (request.IsRootContent() && request.GetZoom() != mLastNotifiedZoom &&
        mState != PINCHING && mState != ANIMATING_ZOOM) {
-@@ -4912,6 +4940,8 @@ void AsyncPanZoomController::RequestContentRepaint(
+@@ -4912,6 +4946,8 @@ void AsyncPanZoomController::RequestContentRepaint(
            mLastPaintRequestMetrics.GetDisplayPortMargins(), EPSILON) &&
        request.GetVisualScrollOffset().WithinEpsilonOf(
            mLastPaintRequestMetrics.GetVisualScrollOffset(), EPSILON) &&
-+      request.GetFixedPositionTopMargin() ==
-+          mLastPaintRequestMetrics.GetFixedPositionTopMargin() &&
++      request.GetFixedPositionMargins() ==
++          mLastPaintRequestMetrics.GetFixedPositionMargins() &&
        request.GetPresShellResolution() ==
            mLastPaintRequestMetrics.GetPresShellResolution() &&
        request.GetZoom() == mLastPaintRequestMetrics.GetZoom() &&
-@@ -5756,6 +5786,9 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+@@ -5629,6 +5665,11 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+       !FuzzyEqualsCoordinate(Metrics().GetVisualScrollOffset().y,
+                              lastScrollOffset.y);
+ 
++  // Recompute the remaining margins when layout absorbs toolbar movement.
++  const bool fixedMarginsChanged =
++      aScrollMetadata.DidContentGetPainted() &&
++      aLayerMetrics.GetFixedLayerMargins() !=
++          mLastContentPaintMetrics.GetFixedLayerMargins();
+   if (aScrollMetadata.DidContentGetPainted()) {
+     mLastContentPaintMetadata = aScrollMetadata;
+   }
+@@ -5683,7 +5724,7 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+   // TODO if we're in a drag and scrollOffsetUpdated is set then we want to
+   // ignore it
+ 
+-  bool needContentRepaint = false;
++  bool needContentRepaint = fixedMarginsChanged;
+   RepaintUpdateType contentRepaintType = RepaintUpdateType::eNone;
+   bool viewportSizeUpdated = false;
+   bool needToReclampScroll = false;
+@@ -5756,6 +5797,9 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
      // If we're not taking the aLayerMetrics wholesale we still need to pull
      // in some things into our local Metrics() because these things are
      // determined by Gecko and our copy in Metrics() may be stale.
@@ -98,7 +125,7 @@ index 1098039b4217..b55854ba5652 100644
  
      if (Metrics().GetLayoutViewport().Size() !=
          aLayerMetrics.GetLayoutViewport().Size()) {
-@@ -5844,6 +5877,20 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+@@ -5844,6 +5888,20 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
            aLayerMetrics.GetCompositionSizeWithoutDynamicToolbar());
        needToReclampScroll = true;
      }
@@ -119,7 +146,7 @@ index 1098039b4217..b55854ba5652 100644
      if (Metrics().IsRootContent()) {
        // If the composition size changed, the compositor's layout viewport
        // offset may have changed (to keep the layout viewport enclosing the
-@@ -5960,7 +6007,8 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+@@ -5960,7 +6018,8 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
                     "Smooth relative update should never happen");
          APZC_LOG("%p smooth scrolling to %s\n", this,
                   ToString(scrollUpdate.GetDestination()).c_str());
@@ -129,7 +156,7 @@ index 1098039b4217..b55854ba5652 100644
        }
  
        ScrollAnimationKind animationKind =
-@@ -6177,7 +6225,8 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
+@@ -6177,7 +6236,8 @@ void AsyncPanZoomController::NotifyMainThreadTransaction(
               ToString(aLayerMetrics.GetVisualDestination()).c_str(),
               (int)aLayerMetrics.GetVisualScrollUpdateType());
      bool offsetChanged = Metrics().ClampAndSetVisualScrollOffset(
@@ -139,7 +166,7 @@ index 1098039b4217..b55854ba5652 100644
  
      // If this is the first time we got metrics for this content (isDefault) and
      // the update type was none and the offset didn't change then we don't have
-@@ -7247,9 +7296,43 @@ ScreenMargin AsyncPanZoomController::GetFixedLayerMargins(
+@@ -7247,9 +7307,43 @@ ScreenMargin AsyncPanZoomController::GetFixedLayerMargins(
    return mCompositorFixedLayerMargins;
  }
  
@@ -148,7 +175,7 @@ index 1098039b4217..b55854ba5652 100644
 +                                                  ScreenCoord aTopInset,
 +                                                  ScreenCoord aBottomInset) {
    RecursiveMutexAutoLock lock(mRecursiveMutex);
-+  const bool topMarginChanged = mCompositorFixedLayerMargins.top != aMargin.top;
++  const bool marginsChanged = mCompositorFixedLayerMargins != aMargin;
    mCompositorFixedLayerMargins = aMargin;
 +  const ParentLayerCoord topInset = ViewAs<ParentLayerPixel>(
 +      aTopInset, PixelCastJustification::ScreenIsParentLayerForRoot);
@@ -156,7 +183,7 @@ index 1098039b4217..b55854ba5652 100644
 +      aBottomInset, PixelCastJustification::ScreenIsParentLayerForRoot);
 +  if (Metrics().GetContentTopInset() == topInset &&
 +      Metrics().GetContentBottomInset() == bottomInset) {
-+    if (topMarginChanged) {
++    if (marginsChanged) {
 +      RequestContentRepaint(RepaintUpdateType::eVisualUpdate);
 +    }
 +    return;

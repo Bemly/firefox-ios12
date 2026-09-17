@@ -734,3 +734,25 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
   是直接改 DerivedData 内 `.app` 拷贝做的**一次性实验**，没进 git，重编即丢；
   转正前要么删掉、要么按“debug 模式开关”收敛（用户已要求，待做）。
 - （UDID/ECID/序列号已按要求从本文删掉。）
+
+## 上游合并实录（分支 `merge/upstream-20260917`，上游 d9f2dc9→5d08f38 共 6 个提交）
+
+- 内容：toolbar inset 三连（APZ/ContentEventHandler/WR/PresShell 的 `patches/`）、
+  reader mode（900+ 行 Swift + readerview 引擎文件）、find-in-page 新图标、
+  action bar iOS 26 改款。
+- 冲突 6 文件解法（iOS 12 适配优先）：addon 三件套 async→completion
+  （+补上游新增 `ensureBuiltIn`）；EventDispatcher 删 Task 桥（留 `AnyObject` 约束，
+  否则 `$0 === listener` 编不过）；AddonMessaging.swift 整文件 port；
+  AddressBar 收 reader（`addonsMenu` 保持 `Any?` + `#available` 门、`isReaderActive` 门外赋值，
+  `.label` 改 `.appLabel`）；两 action bar 保 PERF flat-chrome（radius 归 0）。
+- ReaderSettingsViewController 整文件 port：语义色/material 全换 UICompat shim、
+  `cornerCurve` 改 `applyContinuousCornerCurve()`、`setPreferredSymbolConfiguration`
+  + `preferredSymbolConfiguration` 加 iOS 13 门、UIAction 构造收进 iOS 14 门内
+  （类 iOS 12 不存在，构造即崩）、`withDesign` 回退系统字体、brightness 观察者加 iOS 13 门、
+  去 `nonisolated`；BrowserPreferences 里 `connectedScenes` 加 iOS 13 门（12 永浅色）。
+- 图标：`generate-ios12-icons.py` 重跑（18/18，含新增 text.page 两件套）。
+- 引擎：submodule 指针上下游一致（`fb95137`，上游没 bump），14 个 patch 文件先经
+  pristine worktree `--check` 全过，再 `reset --hard + 删 50 个新文件目标 + apply-patches.sh`
+  全量重打成功。注意 C++/Rust hunks 要下次 `./mach build` 才进 dist（当前 dist 仍是旧的）；
+  `.sys.mjs`/manifest 类文本文件下次 Xcode 构建经 rsync 即生效。
+  `reset --hard` 前必先对 dirty 树与 `patches/` 覆盖率（本次 349 全对上，含一个删除型 patch）。

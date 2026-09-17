@@ -53,6 +53,7 @@ enum HistoryNavigationDirection {
 }
 
 final class TabSessionState {
+    var readerMode = ReaderModeState()
     var tabSessionState: GeckoSessionState?
     var restoreState: TabRestoreState = .none
     var suppressInitialNavigation = true
