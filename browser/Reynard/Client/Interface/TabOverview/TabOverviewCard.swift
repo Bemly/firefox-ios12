@@ -202,7 +202,7 @@ final class TabOverviewCard: UICollectionViewCell {
         setReorderState(.resting, animated: false)
         setSwipeOffset(0, progress: 0)
     }
-    
+
     // MARK: - Content
     
     func configure(
@@ -284,10 +284,12 @@ final class TabOverviewCard: UICollectionViewCell {
         rendererFormat.scale = UIScreen.main.scale
         rendererFormat.opaque = false
         let renderer = UIGraphicsImageRenderer(size: snapshotBounds.size, format: rendererFormat)
+        webpagePreviewRegionView.isHidden = true
         let snapshotImage = renderer.image { context in
             context.cgContext.translateBy(x: UX.cardTransitionSnapshotOutset, y: UX.cardTransitionSnapshotOutset)
             contentView.layer.render(in: context.cgContext)
         }
+        webpagePreviewRegionView.isHidden = false
         
         let snapshotImageView = UIImageView(image: snapshotImage)
         snapshotImageView.contentMode = .scaleToFill
@@ -324,6 +326,11 @@ final class TabOverviewCard: UICollectionViewCell {
     
     func setTransitionState(_ state: TransitionState) {
         contentView.alpha = state == .visible ? 1 : 0
+    }
+    
+    func setPreviewSurfaceHidden(_ hidden: Bool) {
+        webpagePreviewShadowView.isHidden = hidden
+        webpagePreviewClippingView.isHidden = hidden
     }
     
     func setReorderState(_ state: ReorderState, animated: Bool) {

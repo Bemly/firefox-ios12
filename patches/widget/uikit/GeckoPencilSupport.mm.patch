@@ -1,0 +1,496 @@
+diff --git a/widget/uikit/GeckoPencilSupport.mm b/widget/uikit/GeckoPencilSupport.mm
+new file mode 100644
+index 000000000000..fb9fbab125d8
+--- /dev/null
++++ b/widget/uikit/GeckoPencilSupport.mm
+@@ -0,0 +1,490 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this
++ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Sep 2026. */
++
++#import "GeckoPencilSupport.h"
++
++#include <algorithm>
++#include <cmath>
++
++#include "GeckoEditableSupport.h"
++#include "GeckoKeyboardSupport.h"
++#include "nsWindow.h"
++
++#include "mozilla/MouseEvents.h"
++#include "mozilla/TouchEvents.h"
++#include "mozilla/dom/MouseEventBinding.h"
++#include "mozilla/dom/Touch.h"
++
++using namespace mozilla;
++using namespace mozilla::widget;
++using mozilla::dom::Touch;
++namespace MouseEventBinding = mozilla::dom::MouseEvent_Binding;
++
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wunguarded-availability-new"
++
++@interface ChildView : UIView
++@end
++
++namespace {
++
++constexpr int32_t kPencilPointerId = INT32_MAX;
++constexpr uint64_t kPencilSequenceMask = uint64_t(1) << 63;
++
++struct PencilPose {
++  CGPoint mLocation = CGPointZero;
++  CGFloat mAltitude = M_PI_2;
++  CGFloat mAzimuth = 0;
++  CGFloat mPressure = 0;
++  CGFloat mRadius = 0.5;
++  int32_t mTwist = 0;
++};
++
++static bool SupportsIOSVersion(NSInteger aMajor, NSInteger aMinor) {
++  NSOperatingSystemVersion version = {aMajor, aMinor, 0};
++  return [NSProcessInfo.processInfo isOperatingSystemAtLeastVersion:version];
++}
++
++static TimeStamp GeckoTimeStampForUIKitTimestamp(NSTimeInterval aTimestamp) {
++  NSTimeInterval age = NSProcessInfo.processInfo.systemUptime - aTimestamp;
++  return TimeStamp::Now() - TimeDuration::FromSeconds(age);
++}
++
++static Modifiers GeckoModifiersForPencilEvent(UIEvent* aEvent) {
++  if (SupportsIOSVersion(13, 4)) {
++    return GeckoModifiersForUIKitModifiers(aEvent.modifierFlags);
++  }
++  return MODIFIER_NONE;
++}
++
++static int32_t GeckoTwistForRollAngle(CGFloat aRollAngle) {
++  int32_t twist = static_cast<int32_t>(std::lround(aRollAngle * 180.0 / M_PI));
++  twist %= 360;
++  return twist < 0 ? twist + 360 : twist;
++}
++
++static CGFloat NormalizedForce(UITouch* aTouch) {
++  if (aTouch.maximumPossibleForce <= 0) {
++    return 0;
++  }
++  return std::clamp(aTouch.force / aTouch.maximumPossibleForce, CGFloat(0),
++                    CGFloat(1));
++}
++
++static PencilPose PencilPoseForTouch(UITouch* aTouch, UIView* aView) {
++  PencilPose pose;
++  pose.mLocation = [aTouch locationInView:aView];
++  pose.mAltitude = aTouch.altitudeAngle;
++  pose.mAzimuth = [aTouch azimuthAngleInView:aView];
++  pose.mPressure = NormalizedForce(aTouch);
++  pose.mRadius = std::max(aTouch.majorRadius, CGFloat(0.5));
++  if (SupportsIOSVersion(17, 5)) {
++    pose.mTwist = GeckoTwistForRollAngle(aTouch.rollAngle);
++  }
++  return pose;
++}
++
++static PencilPose PencilPoseForHoverRecognizer(
++    UIHoverGestureRecognizer* aRecognizer, UIView* aView) {
++  PencilPose pose;
++  pose.mLocation = [aRecognizer locationInView:aView];
++  if (SupportsIOSVersion(16, 4)) {
++    pose.mAltitude = aRecognizer.altitudeAngle;
++    pose.mAzimuth = [aRecognizer azimuthAngleInView:aView];
++  }
++  if (SupportsIOSVersion(17, 5)) {
++    pose.mTwist = GeckoTwistForRollAngle(aRecognizer.rollAngle);
++  }
++  return pose;
++}
++
++static PencilPose PencilPoseForHoverPose(UIPencilHoverPose* aHoverPose) {
++  PencilPose pose;
++  pose.mLocation = aHoverPose.location;
++  pose.mAltitude = aHoverPose.altitudeAngle;
++  pose.mAzimuth = aHoverPose.azimuthAngle;
++  pose.mTwist = GeckoTwistForRollAngle(aHoverPose.rollAngle);
++  return pose;
++}
++
++}  // namespace
++
++@implementation GeckoPencilSupport {
++  ChildView* mView;
++  nsWindow* mGeckoChild;
++  id<GeckoViewInteractionDelegate> mInteractionDelegate;
++  UIHoverGestureRecognizer* mHoverRecognizer;
++  UIPencilInteraction* mPencilInteraction;
++  UITouch* mPencilTouch;
++  PencilPose mLastPose;
++  uint64_t mTouchSequenceID;
++  uint64_t mNextTouchSequenceID;
++  BOOL mHasLastPose;
++  BOOL mPencilInside;
++  BOOL mPrimaryDown;
++  BOOL mSecondaryDown;
++}
++
++- (instancetype)initWithView:(ChildView*)view geckoChild:(nsWindow*)geckoChild {
++  self = [super init];
++  if (!self) {
++    return nil;
++  }
++
++  mView = view;
++  mGeckoChild = geckoChild;
++
++  if (SupportsIOSVersion(16, 1)) {
++    mHoverRecognizer = [[UIHoverGestureRecognizer alloc]
++        initWithTarget:self
++                action:@selector(handleHover:)];
++    mHoverRecognizer.allowedTouchTypes = @[ @(UITouchTypePencil) ];
++    [mView addGestureRecognizer:mHoverRecognizer];
++  }
++
++  if (SupportsIOSVersion(17, 5)) {
++    mPencilInteraction = [[UIPencilInteraction alloc] initWithDelegate:self];
++  } else {
++    mPencilInteraction = [[UIPencilInteraction alloc] init];
++    mPencilInteraction.delegate = self;
++  }
++  [mView addInteraction:mPencilInteraction];
++  return self;
++}
++
++- (NSSet<UITouch*>*)pencilTouchesFromTouches:(NSSet<UITouch*>*)touches {
++  NSMutableSet<UITouch*>* pencilTouches = [NSMutableSet set];
++  for (UITouch* touch in touches) {
++    if (touch.type == UITouchTypePencil) {
++      [pencilTouches addObject:touch];
++    }
++  }
++  return pencilTouches;
++}
++
++- (void)setInteractionDelegate:
++    (id<GeckoViewInteractionDelegate>)interactionDelegate {
++  mInteractionDelegate = interactionDelegate;
++}
++
++- (int16_t)buttons {
++  int16_t buttons = MouseButtonsFlag::eNoButtons;
++  if (mPrimaryDown) {
++    buttons |= MouseButtonsFlag::ePrimaryFlag;
++  }
++  if (mSecondaryDown) {
++    buttons |= MouseButtonsFlag::eSecondaryFlag;
++  }
++  return buttons;
++}
++
++- (void)applyPose:(const PencilPose&)pose
++     toMouseEvent:(WidgetMouseEvent&)event {
++  event.mRefPoint =
++      UIKitPointsToDevPixels(pose.mLocation, mView.contentScaleFactor);
++  event.mInputSource = MouseEventBinding::MOZ_SOURCE_PEN;
++  event.pointerId = kPencilPointerId;
++  event.mPressure = pose.mPressure;
++  event.mAngle.emplace(pose.mAltitude, pose.mAzimuth);
++  event.twist = pose.mTwist;
++}
++
++- (void)dispatchMouseEvent:(EventMessage)message
++                      pose:(const PencilPose&)pose
++                    button:(MouseButton)button
++                clickCount:(NSInteger)clickCount
++                 timestamp:(TimeStamp)timestamp {
++  if (!mGeckoChild) {
++    return;
++  }
++
++  WidgetMouseEvent event(true, message, mGeckoChild, WidgetMouseEvent::eReal);
++  [self applyPose:pose toMouseEvent:event];
++  event.mButton = button;
++  event.mButtons = [self buttons];
++  event.mClickCount = clickCount;
++  event.mTimeStamp = timestamp;
++  mGeckoChild->DispatchInputEvent(&event);
++}
++
++- (void)dispatchContextMenuAtPose:(const PencilPose&)pose
++                        timestamp:(TimeStamp)timestamp {
++  if (!mGeckoChild) {
++    return;
++  }
++
++  WidgetPointerEvent event(true, eContextMenu, mGeckoChild);
++  [self applyPose:pose toMouseEvent:event];
++  event.mButton = MouseButton::eSecondary;
++  event.mButtons = [self buttons];
++  event.mClickCount = 1;
++  event.mTimeStamp = timestamp;
++  mGeckoChild->DispatchInputEvent(&event);
++}
++
++- (void)pressSecondaryButtonAtPose:(const PencilPose&)pose
++                         timestamp:(TimeStamp)timestamp {
++  if (mSecondaryDown) {
++    return;
++  }
++  mSecondaryDown = YES;
++  [self dispatchMouseEvent:eMouseDown
++                      pose:pose
++                    button:MouseButton::eSecondary
++                clickCount:1
++                 timestamp:timestamp];
++}
++
++- (void)releaseSecondaryButtonAtPose:(const PencilPose&)pose
++                           timestamp:(TimeStamp)timestamp
++                        allowContext:(BOOL)allowContext {
++  if (!mSecondaryDown) {
++    return;
++  }
++  mSecondaryDown = NO;
++  [self dispatchMouseEvent:eMouseUp
++                      pose:pose
++                    button:MouseButton::eSecondary
++                clickCount:allowContext ? 1 : 0
++                 timestamp:timestamp];
++  if (allowContext) {
++    [self dispatchContextMenuAtPose:pose timestamp:timestamp];
++  }
++}
++
++- (void)sendTouchEvent:(EventMessage)message
++                 touch:(UITouch*)touch
++             withEvent:(UIEvent*)uiEvent {
++  if (!mGeckoChild) {
++    return;
++  }
++
++  PencilPose pose = PencilPoseForTouch(touch, mView);
++  mLastPose = pose;
++  mHasLastPose = YES;
++
++  WidgetTouchEvent event(true, message, mGeckoChild);
++  event.mRefPoint =
++      UIKitPointsToDevPixels(pose.mLocation, mView.contentScaleFactor);
++  event.mModifiers = GeckoModifiersForPencilEvent(uiEvent);
++  event.mTimeStamp = GeckoTimeStampForUIKitTimestamp(touch.timestamp);
++  event.mInputSource = MouseEventBinding::MOZ_SOURCE_PEN;
++  event.mButton =
++      message == eTouchMove ? MouseButton::eNotPressed : MouseButton::ePrimary;
++  event.mButtons = [self buttons];
++
++  LayoutDeviceIntPoint radius = UIKitPointsToDevPixels(
++      CGPointMake(pose.mRadius, pose.mRadius), mView.contentScaleFactor);
++  RefPtr<Touch> touchPoint = MakeRefPtr<Touch>(
++      kPencilPointerId, event.mRefPoint, radius, 0.0f, pose.mPressure);
++  touchPoint->mAngle.emplace(pose.mAltitude, pose.mAzimuth);
++  touchPoint->twist = pose.mTwist;
++  event.mTouches.AppendElement(std::move(touchPoint));
++
++  if (message == eTouchStart) {
++    mGeckoChild->DispatchTouchStart(&event, mTouchSequenceID);
++  } else {
++    mGeckoChild->DispatchInputEvent(&event);
++  }
++}
++
++- (void)touchesBegan:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
++  UITouch* touch = touches.anyObject;
++  if (!touch || !mGeckoChild) {
++    return;
++  }
++
++  mPencilTouch = touch;
++  mPrimaryDown = YES;
++  mTouchSequenceID = kPencilSequenceMask | ++mNextTouchSequenceID;
++  [mInteractionDelegate touchSequenceDidBegin:mTouchSequenceID];
++  [self sendTouchEvent:eTouchStart touch:touch withEvent:event];
++}
++
++- (void)touchesCancelled:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
++  if (!mPencilTouch || ![touches containsObject:mPencilTouch]) {
++    return;
++  }
++
++  mPrimaryDown = NO;
++  [self sendTouchEvent:eTouchCancel touch:mPencilTouch withEvent:event];
++  mPencilTouch = nil;
++  [mInteractionDelegate touchSequenceDidEnd:mTouchSequenceID];
++}
++
++- (void)touchesEnded:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
++  if (!mPencilTouch || ![touches containsObject:mPencilTouch]) {
++    return;
++  }
++
++  mPrimaryDown = NO;
++  [self sendTouchEvent:eTouchEnd touch:mPencilTouch withEvent:event];
++  mPencilTouch = nil;
++  [mInteractionDelegate touchSequenceDidEnd:mTouchSequenceID];
++}
++
++- (void)touchesMoved:(NSSet<UITouch*>*)touches withEvent:(UIEvent*)event {
++  if (!mPencilTouch || ![touches containsObject:mPencilTouch]) {
++    return;
++  }
++  [self sendTouchEvent:eTouchMove touch:mPencilTouch withEvent:event];
++}
++
++- (BOOL)resolveTouchSequence:(uint64_t)sequenceId
++                    handling:(GeckoInputHandling)handling
++             scrollableEdges:(GeckoScrollableEdges)scrollableEdges
++              overscrollAxes:(GeckoOverscrollAxes)overscrollAxes {
++  if (!mPencilTouch || sequenceId != mTouchSequenceID) {
++    return NO;
++  }
++  [mInteractionDelegate touchSequence:sequenceId
++                   didResolveHandling:handling
++                      scrollableEdges:scrollableEdges
++                       overscrollAxes:overscrollAxes];
++  return YES;
++}
++
++- (void)handleHover:(UIHoverGestureRecognizer*)sender API_AVAILABLE(ios(16.1)) {
++  if (!mGeckoChild) {
++    return;
++  }
++
++  PencilPose pose = PencilPoseForHoverRecognizer(sender, mView);
++  mLastPose = pose;
++  mHasLastPose = YES;
++  TimeStamp timestamp = TimeStamp::Now();
++
++  if (sender.state == UIGestureRecognizerStateBegan && !mPencilInside) {
++    mPencilInside = YES;
++    [self dispatchMouseEvent:eMouseEnterIntoWidget
++                        pose:pose
++                      button:MouseButton::eNotPressed
++                  clickCount:0
++                   timestamp:timestamp];
++  }
++
++  if (sender.state == UIGestureRecognizerStateBegan ||
++      sender.state == UIGestureRecognizerStateChanged) {
++    [self dispatchMouseEvent:eMouseMove
++                        pose:pose
++                      button:MouseButton::eNotPressed
++                  clickCount:0
++                   timestamp:timestamp];
++    return;
++  }
++
++  if ((sender.state == UIGestureRecognizerStateEnded ||
++       sender.state == UIGestureRecognizerStateCancelled) &&
++      mPencilInside) {
++    WidgetMouseEvent event(true, eMouseExitFromWidget, mGeckoChild,
++                           WidgetMouseEvent::eReal);
++    [self applyPose:pose toMouseEvent:event];
++    event.mButton = MouseButton::eNotPressed;
++    event.mButtons = [self buttons];
++    event.mTimeStamp = timestamp;
++    event.mExitFrom = Some(WidgetMouseEvent::ePlatformTopLevel);
++    mPencilInside = NO;
++    mGeckoChild->DispatchInputEvent(&event);
++  }
++}
++
++- (void)pencilInteractionDidTap:(UIPencilInteraction*)interaction {
++  if (!mHasLastPose) {
++    return;
++  }
++  TimeStamp timestamp = TimeStamp::Now();
++  [self pressSecondaryButtonAtPose:mLastPose timestamp:timestamp];
++  [self releaseSecondaryButtonAtPose:mLastPose
++                           timestamp:timestamp
++                        allowContext:YES];
++}
++
++- (void)pencilInteraction:(UIPencilInteraction*)interaction
++            didReceiveTap:(UIPencilInteractionTap*)tap
++    API_AVAILABLE(ios(17.5)) {
++  PencilPose pose =
++      tap.hoverPose ? PencilPoseForHoverPose(tap.hoverPose) : mLastPose;
++  if (!tap.hoverPose && !mHasLastPose) {
++    return;
++  }
++  mLastPose = pose;
++  mHasLastPose = YES;
++  TimeStamp timestamp = GeckoTimeStampForUIKitTimestamp(tap.timestamp);
++  [self pressSecondaryButtonAtPose:pose timestamp:timestamp];
++  [self releaseSecondaryButtonAtPose:pose timestamp:timestamp allowContext:YES];
++}
++
++- (void)pencilInteraction:(UIPencilInteraction*)interaction
++        didReceiveSqueeze:(UIPencilInteractionSqueeze*)squeeze
++    API_AVAILABLE(ios(17.5)) {
++  PencilPose pose =
++      squeeze.hoverPose ? PencilPoseForHoverPose(squeeze.hoverPose) : mLastPose;
++  if (!squeeze.hoverPose && !mHasLastPose) {
++    return;
++  }
++  mLastPose = pose;
++  mHasLastPose = YES;
++  TimeStamp timestamp = GeckoTimeStampForUIKitTimestamp(squeeze.timestamp);
++
++  switch (squeeze.phase) {
++    case UIPencilInteractionPhaseBegan:
++      [self pressSecondaryButtonAtPose:pose timestamp:timestamp];
++      break;
++    case UIPencilInteractionPhaseChanged:
++      [self dispatchMouseEvent:eMouseMove
++                          pose:pose
++                        button:MouseButton::eNotPressed
++                    clickCount:0
++                     timestamp:timestamp];
++      break;
++    case UIPencilInteractionPhaseEnded:
++      [self releaseSecondaryButtonAtPose:pose
++                               timestamp:timestamp
++                            allowContext:YES];
++      break;
++    case UIPencilInteractionPhaseCancelled:
++      [self releaseSecondaryButtonAtPose:pose
++                               timestamp:timestamp
++                            allowContext:NO];
++      break;
++  }
++}
++
++- (void)widgetDestroyed {
++  if (mSecondaryDown && mHasLastPose) {
++    [self releaseSecondaryButtonAtPose:mLastPose
++                             timestamp:TimeStamp::Now()
++                          allowContext:NO];
++  }
++  mGeckoChild = nullptr;
++  mInteractionDelegate = nil;
++  mPencilTouch = nil;
++  [self tearDownPencilInput];
++}
++
++- (void)tearDownPencilInput {
++  if (mHoverRecognizer) {
++    [mView removeGestureRecognizer:mHoverRecognizer];
++  }
++  if (mPencilInteraction) {
++    [mView removeInteraction:mPencilInteraction];
++  }
++  [mHoverRecognizer release];
++  [mPencilInteraction release];
++  mHoverRecognizer = nil;
++  mPencilInteraction = nil;
++}
++
++- (void)dealloc {
++  [self tearDownPencilInput];
++  mView = nil;
++  [super dealloc];
++}
++
++@end
++
++#pragma clang diagnostic pop

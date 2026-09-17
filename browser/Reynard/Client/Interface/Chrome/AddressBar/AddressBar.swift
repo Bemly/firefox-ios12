@@ -304,6 +304,14 @@ final class AddressBar: UIView {
         }
     }
     
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        addressBarBackground.layer.shadowPath = UIBezierPath(
+            roundedRect: addressBarBackground.bounds,
+            cornerRadius: UX.addressBarBackgroundCornerRadius
+        ).cgPath
+    }
+    
     // MARK: - Configuration
     
     func configure(delegate: AddressBarDelegate, searchDelegate: AddressBarSearchDelegate, gestureDelegate: AddressBarGestureDelegate) {
@@ -564,12 +572,6 @@ final class AddressBar: UIView {
     }
     
     // MARK: - View Setup
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        // PERF flat-chrome: shadow removed, no shadowPath needed.
-        addressBarBackground.layer.shadowPath = nil
-    }
 
     private func configureAppearance() {
         translatesAutoresizingMaskIntoConstraints = false
