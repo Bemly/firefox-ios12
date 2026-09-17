@@ -469,6 +469,21 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
 - 验收：沿用 bench 法（http.server + cycript 驱动地址栏 + RUNS warmup 形状 +
   `ps` CPU 对比静态/纯动画/视频三档）。
 
+## GPU 合成验证结论（2026-09-17，分支 `local/gpu-compositing-wr-gl`，iPhone 5s 同包 A/B）
+
+- 开关：user.js `gfx.webrender.all=true` + `gfx.webrender.software=false` 即进 HW-WR。
+  代码级确认吃得上：ForceEnabled 优先级高于 iOS GfxInfo UNKNOWN 触发的 blocklist
+  Disable（`gfxFeature.cpp` 状态机），EAGL 建 headless context（WebGL 已证），
+  硬件路 compositor 是 NativeOGL（CA 呈现；SW 路是 NativeSWGL，呈现端同样 CA 零拷贝）。
+- 同包 A/B（只换 user.js）：静态 ~0% 双零；JS-setInterval 全屏渐变 SW 36–53 / HW 42–64
+  （无收益，瓶颈是每帧 JS+样式+场景固定成本——100px 小盒 HW 仍 33–40% 反证）；
+  纯 CSS keyframes 全屏渐变 **SW 37–45 / HW 17–27（省约 40%，截图验过都在转）**；
+  视频 240p/720p 双无差（解码本就 VT 硬解，呈现双零拷贝）。
+  另：`layout.frame_rate=30` 限帧实验是废的（anim 页是 setInterval 自驱动，改 vsync 不改负载）。
+- 探针页 `Diagnostics/cssanim.html`（纯 CSS 版，合成器主场）已进仓库。
+- 未合 main：重 DOM 页的 AGXGLDriver 崩风险仍 open（browserscore 夜前科），1GB 机
+  GPU 纹理添 jetsam 压力；默认开需更广稳定性测试。当前结论 = 能点亮、有局部收益、不默认开。
+
 ## 输入法崩溃实录（2026-09-16，包 `/tmp/Reynard-ime-fix.ipa` 已装机）
 
 - 现象：网页输入框（Google 搜索框）敲任意键即 SIGABRT（NSException），
