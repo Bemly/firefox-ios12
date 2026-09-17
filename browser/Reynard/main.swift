@@ -54,6 +54,12 @@ if #unavailable(iOS 13.0) {
         object: nil,
         queue: .main
     ) { _ in
+        // ZIK 全套：国行蜂窝 iOS 12 首启强制弹"允许使用数据？"（分支 local/netauth-fresh-bid 实验）。
+        // 与相机/位置不同，此开关无公开 request API，只能靠 FTNetworkSupport 私有触发；
+        // 越狱侧载无审核顾虑。调用必须在主线程 didFinishLaunching 时机。
+        if ReynardCellularAuthFix.isDeviceChineseLanguage() {
+            ReynardCellularAuthFix.requestCellularAuthorization()
+        }
         let window = UIWindow(frame: UIScreen.main.bounds)
         window.rootViewController = BrowserViewController()
         window.makeKeyAndVisible()

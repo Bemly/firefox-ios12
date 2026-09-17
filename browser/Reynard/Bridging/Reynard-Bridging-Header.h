@@ -11,6 +11,7 @@
 #import "ExtensionBridge.h"
 #import "GeckoRuntimeBridge.h"
 #import "JITEnabler.h"
+#import "ReynardCellularAuthFix.h"
 #import "UIKit+Private.h"
 #import "Utils.h"
 #import <GeckoView/GeckoViewSwiftSupport.h>
