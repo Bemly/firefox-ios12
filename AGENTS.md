@@ -73,6 +73,20 @@
   ZIK 私有触发如要试另起实验。
 - 附带异常：nettest 装机后旧 `reynard.bemly.moe` 从设备消失（install 列表 +
   container 双确认），机制未知（用户当时在手机上操作，可能手动删的，待认）。
+
+## ZIK+ZY 双探针干净验证（2026-09-17，分支 `local/netauth-fresh-bid`，包名 zik2）
+
+- ZIK 全套已移植（`ReynardCellularAuthFix.h/.m`，无混淆，门禁改为 iOS 12，
+  日志落 `/tmp/zikfix.log`；调用点在 main.swift iOS 12 observer，主线程），
+  ZY 检测层已移植（`ReynardNetworkAccessibility.h/.m`，纯公开 API，
+  日志落 `/tmp/zyauth.log`；alert 文案按“设置无此行”实情改写）。
+- 干净首启日志（pid/bundle/CH/hasCellular 全过）：nudge `rc=2`，
+  `dataActiveAndReachable` 返回 0，CT 初值 Unknown；ZY 侧 CT=restricted、
+  Reachability flags=0、判定 state=3（被拒）。
+- 结论：**ZIK 强制弹框对“安装即拒绝”无效**——无系统弹窗、policy 事后仍 1,1、
+  usage 库无记录（文档前提“仅未决定有效”被实证）；**ZY 检测+自制提示全通**——
+  判定正确且 alert 正常弹出（`IMG_0103`）。此前 zik1 轮的日志混乱系现场污染，
+  代码本身无辜。方向：main 只收 ZY，ZIK 留分支作阴性记录。
 - **根因二：necko 不认 iOS 系统 WiFi 代理**（HTTP 全局代理也无效，neck 走自家 socket+自家 prefs）：
   无 VPN 时被墙站全死、直连站（baidu）修复根因一后即通。修：设备 profile
   `/var/mobile/Library/Application Support/.mozilla/firefox/*.default/user.js` 加
