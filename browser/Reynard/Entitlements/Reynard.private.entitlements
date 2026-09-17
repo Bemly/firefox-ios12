@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>application-identifier</key>
-    <string>reynard.bemly.moe</string>
+    <string>reynard.bemly.moe.nettest</string>
 	<key>com.apple.developer.kernel.extended-virtual-addressing</key>
     <true/>
 	<key>com.apple.developer.kernel.increased-memory-limit</key>
