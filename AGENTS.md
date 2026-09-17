@@ -43,6 +43,12 @@
   scp 回 `/var/preferences/`（root:wheel 644）→ 杀 App 重启即通（launchd 自动拉起守护重读）。
   已留备份 `/var/preferences/com.apple.networkextension.plist.bak-20260917`。
   GUI 法：设置→无线局域网→底部列表→Reynard→选「WLAN 与蜂窝网络」。
+  注意：该列表里可能根本没有 Reynard（2026-09-17 iPhone 上实测无此行），此时只能走 CLI 法。
+  恢复验证（2026-09-17）：备份拷回原位 + `kill nesessionmanager` 即回 1=拒绝；
+  `ideviceinstaller uninstall + install /tmp/Reynard-release-4943d0d.ipa` 正常重装后
+  策略条目仍在（1,1，表内索引会漂移），卸载重装**不清**该策略、也不会重弹首启弹窗。
+  想复现弹窗需另想办法清条目；允许态可从机上
+  `/var/preferences/com.apple.networkextension.plist.pre-restore-20260917` 拷回。
 - **根因二：necko 不认 iOS 系统 WiFi 代理**（HTTP 全局代理也无效，neck 走自家 socket+自家 prefs）：
   无 VPN 时被墙站全死、直连站（baidu）修复根因一后即通。修：设备 profile
   `/var/mobile/Library/Application Support/.mozilla/firefox/*.default/user.js` 加
