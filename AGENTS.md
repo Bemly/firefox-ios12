@@ -799,3 +799,39 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
   configure 即挂）；② PATH 最前加 rustup 工具链 bin（自带 ios target，
   Homebrew rustc 编不了 `aarch64-apple-ios`）；③ Release archive 同样走 Xcode26
  （27 的最低 deployment 是 15.0，直接拒 12.4）。App 侧 `xcodebuild` 本体不受影响。
+
+## 上游合并实录（分支 `merge/upstream-20260918`，上游 2e383ee→1498894 共 3 提交）
+
+- 内容：Apple Pencil 前置支持（引擎 patch 7 文件：新增 `GeckoPencilSupport.h/.mm.patch` +
+  PointerSupport/TouchSupport/moz.build/nsWindow 重锚）、nsWindow 外观修复
+ （`nsLookAndFeel::SetSystemUsesDarkTheme`）、App 侧 shadowPath 三件套
+ （AddressBar/TabOverviewCard/TabOverviewPresentation）。**submodule 指针未动**
+ （仍 FIREFOX_156_0_RELEASE），不用 fetch tag。
+- 冲突 3 文件：TabOverviewPresentation.swift（取上游 + shim 三连：
+  `.appSystemBackground`/`applyContinuousCornerCurve()`/`.appSeparator`，borderWidth 新行照收）；
+  GeckoTouchSupport.mm.patch（**UIMenuController iOS 12 fallback 保住**，pencil 集成收编，
+  hunk 头 358 行）；nsWindow.mm.patch（**nil interaction 守卫保住**，pencil+外观修复收编）。
+- auto-merge 陷阱：AddressBar/TabOverviewCard 双方各自加了 `layoutSubviews`，git 能
+  **干净合并出重复 override**（编译必炸，不报冲突）。AddressBar 取上游版（引用已归零的
+  flat-chrome 常量，零成本；将来回退 flat-chrome 时 shadowPath 自动拿对 path，
+  比旧的 shadowPath=nil 回退状态更对），TabOverviewCard 保留我方注释版。
+- nsWindow.mm.patch 重建法（推荐流程）：双方 patch 各自 `git apply` 到 pristine 目标文件 →
+  `git merge-file` 三方合并 → 解 7 处内容冲突（5 取上游、1 双方合体、1 空白取上游）→
+  临时 git 仓 `git diff` 重生成整份 patch（29 hunks，行号自动正确）。本轮 diff 上游只剩
+  index 行 + 我方 nil 守卫，干净。
+- **新坑（git apply 静默截断）**：new-file patch 的 hunk 头行数比正文少时，
+  `git apply --check` 和 apply **都不报错**，只消费头声明的行数、多余的尾行（如 `@end`）
+  静默留在补丁外 → 应用文件缺最后一行，编译期才炸（本次 GeckoTouchSupport.mm.patch
+  357→358 血案，根因是 `tail -n +N` 起始偏移数错一行）。**校验必须做产物对比**：
+  `sed 's/^+//' <(tail -n +N patch) | diff - engine/firefox/<目标文件>`。
+- 工具链补充：mach build 的 PATH 要加 `~/.rustup/toolchains/stable-aarch64-apple-darwin/bin`
+ ——`~/.cargo/bin` 里没有 rustc/cargo 垫片（只有 cbindgen 等），加了等于没加，
+  Homebrew rustc 抢先 → configure 报 ios target 缺失；且**失败的 configure 会改写构建
+  配置引发宽域重编**（本轮 dom/gfx/layout 全编了一遍，多花 ~30 分钟）。
+- Pencil 代码 iOS 12 安全性已核：全部走运行时 `SupportsIOSVersion`（NSProcessInfo）门禁
+ （hover 16.1 / modifierFlags 13.4 / rollAngle 17.5），`UIPencilInteraction` 是 12.1+
+ 原生可用；iPad mini 2 无 Pencil，recognizer 空转无害。GeckoPointerSupport 里无门禁的
+ `allowedTouchTypes` 等弱链调用在 nil receiver 上是 no-op，无需补。
+- 验证链：patch 全量 `--check` 通过 → apply → 关键文件与合并目标逐字节 diff 一致 →
+  `mach build` 成功（GeckoPencilSupport.o/GeckoTouchSupport.o/nsWindow.o 全重编 + XUL 链接）→
+  Xcode26 Debug `BUILD SUCCEEDED`。未推 bemly/main，待真机验证后用户自行推。
