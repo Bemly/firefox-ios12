@@ -739,6 +739,10 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
 
 ## Git 约定
 
+- `.github/workflows/` 保持删除状态（fork 本地构建+ldid，用不上上游 CI；
+  留着的话推 tag/describe 都会误触发 Build Release/Update Source 空跑挂红）。
+  合并上游时若复活 workflow 文件，解完冲突后重新删掉再提交。
+
 - `main` 跟踪 `bemly/main`（公开主线），保持干净可编；推送前先确认与 `bemly/main` 同步。
   `origin/main` 是上游只读存档，早已分叉，不要以它为基准、不要往它推。
   不要在 main 上堆验证代码。
