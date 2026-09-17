@@ -481,6 +481,11 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   视频 240p/720p 双无差（解码本就 VT 硬解，呈现双零拷贝）。
   另：`layout.frame_rate=30` 限帧实验是废的（anim 页是 setInterval 自驱动，改 vsync 不改负载）。
 - 探针页 `Diagnostics/cssanim.html`（纯 CSS 版，合成器主场）已进仓库。
+- WebGL（同上 A/B，探针 `Diagnostics/webgl-anim.html`：rAF 旋转三角 + HUD fps，已进仓库）：
+  600px canvas：SW 56–64%/29.2fps vs HW 51–73%/29.8fps；150px：HW 32–40%/30.0fps。
+  结论：合成后端对 WebGL **无影响**——渲染本来就在 GPU（EAGL），帧率钉死 30 与像素无关
+  （600→150 只降 CPU 不升 fps），瓶颈是每帧固定管线成本（rAF→canvas 移交→WR 事务→CA 提交），
+  不是光栅化。vsync 源确认配 60（`MaxFPS` + CAFrameRateRange 有 respondsToSelector 守卫）。
 - 未合 main：重 DOM 页的 AGXGLDriver 崩风险仍 open（browserscore 夜前科），1GB 机
   GPU 纹理添 jetsam 压力；默认开需更广稳定性测试。当前结论 = 能点亮、有局部收益、不默认开。
 
