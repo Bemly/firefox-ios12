@@ -488,6 +488,10 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   不是光栅化。vsync 源确认配 60（`MaxFPS` + CAFrameRateRange 有 respondsToSelector 守卫）。
 - 未合 main：重 DOM 页的 AGXGLDriver 崩风险仍 open（browserscore 夜前科），1GB 机
   GPU 纹理添 jetsam 压力；默认开需更广稳定性测试。当前结论 = 能点亮、有局部收益、不默认开。
+- 开关已进设置（分支已验证）：高级 > Developer > 合成区「硬件 WebRender」（默认关，
+  重启生效；端到端：开→cssanim 21–24%，关→36–47%）。诊断行 +2（CSS 动画/WebGL 动画，
+  走包内 file://）。翻译 en/zh-Hans/zh-Hant 进 SettingsLocalizable，其余语言回落英文。
+  注意：本分支比 proxy 合入早，合 main 时 RuntimePreferences 取两边（proxy 行 + WR 行）。
 
 ## 输入法崩溃实录（2026-09-16，包 `/tmp/Reynard-ime-fix.ipa` 已装机）
 

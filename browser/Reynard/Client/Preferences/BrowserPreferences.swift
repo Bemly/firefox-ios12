@@ -950,6 +950,17 @@ final class BrowserPreferences {
                 prefs.set(newValue, forSetting: "DeveloperSettings", key: "remoteDebuggingPort")
             }
         }
+
+        // GPU compositing (hardware WebRender). Default off: needs restart,
+        // risky on heavy pages (A7 driver) + extra jetsam pressure.
+        static var hardwareWebRenderEnabled: Bool {
+            get {
+                return prefs.bool(forSetting: "DeveloperSettings", key: "hardwareWebRenderEnabled")
+            }
+            set {
+                prefs.set(newValue, forSetting: "DeveloperSettings", key: "hardwareWebRenderEnabled")
+            }
+        }
     }
     
     // MARK: - Appearance

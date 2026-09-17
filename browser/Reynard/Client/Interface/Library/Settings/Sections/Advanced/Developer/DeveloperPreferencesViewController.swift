@@ -16,12 +16,18 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
     
     private enum Section: CaseIterable {
         case remoteDebugging
+        case compositing
         case diagnostics
 
         var text: SettingsSectionText {
             switch self {
             case .remoteDebugging:
                 return SettingsSectionText(headerTitle: NSLocalizedString("Remote Debugging", comment: ""))
+            case .compositing:
+                return SettingsSectionText(
+                    headerTitle: NSLocalizedString("Compositing", tableName: "SettingsLocalizable", comment: ""),
+                    footerTitle: NSLocalizedString("Renders web content with the GPU. Takes effect after restarting the app.", tableName: "SettingsLocalizable", comment: "")
+                )
             case .diagnostics:
                 return SettingsSectionText(headerTitle: NSLocalizedString("On-Device Diagnostics", comment: ""))
             }
@@ -31,14 +37,19 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
     private enum Row {
         case remoteDebugging
         case remoteDebuggingPort
+        case hardwareWebRender
         case diagnosticsJITBench
         case diagnosticsVideo720
         case diagnosticsVideo240
         case diagnosticsAnimation
+        case diagnosticsAnimationCSS
+        case diagnosticsWebGLAnim
     }
-    
+
     private var isDebuggingEnabled = Prefs.DeveloperSettings.remoteDebuggingEnabled
+    private var isHardwareWebRenderEnabled = Prefs.DeveloperSettings.hardwareWebRenderEnabled
     private let debugSwitch = UISwitch()
+    private let hardwareWebRenderSwitch = UISwitch()
     private weak var footerTextView: UITextView?
     private let portTextField: UITextField = {
         let textField = UITextField(
@@ -62,8 +73,10 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
             return isDebuggingEnabled
             ? [.remoteDebugging, .remoteDebuggingPort]
             : [.remoteDebugging]
+        case .compositing:
+            return [.hardwareWebRender]
         case .diagnostics:
-            return [.diagnosticsJITBench, .diagnosticsVideo720, .diagnosticsVideo240, .diagnosticsAnimation]
+            return [.diagnosticsJITBench, .diagnosticsVideo720, .diagnosticsVideo240, .diagnosticsAnimation, .diagnosticsAnimationCSS, .diagnosticsWebGLAnim]
         }
     }
 
@@ -90,13 +103,20 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
             action: #selector(debugSwitchDidChange),
             for: .valueChanged
         )
+        hardwareWebRenderSwitch.addTarget(
+            self,
+            action: #selector(hardwareWebRenderSwitchDidChange),
+            for: .valueChanged
+        )
         portTextField.delegate = self
     }
-    
+
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         isDebuggingEnabled = Prefs.DeveloperSettings.remoteDebuggingEnabled
         debugSwitch.isOn = isDebuggingEnabled
+        isHardwareWebRenderEnabled = Prefs.DeveloperSettings.hardwareWebRenderEnabled
+        hardwareWebRenderSwitch.isOn = isHardwareWebRenderEnabled
         portTextField.text = String(Prefs.DeveloperSettings.remoteDebuggingPort)
         tableView.reloadData()
     }
@@ -181,6 +201,10 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
             cell.textLabel?.text = NSLocalizedString("Remote Debugging Port", comment: "")
             cell.accessoryView = portTextField
             portTextField.text = String(Prefs.DeveloperSettings.remoteDebuggingPort)
+        case .hardwareWebRender:
+            cell.textLabel?.text = NSLocalizedString("Hardware WebRender", tableName: "SettingsLocalizable", comment: "")
+            cell.accessoryView = hardwareWebRenderSwitch
+            hardwareWebRenderSwitch.isOn = isHardwareWebRenderEnabled
         case .diagnosticsJITBench:
             cell.textLabel?.text = NSLocalizedString("JIT Bench (on-device)", comment: "")
             cell.textLabel?.textColor = view.tintColor
@@ -195,6 +219,14 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
             cell.accessoryType = .disclosureIndicator
         case .diagnosticsAnimation:
             cell.textLabel?.text = NSLocalizedString("Animation Composite (on-device)", comment: "")
+            cell.textLabel?.textColor = view.tintColor
+            cell.accessoryType = .disclosureIndicator
+        case .diagnosticsAnimationCSS:
+            cell.textLabel?.text = NSLocalizedString("Animation CSS (on-device)", tableName: "SettingsLocalizable", comment: "")
+            cell.textLabel?.textColor = view.tintColor
+            cell.accessoryType = .disclosureIndicator
+        case .diagnosticsWebGLAnim:
+            cell.textLabel?.text = NSLocalizedString("WebGL Animation (on-device)", tableName: "SettingsLocalizable", comment: "")
             cell.textLabel?.textColor = view.tintColor
             cell.accessoryType = .disclosureIndicator
         }
@@ -219,6 +251,8 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
         case .remoteDebuggingPort:
             portTextField.becomeFirstResponder()
             return
+        case .hardwareWebRender:
+            return
         case .diagnosticsJITBench:
             diagnosticsName = "bench"
         case .diagnosticsVideo720:
@@ -227,6 +261,10 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
             diagnosticsName = "video240"
         case .diagnosticsAnimation:
             diagnosticsName = "anim"
+        case .diagnosticsAnimationCSS:
+            diagnosticsName = "cssanim"
+        case .diagnosticsWebGLAnim:
+            diagnosticsName = "webgl-anim"
         }
         if let name = diagnosticsName,
            let url = diagnosticsURL(name) {
@@ -275,6 +313,12 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
         }
         isDebuggingEnabled = sender.isOn
         tableView.reloadData()
+    }
+
+    @objc private func hardwareWebRenderSwitchDidChange(_ sender: UISwitch) {
+        // Backend is chosen at gfx init; takes effect after a cold restart.
+        Prefs.DeveloperSettings.hardwareWebRenderEnabled = sender.isOn
+        isHardwareWebRenderEnabled = sender.isOn
     }
     
     private func savePort() {
