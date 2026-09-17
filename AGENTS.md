@@ -50,6 +50,13 @@
   策略条目仍在（1,1，表内索引会漂移），卸载重装**不清**该策略、也不会重弹首启弹窗。
   想复现弹窗需另想办法清条目；允许态可从机上
   `/var/preferences/com.apple.networkextension.plist.pre-restore-20260917` 拷回。
+  设置行缺失之谜（2026-09-17）：iPhone 设置→Reynard 页没有“无线数据”行（Firefox 有），
+  但两家 Info.plist 都没有相关声明（此开关本就没有 app 侧可写的 key；相机的
+  NSCameraUsageDescription 是经 pbxproj `INFOPLIST_KEY_*` 注入的，不在 Resources/Info.plist 里）。
+  机上实证该行是**按流量使用记录驱动**：`CellularUsage.db/bundle_info` 与
+  `DataUsage.sqlite/ZPROCESS` 里有 Firefox 无 Reynard（侧载的 NineAnimator 在列，
+  故非安装来源过滤）。Reynard 因自始被拒、零成功流量 → 无记录 → 无行 → UI 无路可开，
+  死锁只能走 CLI；预测 CLI 放行并产生真实流量后该行会出现（待验）。
 - **根因二：necko 不认 iOS 系统 WiFi 代理**（HTTP 全局代理也无效，neck 走自家 socket+自家 prefs）：
   无 VPN 时被墙站全死、直连站（baidu）修复根因一后即通。修：设备 profile
   `/var/mobile/Library/Application Support/.mozilla/firefox/*.default/user.js` 加
