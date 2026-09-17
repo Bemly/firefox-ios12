@@ -794,3 +794,8 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
 - 血泪两条：① 解冲突别手写 hunk（counts/行尾空格必错），用 `diff -U` 从 pristine 生成；
   ② 全量 `--check` 过之前不要 `reset --hard` 工作树（本次 Pascal 式逐个修：160→156 行号全变）。
 - 本次 submodule 缺 156 tag（`apply-patches.sh` 拒跑）：`git -C engine/firefox fetch origin tag FIREFOX_156_0_RELEASE`。
+- 工具链三坑（2026-09-17，156 全量编实测）：① 引擎编必须
+  `DEVELOPER_DIR=Xcode26`（Xcode27 的 SDK TBD 无 arm64 切片，mozbuild 自带 lld 在
+  configure 即挂）；② PATH 最前加 rustup 工具链 bin（自带 ios target，
+  Homebrew rustc 编不了 `aarch64-apple-ios`）；③ Release archive 同样走 Xcode26
+ （27 的最低 deployment 是 15.0，直接拒 12.4）。App 侧 `xcodebuild` 本体不受影响。
