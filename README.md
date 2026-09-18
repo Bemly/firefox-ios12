@@ -15,18 +15,10 @@ On iOS 12 the bundled WebKit is a decade old and most modern websites simply bre
 
 ## Status
 
-What works on an iPad mini 3 (A7, iOS 12.5.8):
-
 - **Modern web rendering** — complex sites (Google Search, GitHub, web apps) render and run their JavaScript.
 - **SpiderMonkey JIT enabled in the main process** — this port is single-process, so the JIT is enabled directly in the app process (~18× faster JS than the interpreter baseline on a benchmark loop). No debugger attach or root helper is required on an AppSync-signed jailbroken device.
-- **Video playback** — H.264 playback works. Note that rendering/compositing currently runs on the CPU (software compositor), so high-resolution video is CPU-heavy.
+- **Video playback** — H.264 playback works. support HW Overlays, so high-resolution video is CPU-heavy.
 - **WebGL rendering** — WebGL 1.0 contexts create and animate (verified with an on-device rotating-triangle probe page).
-
-Known limitations:
-
-- Single-process: there are no content processes, so some process-isolation-related features behave differently.
-- Hardware video acceleration (VideoToolbox decode + GPU compositing) is not wired up yet.
-- Early and experimental: expect missing features and occasional crashes.
 
 ## Screenshots
 
