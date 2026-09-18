@@ -18,6 +18,7 @@ protocol SidebarContentController: AnyObject {
     func updateBrowserLayout(animated: Bool, duration: TimeInterval)
     func updateBrowserLayoutIfNeeded(animated: Bool, duration: TimeInterval)
     func openExternalURL(_ url: URL)
+    func notifyScreenOrientationChanged(to interfaceOrientation: UIInterfaceOrientation)
     func sidebarDidEndEditing()
 }
 
@@ -195,5 +196,9 @@ final class SidebarCoordinator {
     
     func openExternalURL(_ url: URL) {
         contentBrowser?.openExternalURL(url)
+    }
+    
+    func notifyScreenOrientationChanged(to interfaceOrientation: UIInterfaceOrientation) {
+        contentBrowser?.notifyScreenOrientationChanged(to: interfaceOrientation)
     }
 }
