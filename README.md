@@ -20,12 +20,29 @@ What works on an iPad mini 3 (A7, iOS 12.5.8):
 - **Modern web rendering** — complex sites (Google Search, GitHub, web apps) render and run their JavaScript.
 - **SpiderMonkey JIT enabled in the main process** — this port is single-process, so the JIT is enabled directly in the app process (~18× faster JS than the interpreter baseline on a benchmark loop). No debugger attach or root helper is required on an AppSync-signed jailbroken device.
 - **Video playback** — H.264 playback works. Note that rendering/compositing currently runs on the CPU (software compositor), so high-resolution video is CPU-heavy.
+- **WebGL rendering** — WebGL 1.0 contexts create and animate (verified with an on-device rotating-triangle probe page).
 
 Known limitations:
 
 - Single-process: there are no content processes, so some process-isolation-related features behave differently.
 - Hardware video acceleration (VideoToolbox decode + GPU compositing) is not wired up yet.
 - Early and experimental: expect missing features and occasional crashes.
+
+## Screenshots
+
+Taken on-device (A7, iOS 12.5.8):
+
+![On-device JIT benchmark](assets/screenshots/jit-bench.png)
+*JIT benchmark — `RUNS[78,66,67,67]` warmup shape means Ion has reached steady state (~18× the interpreter baseline). The on-device diagnostics pages are listed under Settings.*
+
+![720p H.264 test video playing](assets/screenshots/video-720p.png)
+*720p H.264 test video playing (`readyState=4`, timestamp advancing).*
+
+WebGL probe page (rotating triangle, `renderer=WebGL 1.0`):
+
+| iPhone (30 fps) | iPad (55 fps) |
+| --- | --- |
+| <img src="assets/screenshots/webgl-anim-iphone.png" width="250" alt="WebGL animation on iPhone" /> | <img src="assets/screenshots/webgl-anim-ipad.png" width="500" alt="WebGL animation on iPad" /> |
 
 ## Requirements
 

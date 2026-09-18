@@ -20,12 +20,29 @@ Reynard 是一款基于 **Gecko** 内核的浏览器。iOS 上所有浏览器—
 - **现代网页渲染** —— 复杂网站（Google 搜索、GitHub、Web 应用）可以渲染并正常运行 JavaScript。
 - **SpiderMonkey JIT 已在主进程启用** —— 本移植为单进程架构，因此 JIT 直接在应用进程内启用（基准测试中 JavaScript 比解释器基线快约 18 倍）。在 AppSync 签名的越狱设备上无需调试器附加或 root 助手。
 - **视频播放** —— H.264 播放可用。注意目前渲染/合成走的是 CPU（软件合成器），高分辨率视频对 CPU 压力较大。
+- **WebGL 渲染** —— WebGL 1.0 上下文可创建并正常播放动画（已用本机旋转三角探针页验证）。
 
 已知限制：
 
 - 单进程：没有内容进程，部分依赖进程隔离的特性表现不同。
 - 视频硬件加速（VideoToolbox 解码 + GPU 合成）尚未接通。
 - 早期实验阶段：预期会有功能缺失和偶发崩溃。
+
+## 截图
+
+以下截图均摄于真机（A7，iOS 12.5.8）：
+
+![本机 JIT 基准测试](assets/screenshots/jit-bench.png)
+*JIT 基准测试 —— `RUNS[78,66,67,67]` 的 warmup 形状说明 Ion 已进入稳态（约为解释器基线的 18 倍）。应用内诊断页见设置。*
+
+![720p H.264 测试视频播放中](assets/screenshots/video-720p.png)
+*720p H.264 测试视频播放中（`readyState=4`，时间戳正常推进）。*
+
+WebGL 探针页（旋转三角，`renderer=WebGL 1.0`）：
+
+| iPhone（30 fps） | iPad（55 fps） |
+| --- | --- |
+| <img src="assets/screenshots/webgl-anim-iphone.png" width="250" alt="iPhone 上的 WebGL 动画" /> | <img src="assets/screenshots/webgl-anim-ipad.png" width="500" alt="iPad 上的 WebGL 动画" /> |
 
 ## 环境要求
 
