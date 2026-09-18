@@ -1,5 +1,5 @@
 diff --git a/layout/base/PresShell.cpp b/layout/base/PresShell.cpp
-index 8b1f69b52380..646031091357 100644
+index 8b1f69b52380..6bd65f935082 100644
 --- a/layout/base/PresShell.cpp
 +++ b/layout/base/PresShell.cpp
 @@ -47,6 +47,7 @@
@@ -10,7 +10,28 @@ index 8b1f69b52380..646031091357 100644
  #include "mozilla/MemoryReporting.h"
  #include "mozilla/MouseEvents.h"
  #include "mozilla/PerfStats.h"
-@@ -5771,7 +5772,32 @@ nscolor PresShell::GetDefaultBackgroundColorToDraw() const {
+@@ -1875,7 +1876,19 @@ void PresShell::ResizeReflow(const nsSize& aSize,
+     mMobileViewportManager->RequestReflow(false);
+     return;
+   }
+-  ResizeReflowIgnoreOverride(aSize, aOptions);
++  
++  // Callers pass either the viewer bounds, which include the area under the
++  // dynamic toolbar, or the current layout viewport size. Size the layout
++  // viewport from the viewer bounds minus the toolbar, as the MVM does.
++  nsSize size = aSize;
++  LayoutDeviceIntSize viewerSize;
++  if (mMobileViewportManager &&
++      !(aOptions & ResizeReflowOptions::BSizeLimit) &&
++      nsLayoutUtils::GetDocumentViewerSize(mPresContext, viewerSize)) {
++    size = LayoutDeviceIntSize::ToAppUnits(viewerSize,
++                                           mPresContext->AppUnitsPerDevPixel());
++  }
++  ResizeReflowIgnoreOverride(size, aOptions);
+ }
+ 
+ bool PresShell::SimpleResizeReflow(const nsSize& aSize) {
+@@ -5771,7 +5784,32 @@ nscolor PresShell::GetDefaultBackgroundColorToDraw() const {
  }
  
  void PresShell::UpdateCanvasBackground() {
@@ -44,7 +65,7 @@ index 8b1f69b52380..646031091357 100644
  }
  
  static SingleCanvasBackground ComputeSingleCanvasBackground(nsIFrame* aCanvas) {
-@@ -12471,6 +12497,17 @@ nsPoint PresShell::GetVisualViewportOffsetRelativeToLayoutViewport() const {
+@@ -12471,6 +12509,17 @@ nsPoint PresShell::GetVisualViewportOffsetRelativeToLayoutViewport() const {
    return GetVisualViewportOffset() - GetLayoutViewportOffset();
  }
  
@@ -62,7 +83,7 @@ index 8b1f69b52380..646031091357 100644
  nsPoint PresShell::GetLayoutViewportOffset() const {
    nsPoint result;
    if (ScrollContainerFrame* sf = GetRootScrollContainerFrame()) {
-@@ -12516,7 +12553,7 @@ nsSize PresShell::GetFixedViewportSize() const {
+@@ -12516,7 +12565,7 @@ nsSize PresShell::GetFixedViewportSize() const {
      return layoutViewportSize;
    }
    layoutViewportSize.height +=

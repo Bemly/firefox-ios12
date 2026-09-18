@@ -1,5 +1,5 @@
 diff --git a/layout/base/nsPresContext.cpp b/layout/base/nsPresContext.cpp
-index 02a771ca9348..fdcdd252e09a 100644
+index 02a771ca9348..ee52941f8ca3 100644
 --- a/layout/base/nsPresContext.cpp
 +++ b/layout/base/nsPresContext.cpp
 @@ -714,7 +714,7 @@ void nsPresContext::Init(nsDeviceContext* aDeviceContext) {
@@ -11,31 +11,7 @@ index 02a771ca9348..fdcdd252e09a 100644
    if (IsRootContentDocumentCrossProcess()) {
      if (BrowserChild* browserChild = BrowserChild::GetFrom(GetDocShell())) {
        if (MOZ_LIKELY(!Preferences::HasUserValue(
-@@ -2904,13 +2904,16 @@ void nsPresContext::SetDynamicToolbarMaxHeight(ScreenIntCoord aHeight) {
-   AdjustSizeForViewportUnits();
- 
-   if (RefPtr<mozilla::PresShell> presShell = mPresShell) {
--    // Changing the max height of the dynamic toolbar changes the ICB size, we
--    // need to kick a reflow with the current window dimensions since the max
--    // height change doesn't change the window dimensions but
--    // PresShell::ResizeReflow ends up subtracting the new dynamic toolbar
--    // height from the window dimensions and kick a reflow with the proper ICB
--    // size.
--    presShell->ForceResizeReflowWithCurrentDimensions();
-+    if (presShell->UsesMobileViewportSizing()) {
-+      presShell->ForceResizeReflowWithCurrentDimensions();
-+    } else {
-+      LayoutDeviceIntSize size;
-+      if (nsLayoutUtils::GetDocumentViewerSize(this, size)) {
-+        presShell->SetLayoutViewportSize(
-+            LayoutDeviceIntSize::ToAppUnits(size, AppUnitsPerDevPixel()),
-+            false);
-+      }
-+    }
-   }
- }
- 
-@@ -2960,15 +2963,13 @@ void nsPresContext::UpdateDynamicToolbarOffset(ScreenIntCoord aOffset) {
+@@ -2960,15 +2960,13 @@ void nsPresContext::UpdateDynamicToolbarOffset(ScreenIntCoord aOffset) {
      return;
    }
  
@@ -57,7 +33,7 @@ index 02a771ca9348..fdcdd252e09a 100644
      mPresShell->MarkStickyFramesForReflow();
      mPresShell->ScheduleResizeEventIfNeeded(
          PresShell::ResizeEventKind::Regular);
-@@ -3051,19 +3052,18 @@ nscoord nsPresContext::GetBimodalDynamicToolbarHeightInAppUnits() const {
+@@ -3051,19 +3049,18 @@ nscoord nsPresContext::GetBimodalDynamicToolbarHeightInAppUnits() const {
               : 0;
  }
  
