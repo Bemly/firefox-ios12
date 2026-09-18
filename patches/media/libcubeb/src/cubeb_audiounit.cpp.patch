@@ -1,5 +1,5 @@
 diff --git a/media/libcubeb/src/cubeb_audiounit.cpp b/media/libcubeb/src/cubeb_audiounit.cpp
-index d1a217687acd..116f138a4549 100644
+index d1a217687acd..3a8c85766af1 100644
 --- a/media/libcubeb/src/cubeb_audiounit.cpp
 +++ b/media/libcubeb/src/cubeb_audiounit.cpp
 @@ -299,6 +299,12 @@ struct cubeb_stream {
@@ -15,7 +15,99 @@ index d1a217687acd..116f138a4549 100644
  };
  
  bool
-@@ -756,9 +762,39 @@ audiounit_output_callback(void * user_ptr,
+@@ -523,6 +529,24 @@ audiounit_render_input(cubeb_stream * stm, AudioUnitRenderActionFlags * flags,
+   return noErr;
+ }
+ 
++#if TARGET_OS_IPHONE
++static void
++audiounit_stop_and_notify_from_callback(cubeb_stream * stm,
++                                        cubeb_state state)
++{
++  if (std::atomic_exchange(&stm->shutdown, true)) {
++    return;
++  }
++
++  // AudioOutputUnitStop joins the RemoteIO I/O thread, so it must run after the
++  // callback returns.
++  dispatch_async(stm->context->serial_queue, ^() {
++    audiounit_stream_stop_internal(stm);
++    stm->state_callback(stm, stm->user_ptr, state);
++  });
++}
++#endif
++
+ static OSStatus
+ audiounit_input_callback(void * user_ptr, AudioUnitRenderActionFlags * flags,
+                          AudioTimeStamp const * tstamp, UInt32 bus,
+@@ -539,6 +563,11 @@ audiounit_input_callback(void * user_ptr, AudioUnitRenderActionFlags * flags,
+   }
+ 
+   if (stm->draining) {
++#if TARGET_OS_IPHONE
++    if (stm->output_unit == NULL) {
++      audiounit_stop_and_notify_from_callback(stm, CUBEB_STATE_DRAINED);
++    }
++#else
+     OSStatus r = AudioOutputUnitStop(stm->input_unit);
+     assert(r == 0);
+     // Only fire state callback in input-only stream. For duplex stream,
+@@ -546,6 +575,7 @@ audiounit_input_callback(void * user_ptr, AudioUnitRenderActionFlags * flags,
+     if (stm->output_unit == NULL) {
+       stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
+     }
++#endif
+     return noErr;
+   }
+ 
+@@ -569,10 +599,14 @@ audiounit_input_callback(void * user_ptr, AudioUnitRenderActionFlags * flags,
+                                         stm->input_linear_buffer->data(),
+                                         &total_input_frames, NULL, 0);
+   if (outframes < 0) {
++#if TARGET_OS_IPHONE
++    audiounit_stop_and_notify_from_callback(stm, CUBEB_STATE_ERROR);
++#else
+     stm->shutdown = true;
+     OSStatus r = AudioOutputUnitStop(stm->input_unit);
+     assert(r == 0);
+     stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
++#endif
+     return noErr;
+   }
+   stm->draining = outframes < total_input_frames;
+@@ -655,9 +689,13 @@ audiounit_output_callback(void * user_ptr,
+   }
+ 
+   if (stm->draining) {
++#if TARGET_OS_IPHONE
++    audiounit_stop_and_notify_from_callback(stm, CUBEB_STATE_DRAINED);
++#else
+     OSStatus r = AudioOutputUnitStop(stm->output_unit);
+     assert(r == 0);
+     stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_DRAINED);
++#endif
+     audiounit_make_silent(&outBufferList->mBuffers[0]);
+     return noErr;
+   }
+@@ -719,6 +757,9 @@ audiounit_output_callback(void * user_ptr,
+   }
+ 
+   if (outframes < 0 || outframes > output_frames) {
++#if TARGET_OS_IPHONE
++    audiounit_stop_and_notify_from_callback(stm, CUBEB_STATE_ERROR);
++#else
+     stm->shutdown = true;
+     OSStatus r = AudioOutputUnitStop(stm->output_unit);
+     assert(r == 0);
+@@ -727,6 +768,7 @@ audiounit_output_callback(void * user_ptr,
+       assert(r == 0);
+     }
+     stm->state_callback(stm, stm->user_ptr, CUBEB_STATE_ERROR);
++#endif
+     audiounit_make_silent(&outBufferList->mBuffers[0]);
+     return noErr;
+   }
+@@ -756,9 +798,39 @@ audiounit_output_callback(void * user_ptr,
                                  outBufferList->mBuffers[0].mDataByteSize);
    }
  
@@ -55,7 +147,7 @@ index d1a217687acd..116f138a4549 100644
  extern "C" {
  int
  audiounit_init(cubeb ** context, char const * /* context_name */)
-@@ -1293,8 +1329,7 @@ int
+@@ -1293,8 +1365,7 @@ int
  audiounit_get_max_channel_count(cubeb * ctx, uint32_t * max_channels)
  {
  #if TARGET_OS_IPHONE
@@ -65,7 +157,7 @@ index d1a217687acd..116f138a4549 100644
  #else
    UInt32 size;
    OSStatus r;
-@@ -1349,8 +1384,8 @@ static int
+@@ -1349,8 +1420,8 @@ static int
  audiounit_get_preferred_sample_rate(cubeb * /* ctx */, uint32_t * rate)
  {
  #if TARGET_OS_IPHONE
@@ -76,7 +168,7 @@ index d1a217687acd..116f138a4549 100644
  #else
    UInt32 size;
    OSStatus r;
-@@ -2190,6 +2225,7 @@ audiounit_create_unit(AudioUnit * unit, device_info * device)
+@@ -2190,6 +2261,7 @@ audiounit_create_unit(AudioUnit * unit, device_info * device)
      assert(false);
    }
  
@@ -84,7 +176,7 @@ index d1a217687acd..116f138a4549 100644
    rv = AudioUnitSetProperty(*unit, kAudioOutputUnitProperty_CurrentDevice,
                              kAudioUnitScope_Global, 0, &device->id,
                              sizeof(AudioDeviceID));
-@@ -2198,6 +2234,7 @@ audiounit_create_unit(AudioUnit * unit, device_info * device)
+@@ -2198,6 +2270,7 @@ audiounit_create_unit(AudioUnit * unit, device_info * device)
          rv);
      return CUBEB_ERROR;
    }
@@ -92,7 +184,7 @@ index d1a217687acd..116f138a4549 100644
  
    return CUBEB_OK;
  }
-@@ -2461,6 +2498,15 @@ audiounit_configure_input(cubeb_stream * stm)
+@@ -2461,6 +2534,15 @@ audiounit_configure_input(cubeb_stream * stm)
      return CUBEB_ERROR;
    }
    stm->input_hw_rate = input_hw_desc.mSampleRate;
@@ -108,7 +200,7 @@ index d1a217687acd..116f138a4549 100644
    LOG("(%p) Input device sampling rate: %.2f", stm, stm->input_hw_rate);
  
    /* Set format description according to the input params. */
-@@ -2563,6 +2609,15 @@ audiounit_configure_output(cubeb_stream * stm)
+@@ -2563,6 +2645,15 @@ audiounit_configure_output(cubeb_stream * stm)
      return CUBEB_ERROR;
    }
    stm->output_hw_rate = output_hw_desc.mSampleRate;
@@ -124,7 +216,7 @@ index d1a217687acd..116f138a4549 100644
    if (!is_common_sample_rate(stm->output_desc.mSampleRate)) {
      /* For uncommon sample rates, we may run into issues with the OS
         resampler if we don't do the resampling ourselves, so set the
-@@ -2647,6 +2702,21 @@ audiounit_setup_stream(cubeb_stream * stm)
+@@ -2647,6 +2738,21 @@ audiounit_setup_stream(cubeb_stream * stm)
  
    int r = 0;
  
@@ -146,7 +238,7 @@ index d1a217687acd..116f138a4549 100644
    device_info in_dev_info = stm->input_device;
    device_info out_dev_info = stm->output_device;
  
-@@ -2813,10 +2883,12 @@ audiounit_setup_stream(cubeb_stream * stm)
+@@ -2813,10 +2919,12 @@ audiounit_setup_stream(cubeb_stream * stm)
        return CUBEB_ERROR;
      }
  
@@ -161,7 +253,7 @@ index d1a217687acd..116f138a4549 100644
  
      Float64 unit_s;
      UInt32 size = sizeof(unit_s);
-@@ -2889,25 +2961,31 @@ audiounit_stream_init(cubeb * context, cubeb_stream ** stream,
+@@ -2889,25 +2997,31 @@ audiounit_stream_init(cubeb * context, cubeb_stream ** stream,
    }
    if (input_stream_params) {
      stm->input_stream_params = *input_stream_params;
@@ -197,7 +289,7 @@ index d1a217687acd..116f138a4549 100644
    }
  
    {
-@@ -3115,6 +3193,10 @@ audiounit_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
+@@ -3115,6 +3229,10 @@ audiounit_stream_get_latency(cubeb_stream * stm, uint32_t * latency)
  static int
  audiounit_stream_get_volume(cubeb_stream * stm, float * volume)
  {
@@ -208,7 +300,7 @@ index d1a217687acd..116f138a4549 100644
    assert(stm->output_unit);
    OSStatus r = AudioUnitGetParameter(stm->output_unit, kHALOutputParam_Volume,
                                       kAudioUnitScope_Global, 0, volume);
-@@ -3123,11 +3205,16 @@ audiounit_stream_get_volume(cubeb_stream * stm, float * volume)
+@@ -3123,11 +3241,16 @@ audiounit_stream_get_volume(cubeb_stream * stm, float * volume)
      return CUBEB_ERROR;
    }
    return CUBEB_OK;
@@ -225,7 +317,7 @@ index d1a217687acd..116f138a4549 100644
    assert(stm->output_unit);
    OSStatus r;
    r = AudioUnitSetParameter(stm->output_unit, kHALOutputParam_Volume,
-@@ -3138,6 +3225,7 @@ audiounit_stream_set_volume(cubeb_stream * stm, float volume)
+@@ -3138,6 +3261,7 @@ audiounit_stream_set_volume(cubeb_stream * stm, float volume)
      return CUBEB_ERROR;
    }
    return CUBEB_OK;
@@ -233,7 +325,7 @@ index d1a217687acd..116f138a4549 100644
  }
  
  unique_ptr<char[]>
-@@ -3215,8 +3303,19 @@ audiounit_stream_get_current_device(cubeb_stream * stm,
+@@ -3215,8 +3339,19 @@ audiounit_stream_get_current_device(cubeb_stream * stm,
                                      cubeb_device ** const device)
  {
  #if TARGET_OS_IPHONE
@@ -255,7 +347,7 @@ index d1a217687acd..116f138a4549 100644
  #else
    *device = new cubeb_device;
    if (!*device) {
-@@ -3510,7 +3609,40 @@ static int
+@@ -3510,7 +3645,40 @@ static int
  audiounit_enumerate_devices(cubeb * /* context */, cubeb_device_type type,
                              cubeb_device_collection * collection)
  {
@@ -297,7 +389,7 @@ index d1a217687acd..116f138a4549 100644
  }
  #else
  static int
-@@ -3584,16 +3716,23 @@ static int
+@@ -3584,16 +3752,23 @@ static int
  audiounit_device_collection_destroy(cubeb * /* context */,
                                      cubeb_device_collection * collection)
  {
