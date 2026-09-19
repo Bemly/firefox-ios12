@@ -72,6 +72,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
     private var layoutState = LayoutState(mode: .standard)
     private var session: GeckoSession?
     private var dynamicToolbarMaxHeight: CGFloat = 0
+    private var dynamicToolbarMinHeight: CGFloat = 0
     private var contentBottomOffset: CGFloat = 0
     private var toolbarTopOffset: CGFloat = 0
     private var contentTopInset: CGFloat = 0
@@ -260,6 +261,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
     
     func setToolbarLimits(
         maxHeight: CGFloat,
+        minHeight: CGFloat,
         contentTopInset: CGFloat,
         contentBottomInset: CGFloat,
         webContentBottomOffset: CGFloat
@@ -267,6 +269,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         defer { updateToolbarLayout() }
         
         dynamicToolbarMaxHeight = maxHeight
+        dynamicToolbarMinHeight = minHeight
         self.contentBottomInset = contentBottomInset
         guard abs(contentTopInset - self.contentTopInset) > 0.5
                 || abs(webContentBottomOffset - self.webContentBottomOffset) > 0.5 else {
@@ -317,7 +320,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
         let toolbarHeight = resizesPageWithToolbar
         ? dynamicToolbarMaxHeight - toolbarTopOffset + contentBottomOffset
         : dynamicToolbarMaxHeight
-        session?.setDynamicToolbarMaxHeight(toolbarHeight)
+        session?.setDynamicToolbarMaxHeight(toolbarHeight, minHeight: dynamicToolbarMinHeight)
         session?.setContentOffsets(
             top: resizesPageWithToolbar ? 0 : -toolbarTopOffset,
             bottom: resizesPageWithToolbar ? 0 : contentBottomOffset,
@@ -439,7 +442,7 @@ final class ContentView: UIView, UIGestureRecognizerDelegate {
                 right: 0
             ))
             let newOffset = calculateFocusedInputOffset(
-                focusedInputBottom: engineFrame.minY + layoutTopInset + viewportFrame.height * metrics.bottomRatio,
+                focusedInputBottom: viewportFrame.minY + viewportFrame.height * metrics.bottomRatio,
                 webContentBottom: viewportFrame.maxY,
                 caretTop: metrics.caretTop.map { engineFrame.minY + $0 },
                 keyboardTop: keyboardFrame.minY - bottomInset - frame.minY - focusedInputOffset

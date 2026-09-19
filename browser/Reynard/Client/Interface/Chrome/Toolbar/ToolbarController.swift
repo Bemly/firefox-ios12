@@ -118,6 +118,7 @@ final class ToolbarController {
         }
         contentView.setToolbarLimits(
             maxHeight: canHideToolbar ? offsetLimits.total : 0,
+            minHeight: canHideToolbar ? offsetLimits.total - maxToolbarOffset : 0,
             contentTopInset: canHideToolbar ? offsetLimits.top : 0,
             contentBottomInset: canHideToolbar && chromeMode == .phone ? minimizedHeight : 0,
             webContentBottomOffset: webContentBottomOffset

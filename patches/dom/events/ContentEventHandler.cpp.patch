@@ -1,5 +1,5 @@
 diff --git a/dom/events/ContentEventHandler.cpp b/dom/events/ContentEventHandler.cpp
-index 676c358f6e54..22859b159152 100644
+index 676c358f6e54..0f468e01a1d9 100644
 --- a/dom/events/ContentEventHandler.cpp
 +++ b/dom/events/ContentEventHandler.cpp
 @@ -6,6 +6,9 @@
@@ -244,7 +244,7 @@ index 676c358f6e54..22859b159152 100644
    if (NS_WARN_IF(NS_FAILED(QueryContentRect(mRootElement, aEvent)))) {
      return NS_ERROR_FAILURE;
    }
-@@ -3408,13 +3585,78 @@ nsresult ContentEventHandler::ConvertToRootRelativeOffset(nsIFrame* aFrame,
+@@ -3408,13 +3585,63 @@ nsresult ContentEventHandler::ConvertToRootRelativeOffset(nsIFrame* aFrame,
    if (NS_WARN_IF(!rootPC)) {
      return NS_ERROR_FAILURE;
    }
@@ -261,13 +261,7 @@ index 676c358f6e54..22859b159152 100644
 +  if (fixedMargins && rootPC->IsKeyboardHiddenOrResizesContentMode() &&
 +      nsDisplayOwnLayer::HasDynamicToolbar(rootFrame)) {
 +    auto* rootScrollFrame = rootPresShell->GetRootScrollContainerFrame();
-+    const CSSPoint callbackOffset =
-+        nsLayoutUtils::GetCumulativeApzCallbackTransform(rootScrollFrame);
-+    nsMargin margins = CSSPixel::ToAppUnits(*fixedMargins);
-+    const nscoord originOffset =
-+        CSSPixel::ToAppUnits(std::min(callbackOffset.y, CSSCoord(0)));
-+    margins.top += originOffset;
-+    margins.bottom -= originOffset;
++    const nsMargin margins = CSSPixel::ToAppUnits(*fixedMargins);
 +
 +    AutoTArray<nsIFrame*, 4> stickyFrames;
 +    for (nsIFrame* frame = aFrame; frame && frame != rootFrame;
@@ -302,17 +296,8 @@ index 676c358f6e54..22859b159152 100644
 +      const nscoord delta = -offset;
 +      const bool stuckAtTop = inner.YMost() <= delta && delta <= outer.YMost();
 +      const bool stuckAtBottom = outer.Y() <= delta && delta <= inner.Y();
-+      nscoord adjustment = stuckAtBottom ? -margins.bottom : 0;
-+
-+      if (nsLayoutUtils::GetSideBitsForFixedPositionContent(frame) &
-+          SideBits::eTop) {
-+        const nscoord topAdjustment =
-+            std::clamp(delta + margins.top, inner.YMost(), outer.YMost()) -
-+            std::clamp(delta, inner.YMost(), outer.YMost());
-+        if (topAdjustment || stuckAtTop) {
-+          adjustment = topAdjustment;
-+        }
-+      }
++      const nscoord adjustment =
++          stuckAtBottom && !stuckAtTop ? -margins.bottom : 0;
 +      offset += std::clamp(delta, inner.YMost(), outer.YMost()) -
 +                std::clamp(nscoord(0), inner.YMost(), outer.YMost()) +
 +                std::clamp(delta, outer.Y(), inner.Y()) -

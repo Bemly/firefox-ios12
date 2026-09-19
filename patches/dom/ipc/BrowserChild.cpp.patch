@@ -1,5 +1,5 @@
 diff --git a/dom/ipc/BrowserChild.cpp b/dom/ipc/BrowserChild.cpp
-index 36ec79dc9e3f..5ded5c24518d 100644
+index 36ec79dc9e3f..6854bb79ad80 100644
 --- a/dom/ipc/BrowserChild.cpp
 +++ b/dom/ipc/BrowserChild.cpp
 @@ -229,6 +229,13 @@ PresShell* BrowserChild::GetTopLevelPresShell() const {
@@ -16,3 +16,31 @@ index 36ec79dc9e3f..5ded5c24518d 100644
  bool BrowserChild::UpdateFrame(const RepaintRequest& aRequest) {
    MOZ_ASSERT(aRequest.GetScrollId() != ScrollableLayerGuid::NULL_SCROLL_ID);
  
+@@ -345,6 +352,7 @@ BrowserChild::BrowserChild(ContentChild* aManager, const TabId& aTabId,
+       mLayersId{0},
+       mEffectsInfo{EffectsInfo::FullyHidden()},
+       mDynamicToolbarMaxHeight(0),
++      mDynamicToolbarMinHeight(0),
+       mKeyboardHeight(0),
+       mUniqueId(aTabId),
+       mDidFakeShow(false),
+@@ -1252,8 +1260,9 @@ mozilla::ipc::IPCResult BrowserChild::RecvUpdateRemoteStyle(
+ }
+ 
+ mozilla::ipc::IPCResult BrowserChild::RecvDynamicToolbarMaxHeightChanged(
+-    const ScreenIntCoord& aHeight) {
++    const ScreenIntCoord& aHeight, const ScreenIntCoord& aMinHeight) {
+   mDynamicToolbarMaxHeight = aHeight;
++  mDynamicToolbarMinHeight = aMinHeight;
+ 
+   RefPtr<Document> document = GetTopLevelDocument();
+   if (!document) {
+@@ -1261,7 +1270,7 @@ mozilla::ipc::IPCResult BrowserChild::RecvDynamicToolbarMaxHeightChanged(
+   }
+ 
+   if (RefPtr<nsPresContext> presContext = document->GetPresContext()) {
+-    presContext->SetDynamicToolbarMaxHeight(aHeight);
++    presContext->SetDynamicToolbarMaxHeight(aHeight, aMinHeight);
+   }
+   return IPC_OK();
+ }

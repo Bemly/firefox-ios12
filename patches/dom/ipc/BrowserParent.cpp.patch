@@ -1,5 +1,5 @@
 diff --git a/dom/ipc/BrowserParent.cpp b/dom/ipc/BrowserParent.cpp
-index d640d0f26539..bfb44382d554 100644
+index d640d0f26539..93893392696f 100644
 --- a/dom/ipc/BrowserParent.cpp
 +++ b/dom/ipc/BrowserParent.cpp
 @@ -142,6 +142,10 @@
@@ -35,7 +35,7 @@ index d640d0f26539..bfb44382d554 100644
    }
    return IPC_OK();
  }
-@@ -1012,13 +1031,19 @@ void BrowserParent::InitRendering() {
+@@ -1012,14 +1031,21 @@ void BrowserParent::InitRendering() {
          widget->SupportsUnadjustedMovement());
    }
  
@@ -45,18 +45,33 @@ index d640d0f26539..bfb44382d554 100644
  
    if (GetBrowsingContext()->IsTopContent()) {
      (void)SendDynamicToolbarMaxHeightChanged(
-         widget->GetDynamicToolbarMaxHeight());
-   }
+-        widget->GetDynamicToolbarMaxHeight());
++        widget->GetDynamicToolbarMaxHeight(),
++        widget->GetDynamicToolbarMinHeight());
++  }
 +
 +#ifdef XP_IOS
 +  if (mBackgroundColor) {
 +    mozilla::widget::DispatchBackgroundColor(widget, *mBackgroundColor);
-+  }
-+#endif
+   }
  #endif
++#endif
  }
  
-@@ -2378,6 +2403,16 @@ mozilla::ipc::IPCResult BrowserParent::RecvSetCursor(
+ bool BrowserParent::AttachWindowRenderer() {
+@@ -1185,7 +1211,10 @@ void BrowserParent::SizeModeChanged(const nsSizeMode& aSizeMode) {
+ 
+ void BrowserParent::DynamicToolbarMaxHeightChanged(ScreenIntCoord aHeight) {
+   if (!mIsDestroyed) {
+-    (void)SendDynamicToolbarMaxHeightChanged(aHeight);
++    nsCOMPtr<nsIWidget> widget = GetWidget();
++    (void)SendDynamicToolbarMaxHeightChanged(
++        aHeight,
++        widget ? widget->GetDynamicToolbarMinHeight() : ScreenIntCoord(0));
+   }
+ }
+ 
+@@ -2378,6 +2407,16 @@ mozilla::ipc::IPCResult BrowserParent::RecvSetCursor(
    return IPC_OK();
  }
  
@@ -73,7 +88,7 @@ index d640d0f26539..bfb44382d554 100644
  mozilla::ipc::IPCResult BrowserParent::RecvSetLinkStatus(
      const nsString& aStatus) {
    nsCOMPtr<nsIXULBrowserWindow> xulBrowserWindow = GetXULBrowserWindow();
-@@ -2528,14 +2563,22 @@ mozilla::ipc::IPCResult BrowserParent::RecvNotifyIMEPositionChange(
+@@ -2528,14 +2567,22 @@ mozilla::ipc::IPCResult BrowserParent::RecvNotifyIMEPositionChange(
      const ContentCache& aContentCache,
      const IMENotification& aIMENotification) {
    nsCOMPtr<nsIWidget> widget = GetTextInputHandlingWidget();
@@ -99,7 +114,7 @@ index d640d0f26539..bfb44382d554 100644
    return IPC_OK();
  }
  
-@@ -3197,18 +3240,31 @@ bool BrowserParent::HandleQueryContentEvent(WidgetQueryContentEvent& aEvent) {
+@@ -3197,18 +3244,31 @@ bool BrowserParent::HandleQueryContentEvent(WidgetQueryContentEvent& aEvent) {
        NS_WARN_IF(aEvent.Failed())) {
      return true;
    }
