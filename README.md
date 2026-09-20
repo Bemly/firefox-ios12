@@ -17,8 +17,9 @@ On iOS 12 the bundled WebKit is a decade old and most modern websites simply bre
 
 - **Modern web rendering** — complex sites (Google Search, GitHub, web apps) render and run their JavaScript.
 - **SpiderMonkey JIT enabled in the main process** — this port is single-process, so the JIT is enabled directly in the app process (~18× faster JS than the interpreter baseline on a benchmark loop). No debugger attach or root helper is required on an AppSync-signed jailbroken device.
-- **Video playback** — H.264 playback works. support HW Overlays, so high-resolution video is CPU-heavy.
+- **Video playback** — H.264 playback works (720p plays). Decoding is hardware-assisted, but there are no GPU overlays and page compositing is CPU-rendered (SWGL), so high-resolution video is CPU-heavy on the A7.
 - **WebGL rendering** — WebGL 1.0 contexts create and animate (verified with an on-device rotating-triangle probe page).
+- **iOS 12 build target** — every binary in the package is built for iOS 12.0 (`minos 12.0`), and all iOS 13+ API usage is gated with runtime fallbacks. On-device diagnostics pages (JIT bench, video, animation, WebGL) live under Settings → Advanced → Developer.
 
 ## Screenshots
 
@@ -38,24 +39,24 @@ WebGL probe page (rotating triangle, `renderer=WebGL 1.0`):
 
 ## Requirements
 
-- iPhone/iPad on **iOS 12.0 – 12.5.x** (built for iOS 12.0; the tested configuration is 12.5.8 on A7 devices)
+- iPhone/iPad on **iOS 12.0 – 12.5.x** (built for iOS 12.0; the tested configuration is 12.5.8 on A7 devices: iPad mini 2 and iPhone 5s)
 - A **jailbreak** (checkra1n works)
 - [AppSync Unified](https://github.com/akemin-dayo/AppSync) installed from Cydia/Sileo
 
 ## Installation
 
-There are no prebuilt releases yet — build the `.ipa` yourself (see [Building](#building)), then:
+Grab the prebuilt `Reynard-Jailbroken.ipa` from the [releases page](https://github.com/Bemly/firefox-ios12/releases) (tags look like `0.14.0-ios12`; a scheduled CI job rebuilds it whenever upstream moves), then:
 
 1. Copy the `.ipa` to the device (AirDrop won't work on iOS 12; use SSH/Filza/iTunes File Sharing).
 2. Open it with [Filza](https://www.tigisoftware.com/default/?page_id=78) and install. AppSync Unified handles the signing.
-3. Launch. JIT is enabled automatically at startup; if it cannot be enabled the browser silently falls back to the interpreter.
+3. Launch (bundle id `moe.bemly.reynard`). JIT is enabled automatically at startup; if it cannot be enabled the browser silently falls back to the interpreter.
 
 ## Building
 
 > [!WARNING]
 > Build instructions are for reference only. No support is provided for build issues.
 
-You need Xcode, [Python 3](https://www.python.org/downloads/), [Rust and Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html), and [ldid](https://formulae.brew.sh/formula/ldid).
+You need Xcode 26, [Python 3](https://www.python.org/downloads/), [Rust and Cargo](https://doc.rust-lang.org/cargo/getting-started/installation.html) with the `aarch64-apple-ios` target, and [ldid](https://formulae.brew.sh/formula/ldid).
 
 Clone the repository.
 
@@ -71,11 +72,11 @@ Download Gecko and apply the port's patches.
 ./tools/development/apply-patches.sh
 ```
 
-Build the dependencies and the Gecko engine (this takes a while the first time).
+Build the dependencies and the Gecko engine (this takes a while the first time, ~45 minutes).
 
 ```bash
 ./tools/development/build-idevice.sh
-./tools/development/build-gecko.sh
+DEVELOPER_DIR=/Applications/Xcode26.app/Contents/Developer ./tools/development/build-gecko.sh
 ```
 
 Then build the app itself. Without a paid signing certificate you can build with signing disabled and re-sign with `ldid` afterwards (the main binary wants the entitlements in `browser/Reynard/Entitlements/Reynard.private.entitlements`):
@@ -87,6 +88,8 @@ xcodebuild build -project browser/Reynard.xcodeproj -scheme Reynard \
 ldid -Sbrowser/Reynard/Entitlements/Reynard.private.entitlements \
   /tmp/ReynardDD/Build/Products/Debug-iphoneos/Reynard.app/Reynard
 ```
+
+Release builds go through `tools/release/build-app.sh --no-signing` (Xcode 26) plus `tools/release/create-ipa.sh --jailbroken`. See `docs/` for the full device-lab notes.
 
 ## Notes
 
