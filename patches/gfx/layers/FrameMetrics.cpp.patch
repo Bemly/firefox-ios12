@@ -1,17 +1,37 @@
 diff --git a/gfx/layers/FrameMetrics.cpp b/gfx/layers/FrameMetrics.cpp
-index f3b21611cb92..724bd9ba6ffa 100644
+index f3b21611cb92..65798e83b5ae 100644
 --- a/gfx/layers/FrameMetrics.cpp
 +++ b/gfx/layers/FrameMetrics.cpp
-@@ -88,7 +88,7 @@ void FrameMetrics::RecalculateLayoutViewportOffset(
+@@ -86,9 +86,26 @@ void FrameMetrics::RecalculateLayoutViewportOffset(
+ 
+   // For the root, the two viewports can diverge, but the layout
    // viewport needs to keep enclosing the visual viewport.
-   KeepLayoutViewportEnclosingVisualViewport(
+-  KeepLayoutViewportEnclosingVisualViewport(
++  KeepLayoutViewportEnclosingUnobscuredViewport(
        GetVisualViewportForLayoutViewportContainment(aFixedLayerBottomMargin),
 -      mScrollableRect, mLayoutViewport);
-+      GetScrollableRectWithContentInsets(mZoom), mLayoutViewport);
++      mZoom, mLayoutViewport);
++}
++
++void FrameMetrics::KeepLayoutViewportEnclosingUnobscuredViewport(
++    const CSSRect& aVisualViewport, const CSSToParentLayerScale& aZoom,
++    CSSRect& aLayoutViewport) const {
++  CSSRect visualViewport = aVisualViewport;
++  CSSRect layoutViewport = aLayoutViewport;
++  CSSRect scrollableRect = GetScrollableRectWithContentInsets(aZoom);
++  if (mObscuredTopInset > 0 && aZoom.scale > 0) {
++    const CSSCoord obscuredTop = mObscuredTopInset / aZoom;
++    visualViewport.SetTopEdge(visualViewport.Y() + obscuredTop);
++    layoutViewport.SetHeight(layoutViewport.Height() - obscuredTop);
++    scrollableRect.SetTopEdge(mScrollableRect.Y());
++  }
++  KeepLayoutViewportEnclosingVisualViewport(visualViewport, scrollableRect,
++                                            layoutViewport);
++  aLayoutViewport.MoveTo(layoutViewport.TopLeft());
  }
  
  /* static */
-@@ -194,7 +194,8 @@ bool FrameMetrics::ScrollLayoutViewportTo(const CSSPoint& aDestination) {
+@@ -194,7 +211,8 @@ bool FrameMetrics::ScrollLayoutViewportTo(const CSSPoint& aDestination) {
    // RecalculateLayoutViewportOffset() could see divergent layout and
    // visual offsets.
    bool offsetChanged = SetLayoutScrollOffset(aDestination);

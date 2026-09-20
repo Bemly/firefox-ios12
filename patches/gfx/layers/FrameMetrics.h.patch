@@ -1,17 +1,18 @@
 diff --git a/gfx/layers/FrameMetrics.h b/gfx/layers/FrameMetrics.h
-index 604a23b42287..475606dd18f0 100644
+index 604a23b42287..f8c19a2b2e22 100644
 --- a/gfx/layers/FrameMetrics.h
 +++ b/gfx/layers/FrameMetrics.h
-@@ -115,6 +115,8 @@ struct FrameMetrics {
+@@ -115,6 +115,9 @@ struct FrameMetrics {
                 aOther.mCompositionBoundsWidthIgnoringScrollbars &&
             mDisplayPort.IsEqualEdges(aOther.mDisplayPort) &&
             mScrollableRect.IsEqualEdges(aOther.mScrollableRect) &&
 +           mContentTopInset == aOther.mContentTopInset &&
 +           mContentBottomInset == aOther.mContentBottomInset &&
++           mObscuredTopInset == aOther.mObscuredTopInset &&
             mCumulativeResolution == aOther.mCumulativeResolution &&
             mDevPixelsPerCSSPixel == aOther.mDevPixelsPerCSSPixel &&
             mScrollOffset == aOther.mScrollOffset &&
-@@ -179,7 +181,7 @@ struct FrameMetrics {
+@@ -179,7 +182,7 @@ struct FrameMetrics {
    // down. i.e. we know that scrollableRect can go back as far as zero.
    // but we don't know how much further ahead it can go.
    CSSRect GetExpandedScrollableRect() const {
@@ -20,7 +21,7 @@ index 604a23b42287..475606dd18f0 100644
      CSSSize compSize = CalculateCompositedSizeInCssPixels();
      if (scrollableRect.Width() < compSize.width) {
        scrollableRect.SetRectX(
-@@ -190,8 +192,9 @@ struct FrameMetrics {
+@@ -190,8 +193,9 @@ struct FrameMetrics {
  
      if (scrollableRect.Height() < compSize.height) {
        scrollableRect.SetRectY(
@@ -32,7 +33,7 @@ index 604a23b42287..475606dd18f0 100644
            compSize.height);
      }
  
-@@ -229,7 +232,8 @@ struct FrameMetrics {
+@@ -229,7 +233,8 @@ struct FrameMetrics {
    }
  
    CSSRect CalculateScrollRange() const {
@@ -42,7 +43,7 @@ index 604a23b42287..475606dd18f0 100644
    }
  
    void ScrollBy(const CSSPoint& aPoint) {
-@@ -411,6 +415,44 @@ struct FrameMetrics {
+@@ -411,6 +416,70 @@ struct FrameMetrics {
      mScrollableRect = aScrollableRect;
    }
  
@@ -56,6 +57,31 @@ index 604a23b42287..475606dd18f0 100644
 +
 +  void SetContentBottomInset(ParentLayerCoord aInset) {
 +    mContentBottomInset = aInset;
++  }
++
++  ParentLayerCoord GetObscuredTopInset() const { return mObscuredTopInset; }
++
++  void SetObscuredTopInset(ParentLayerCoord aInset) {
++    mObscuredTopInset = aInset;
++  }
++
++  // Offset from the root's visual viewport to the page's, which starts below
++  // |mObscuredTopInset|.
++  CSSPoint GetObscuredTopOffset() const {
++    return CSSPoint(0,
++                    mZoom.scale > 0 ? mObscuredTopInset / mZoom : CSSCoord(0));
++  }
++
++  // Takes APZ's toolbar insets into root content metrics from the main thread,
++  // which measures the visual viewport from below the toolbar.
++  void ApplyToolbarInsets(ParentLayerCoord aContentTopInset,
++                          ParentLayerCoord aContentBottomInset,
++                          ParentLayerCoord aObscuredTopInset) {
++    mContentTopInset = aContentTopInset;
++    mContentBottomInset = aContentBottomInset;
++    mObscuredTopInset = aObscuredTopInset;
++    mScrollOffset -= GetObscuredTopOffset();
++    mVisualDestination -= GetObscuredTopOffset();
 +  }
 +
 +  CSSRect GetScrollableRectWithContentInsets(
@@ -78,7 +104,8 @@ index 604a23b42287..475606dd18f0 100644
 +  }
 +
 +  CSSPoint AdjustScrollDestinationForTopInset(CSSPoint aDestination) const {
-+    if (mContentTopInset > 0 && aDestination.y <= mScrollableRect.Y()) {
++    if (mContentTopInset > 0 &&
++        aDestination.y + GetObscuredTopOffset().y <= mScrollableRect.Y()) {
 +      aDestination.y = CalculateScrollRange().Y();
 +    }
 +    return aDestination;
@@ -87,13 +114,31 @@ index 604a23b42287..475606dd18f0 100644
    // If the frame is in vertical-RTL writing mode(E.g. "writing-mode:
    // vertical-rl" in CSS), or if it's in horizontal-RTL writing-mode(E.g.
    // "writing-mode: horizontal-tb; direction: rtl;" in CSS), then this function
-@@ -577,6 +619,10 @@ struct FrameMetrics {
+@@ -502,6 +571,13 @@ struct FrameMetrics {
+       const CSSRect& aVisualViewport, const CSSRect& aScrollableRect,
+       CSSRect& aLayoutViewport);
+ 
++  // Like KeepLayoutViewportEnclosingVisualViewport(), but only encloses the
++  // part of |aVisualViewport| below |mObscuredTopInset|, and keeps
++  // |aLayoutViewport| within the document.
++  void KeepLayoutViewportEnclosingUnobscuredViewport(
++      const CSSRect& aVisualViewport, const CSSToParentLayerScale& aZoom,
++      CSSRect& aLayoutViewport) const;
++
+   // Helper functions exposed so we can perform operations on copies outside of
+   // frame metrics object.
+   static CSSRect CalculateScrollRange(const CSSRect& aScrollableRect,
+@@ -577,6 +653,14 @@ struct FrameMetrics {
    // system is understood by window.scrollTo().
    CSSRect mScrollableRect;
  
 +  // Extra space around the page for the toolbars. Used only by APZ.
 +  ParentLayerCoord mContentTopInset{0};
 +  ParentLayerCoord mContentBottomInset{0};
++
++  // Height of the toolbar currently covering the top of the composition
++  // bounds. The root layout viewport starts below it. Used only by APZ.
++  ParentLayerCoord mObscuredTopInset{0};
 +
    // The cumulative resolution of the current frame. This is the product of the
    // pres-shell resolutions of the document containing this scroll frame and its

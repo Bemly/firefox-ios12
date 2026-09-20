@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/apz/src/Axis.cpp b/gfx/layers/apz/src/Axis.cpp
-index e32c7724062f..bc1d7c5834ae 100644
+index e32c7724062f..5bc601405781 100644
 --- a/gfx/layers/apz/src/Axis.cpp
 +++ b/gfx/layers/apz/src/Axis.cpp
 @@ -405,33 +405,17 @@ ParentLayerCoord Axis::DisplacementWillOverscrollAmount(
@@ -62,13 +62,3 @@ index e32c7724062f..bc1d7c5834ae 100644
  float Axis::DoGetVelocity() const {
    auto velocity = mVelocity.Lock();
    return velocity.ref();
-@@ -714,7 +690,8 @@ SideBits AxisY::ScrollableDirectionsWithDynamicToolbar(
-     ParentLayerMargin fixedLayerMargins = ViewAs<ParentLayerPixel>(
-         aFixedLayerMargins, PixelCastJustification::ScreenIsParentLayerForRoot);
- 
--    if (!mAsyncPanZoomController->IsZero(fixedLayerMargins.bottom)) {
-+    if (!mAsyncPanZoomController->IsZero(fixedLayerMargins.top +
-+                                         fixedLayerMargins.bottom)) {
-       directions |= SideBits::eTop;
-     }
-     if (mAsyncPanZoomController->FuzzyGreater(

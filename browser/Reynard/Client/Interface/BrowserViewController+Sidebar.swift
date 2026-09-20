@@ -29,6 +29,10 @@ extension BrowserViewController: SidebarContentController, SidebarCoordinatorHos
         tabManager.openExternalURL(url)
     }
     
+    func notifyScreenOrientationChanged(to interfaceOrientation: UIInterfaceOrientation) {
+        tabManager.selectedTab?.session.notifyScreenOrientationChanged(to: interfaceOrientation)
+    }
+    
     func sidebarDidEndEditing() {
         guard tabManager.selectedTab?.session.engineView?.isFirstResponder != true else {
             return

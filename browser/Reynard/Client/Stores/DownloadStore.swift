@@ -192,7 +192,7 @@ final class DownloadStore: NSObject {
     
     private let fileManager: FileManager
     private let storage: StorageURLs
-    private let stateQueue = DispatchQueue(label: "reynard.bemly.moe.DownloadStore.Queue", qos: .userInitiated)
+    private let stateQueue = DispatchQueue(label: "moe.bemly.reynard.DownloadStore.Queue", qos: .userInitiated)
     private lazy var session: URLSession = {
         let configuration = URLSessionConfiguration.default
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData

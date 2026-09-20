@@ -57,7 +57,7 @@ final class AddonCoordinator: NSObject, AddonEmbedderDelegate {
         cache.totalCostLimit = 10 * 1024 * 1024
         return cache
     }()
-    private let iconLoadingQueue = DispatchQueue(label: "reynard.bemly.moe.AddonCoordinator.IconLoadingQueue", qos: .utility)
+    private let iconLoadingQueue = DispatchQueue(label: "moe.bemly.reynard.AddonCoordinator.IconLoadingQueue", qos: .utility)
     private var loadingIconIDs = Set<String>()
     private var pendingAddonDownloadPaths = Set<String>()
     private var pendingWebExtensionDownloadsByPath: [String: DownloadStore.WebExtensionDownloadItem] = [:]

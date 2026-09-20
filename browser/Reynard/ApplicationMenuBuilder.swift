@@ -49,7 +49,7 @@ enum ApplicationMenuBuilder {
         let historyMenu = UIMenu(
             title: NSLocalizedString("History", comment: ""),
             image: nil,
-            identifier: UIMenu.Identifier("reynard.bemly.moe.ApplicationMenu.History"),
+            identifier: UIMenu.Identifier("moe.bemly.reynard.ApplicationMenu.History"),
             options: [],
             children: [
                 UIKeyCommand(title: NSLocalizedString("Back", comment: ""), action: #selector(BrowserViewController.goBackKeyCommand(_:)), input: "[", modifierFlags: .command),
@@ -63,7 +63,7 @@ enum ApplicationMenuBuilder {
         let bookmarksMenu = UIMenu(
             title: NSLocalizedString("Bookmarks", comment: ""),
             image: nil,
-            identifier: UIMenu.Identifier("reynard.bemly.moe.ApplicationMenu.Bookmarks"),
+            identifier: UIMenu.Identifier("moe.bemly.reynard.ApplicationMenu.Bookmarks"),
             options: [],
             children: [
                 UIKeyCommand(title: NSLocalizedString("Show Bookmarks", comment: ""), action: #selector(BrowserViewController.showBookmarksKeyCommand(_:)), input: "o", modifierFlags: [.command, .shift]),
@@ -71,7 +71,7 @@ enum ApplicationMenuBuilder {
                 UIKeyCommand(title: NSLocalizedString("Edit Bookmarks", comment: ""), action: #selector(BrowserViewController.editBookmarksKeyCommand(_:)), input: "b", modifierFlags: [.alternate, .command]),
             ]
         )
-        builder.insertSibling(bookmarksMenu, afterMenu: UIMenu.Identifier("reynard.bemly.moe.ApplicationMenu.History"))
+        builder.insertSibling(bookmarksMenu, afterMenu: UIMenu.Identifier("moe.bemly.reynard.ApplicationMenu.History"))
         
         let tabCommands = (1...9).map { number in
             UIKeyCommand(

@@ -1,8 +1,18 @@
 diff --git a/dom/ipc/BrowserChild.h b/dom/ipc/BrowserChild.h
-index db1acd2172c1..de272fe037d3 100644
+index db1acd2172c1..5e62bb14f507 100644
 --- a/dom/ipc/BrowserChild.h
 +++ b/dom/ipc/BrowserChild.h
-@@ -448,7 +448,7 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+@@ -274,7 +274,8 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+ 
+   MOZ_CAN_RUN_SCRIPT_BOUNDARY
+   mozilla::ipc::IPCResult RecvDynamicToolbarMaxHeightChanged(
+-      const mozilla::ScreenIntCoord& aHeight);
++      const mozilla::ScreenIntCoord& aHeight,
++      const mozilla::ScreenIntCoord& aMinHeight);
+ 
+   mozilla::ipc::IPCResult RecvDynamicToolbarOffsetChanged(
+       const mozilla::ScreenIntCoord& aOffset);
+@@ -448,7 +449,7 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
  
    const EffectsInfo& GetEffectsInfo() const { return mEffectsInfo; }
  
@@ -11,3 +21,21 @@ index db1acd2172c1..de272fe037d3 100644
  
    MOZ_CAN_RUN_SCRIPT_BOUNDARY virtual mozilla::ipc::IPCResult RecvUpdateEffects(
        const EffectsInfo& aEffects);
+@@ -556,6 +557,9 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+   ScreenIntCoord GetDynamicToolbarMaxHeight() const {
+     return mDynamicToolbarMaxHeight;
+   };
++  ScreenIntCoord GetDynamicToolbarMinHeight() const {
++    return mDynamicToolbarMinHeight;
++  }
+   mozilla::ScreenIntCoord GetKeyboardHeight() const { return mKeyboardHeight; }
+ 
+   bool InAndroidPipMode() const { return mInAndroidPipMode; }
+@@ -878,6 +882,7 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
+   // NOTE: This value is valuable only for the top level browser.
+   LayoutDeviceIntPoint mChromeOffset;
+   ScreenIntCoord mDynamicToolbarMaxHeight;
++  ScreenIntCoord mDynamicToolbarMinHeight;
+   // The software keyboard height.
+   ScreenIntCoord mKeyboardHeight;
+   TabId mUniqueId;

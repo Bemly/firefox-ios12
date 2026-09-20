@@ -42,9 +42,9 @@ fi
 
 # I absolutely hate Apple for this
 # Why is my bundle identifier just become unavailable for no reason?
-plutil -replace CFBundleIdentifier -string "reynard.bemly.moe" "$APP_PATH/Info.plist"
-plutil -replace CFBundleIdentifier -string "reynard.bemly.moe.Helper" "$APP_PATH/PlugIns/Reynard Helper.appex/Info.plist"
-plutil -replace CFBundleIdentifier -string "reynard.bemly.moe.OpenIn" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
+plutil -replace CFBundleIdentifier -string "moe.bemly.reynard" "$APP_PATH/Info.plist"
+plutil -replace CFBundleIdentifier -string "moe.bemly.reynard.Helper" "$APP_PATH/PlugIns/Reynard Helper.appex/Info.plist"
+plutil -replace CFBundleIdentifier -string "moe.bemly.reynard.OpenIn" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
 
 rm -rf "$WORK_DIR" "$ROOT_DIR/dist/$OUTPUT_NAME"
 mkdir -p "$WORK_DIR/Payload"
@@ -68,7 +68,7 @@ if [ "$BUILD_TYPE" != "normal" ]; then
 	"$CLANG_PATH" \
 		-arch arm64 \
 		-isysroot "$SDK_PATH" \
-		-miphoneos-version-min=12.4 \
+		-miphoneos-version-min=12.0 \
 		-Os \
 		"$PTRACE_JIT_SRC" \
 		-o "$PTRACE_JIT_OUT"

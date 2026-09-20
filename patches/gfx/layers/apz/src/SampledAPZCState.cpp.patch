@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/apz/src/SampledAPZCState.cpp b/gfx/layers/apz/src/SampledAPZCState.cpp
-index 5876a64994ed..348d7da9700d 100644
+index 5876a64994ed..2a07ce585900 100644
 --- a/gfx/layers/apz/src/SampledAPZCState.cpp
 +++ b/gfx/layers/apz/src/SampledAPZCState.cpp
 @@ -72,7 +72,8 @@ void SampledAPZCState::ClampVisualScrollOffset(const FrameMetrics& aMetrics) {
@@ -12,12 +12,17 @@ index 5876a64994ed..348d7da9700d 100644
    mVisualScrollOffset = scrollRange.ClampPoint(mVisualScrollOffset);
  
    KeepLayoutViewportEnclosingVisualViewport(aMetrics);
-@@ -113,7 +114,7 @@ void SampledAPZCState::KeepLayoutViewportEnclosingVisualViewport(
+@@ -109,11 +110,11 @@ void SampledAPZCState::RemoveFractionalAsyncDelta() {
+ 
+ void SampledAPZCState::KeepLayoutViewportEnclosingVisualViewport(
+     const FrameMetrics& aMetrics) {
+-  FrameMetrics::KeepLayoutViewportEnclosingVisualViewport(
++  aMetrics.KeepLayoutViewportEnclosingUnobscuredViewport(
        CSSRect(mVisualScrollOffset,
                FrameMetrics::CalculateCompositedSizeInCssPixels(
                    aMetrics.GetCompositionBounds(), mZoom)),
 -      aMetrics.GetScrollableRect(), mLayoutViewport);
-+      aMetrics.GetScrollableRectWithContentInsets(mZoom), mLayoutViewport);
++      mZoom, mLayoutViewport);
  }
  
  }  // namespace layers

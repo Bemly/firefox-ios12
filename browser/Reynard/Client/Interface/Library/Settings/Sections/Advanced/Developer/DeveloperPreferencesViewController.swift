@@ -81,7 +81,11 @@ final class DeveloperPreferencesViewController: SettingsTableViewController, UIT
     }
 
     private func diagnosticsURL(_ name: String) -> URL? {
+        // The filesystem-synchronized group flattens these resources to the
+        // bundle root; older manual packaging copied a Diagnostics/ subfolder
+        // instead — accept both layouts.
         Bundle.main.url(forResource: name, withExtension: "html", subdirectory: "Diagnostics")
+            ?? Bundle.main.url(forResource: name, withExtension: "html")
     }
     
     init() {

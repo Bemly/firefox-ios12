@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/nsWindow.h b/widget/uikit/nsWindow.h
-index 027dbf683744..2b8e37d8a199 100644
+index 027dbf683744..9df2cb53571f 100644
 --- a/widget/uikit/nsWindow.h
 +++ b/widget/uikit/nsWindow.h
 @@ -20,11 +20,14 @@ typedef struct objc_object ChildView;
@@ -36,7 +36,7 @@ index 027dbf683744..2b8e37d8a199 100644
    void Resize(const DesktopSize&, bool aRepaint) override;
    void Resize(const DesktopRect&, bool aRepaint) override;
    void DoResize(double aX, double aY, double aWidth, double aHeight,
-@@ -76,8 +83,23 @@ class nsWindow final : public nsIWidget {
+@@ -76,8 +83,27 @@ class nsWindow final : public nsIWidget {
      // XXX: terrible
      return 326.0f;
    }
@@ -50,9 +50,13 @@ index 027dbf683744..2b8e37d8a199 100644
 +                                  mozilla::ScreenIntCoord aBottomOffset,
 +                                  mozilla::ScreenIntCoord aTopInset,
 +                                  mozilla::ScreenIntCoord aBottomInset);
-+  void UpdateDynamicToolbarMaxHeight(mozilla::ScreenIntCoord aHeight) override;
++  void UpdateDynamicToolbarHeights(mozilla::ScreenIntCoord aMaxHeight,
++                                   mozilla::ScreenIntCoord aMinHeight);
 +  mozilla::ScreenIntCoord GetDynamicToolbarMaxHeight() const override {
 +    return mDynamicToolbarMaxHeight;
++  }
++  mozilla::ScreenIntCoord GetDynamicToolbarMinHeight() const override {
++    return mDynamicToolbarMinHeight;
 +  }
 +
 +  mozilla::LayoutDeviceIntMargin GetSafeAreaInsets() const override;
@@ -60,7 +64,7 @@ index 027dbf683744..2b8e37d8a199 100644
  
    nsresult SetTitle(const nsAString& aTitle) override { return NS_OK; }
  
-@@ -92,22 +114,32 @@ class nsWindow final : public nsIWidget {
+@@ -92,22 +118,32 @@ class nsWindow final : public nsIWidget {
    void SetInputContext(const InputContext& aContext,
                         const InputContextAction& aAction) override;
    InputContext GetInputContext() override;
@@ -101,7 +105,7 @@ index 027dbf683744..2b8e37d8a199 100644
  
    void HandleMainThreadCATransaction();
  
-@@ -137,6 +169,16 @@ class nsWindow final : public nsIWidget {
+@@ -137,6 +173,16 @@ class nsWindow final : public nsIWidget {
      mIOSView = aView;
    }
    mozilla::widget::IOSView* GetIOSView() const { return mIOSView; }
@@ -118,7 +122,7 @@ index 027dbf683744..2b8e37d8a199 100644
  
   protected:
    virtual ~nsWindow();
-@@ -146,6 +188,8 @@ class nsWindow final : public nsIWidget {
+@@ -146,6 +192,8 @@ class nsWindow final : public nsIWidget {
    nsresult GetCurrentOffset(uint32_t& aOffset, uint32_t& aLength);
    nsresult DeleteRange(int aOffset, int aLen);
  
@@ -127,7 +131,7 @@ index 027dbf683744..2b8e37d8a199 100644
    void TearDownView();
  
    ChildView* mNativeView;
-@@ -155,13 +199,21 @@ class nsWindow final : public nsIWidget {
+@@ -155,13 +203,22 @@ class nsWindow final : public nsIWidget {
    nsWindow* mParent;
  
    mozilla::widget::InputContext mInputContext;
@@ -144,6 +148,7 @@ index 027dbf683744..2b8e37d8a199 100644
    RefPtr<mozilla::CancelableRunnable> mUnsuspendAsyncCATransactionsRunnable;
    LayoutDeviceIntRect mBounds;
 +  mozilla::ScreenIntCoord mDynamicToolbarMaxHeight{0};
++  mozilla::ScreenIntCoord mDynamicToolbarMinHeight{0};
 +  mozilla::ScreenIntCoord mContentTopInset{0};
 +  mozilla::LayoutDeviceIntMargin mSafeAreaInsets;
  

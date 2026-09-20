@@ -1,17 +1,44 @@
 diff --git a/gfx/layers/apz/util/APZCCallbackHelper.cpp b/gfx/layers/apz/util/APZCCallbackHelper.cpp
-index 3fd7f46926d7..f0cd3094a439 100644
+index 3fd7f46926d7..ea465d10bf63 100644
 --- a/gfx/layers/apz/util/APZCCallbackHelper.cpp
 +++ b/gfx/layers/apz/util/APZCCallbackHelper.cpp
-@@ -30,6 +30,8 @@
+@@ -5,7 +5,8 @@
+ #include "APZCCallbackHelper.h"
+ 
+ #include "APZEventState.h"  // for PrecedingPointerDown
+-#include "gfxPlatform.h"    // For gfxPlatform::UseTiling
++#include "PuppetWidget.h"
++#include "gfxPlatform.h"  // For gfxPlatform::UseTiling
+ #include "jsapi.h"
+ #include "mozilla/AsyncEventDispatcher.h"
+ #include "mozilla/DisplayPortUtils.h"
+@@ -29,6 +30,7 @@
+ #include "nsIContent.h"
  #include "nsIDOMWindowUtils.h"
  #include "nsIInterfaceRequestorUtils.h"
- #include "nsLayoutUtils.h"
 +#include "nsIWidget.h"
-+#include "PuppetWidget.h"
+ #include "nsLayoutUtils.h"
  #include "nsMenuPopupFrame.h"
  #include "nsPIDOMWindow.h"
- #include "nsPrintfCString.h"
-@@ -183,6 +185,21 @@ static DisplayPortMargins ScrollFrame(nsIContent* aContent,
+@@ -162,10 +164,15 @@ static DisplayPortMargins ScrollFrame(nsIContent* aContent,
+     sf->SetScrollableByAPZ(!aRequest.IsScrollInfoLayer());
+     if (sf->IsRootScrollFrameOfDocument()) {
+       if (!APZCCallbackHelper::IsScrollInProgress(sf)) {
++        // APZ's visual viewport includes the toolbar covering its top, but
++        // the page's visual viewport starts below it.
++        const CSSPoint visualViewportOffset =
++            aRequest.GetVisualScrollOffset() +
++            CSSPoint(0, aRequest.GetObscuredTopInset());
+         APZCCH_LOG("Setting VV offset to %s\n",
+-                   ToString(aRequest.GetVisualScrollOffset()).c_str());
++                   ToString(visualViewportOffset).c_str());
+         if (sf->SetVisualViewportOffset(
+-                CSSPoint::ToAppUnits(aRequest.GetVisualScrollOffset()),
++                CSSPoint::ToAppUnits(visualViewportOffset),
+                 /* aRepaint = */ false)) {
+           // sf can't be destroyed if SetVisualViewportOffset returned true.
+           sf->MarkEverScrolled();
+@@ -183,6 +190,21 @@ static DisplayPortMargins ScrollFrame(nsIContent* aContent,
    CSSPoint actualScrollOffset = ScrollFrameTo(sf, aRequest, scrollUpdated);
    CSSPoint scrollDelta = apzScrollOffset - actualScrollOffset;
  
@@ -33,7 +60,7 @@ index 3fd7f46926d7..f0cd3094a439 100644
    if (scrollUpdated) {
      if (aRequest.IsScrollInfoLayer()) {
        // In cases where the APZ scroll offset is different from the content
-@@ -398,6 +415,7 @@ void APZCCallbackHelper::UpdateRootFrame(const RepaintRequest& aRequest) {
+@@ -398,6 +420,7 @@ void APZCCallbackHelper::UpdateRootFrame(const RepaintRequest& aRequest) {
    SetDisplayPortMargins(presShell, content, displayPortMargins,
                          aRequest.CalculateCompositedSizeInCssPixels());
    SetPaintRequestTime(content, aRequest.GetPaintRequestTime());

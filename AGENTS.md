@@ -159,9 +159,13 @@
   （JIT Bench / Video 720p / Video Drops 240p / Animation Composite），点开走
   `file://` 直接加载包内页。验证：`IMG_0187` 点行即开 tab，
   `RUNS[78,66,67,67]` warmup 形状 = Release 下主进程 JIT 正常。
-- Xcode 的 Resources phase 是**空的**（历史遗留，`Assets.car`/lproj 靠工具链自动编），
-  散文件不会自动进包：打包时 Mac 端 `rm -rf "$APP/Diagnostics" && cp -R ...`
-  拷进去（先删再拷——`cp -R` 到已存在目录会再嵌套一层，已踩一次）。
+- Xcode 的 Resources phase 是**空的**（历史遗留，`Assets.car`/lproj 靠工具链自动编）。
+  ~~打包时 Mac 端手工拷 Diagnostics~~ **该惯例已废（2026-09-20）**：工程实为 Xcode16
+  文件系统同步组（`PBXFileSystemSynchronizedRootGroup`），Resources 下散文件**自动进包
+  但拍平在 bundle 根**（不保留 Diagnostics/ 子目录）。诊断页"点开没反应"根因即此：
+  `diagnosticsURL` 用 `subdirectory: "Diagnostics"` 查找 → nil → 静默失败；旧包能工作
+  纯因发版时手工拷过子目录，脚本里从无此步。已改为「先子目录、回落根目录」双查，
+  Debug+Release 通用（commit 见 2026-09-20）。
 - 自驱进设置链（iPad 上 Library = sidebar，不是 modal）：bottom 6-button stack
   第 4 个 `ToolbarButton` 发 `sendActionsForControlEvents:64` 开书签侧栏 →
   nav `popToViewController` 回菜单 → 对 menu collectionView 调 delegate
@@ -370,7 +374,7 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   SafariSharedUI 私有方法在 iOS 12 缺失，原来直接 `assertionFailure`，
   已改静默回退默认值。凡是“新系统才有”的私有 API 探测，失败路径一律静默回退，
   不要断言。
-- 包名已改为 `reynard.bemly.moe`（2026-09-16，用户要求）：改点含 pbxproj 四处
+- 包名已改为 `moe.bemly.reynard`（2026-09-21 纠正写反的 `reynard.bemly.moe`）：改点含 pbxproj 四处
   `PRODUCT_BUNDLE_IDENTIFIER`、Info.plist 的 `CFBundleURLName`、主/Helper 的
   `application-identifier`、代码里 `com.minh-ton.Reynard` 字符串
   （菜单 ID/队列 label）、`tools/release/create-ipa.sh`；`DEVELOPMENT_TEAM`
@@ -701,11 +705,11 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
   的多 tab 会在 1GB 设备上引发内存风暴：实测两次冷启动分别于启动后 ~45s/~9s
   被 jetsam 杀（JetsamEvent-2026-09-17-004242/004637），cycript 都来不及
   attach。**注意重装 App 会把该开关重置回默认开**（2026-09-17 实测：重装后
-  `reynard.bemly.moe.plist` 只剩 2 键、无此键即默认 true）。
+  `moe.bemly.reynard.plist` 只剩 2 键、无此键即默认 true）。
   用户可在设置 > 通用 > 主页 > 启动时 重开/关闭。
 - 绕过法（不用重启 App 的进程内改法没用，boolCache）：App 是 platform
   application 不走沙盒容器，UserDefaults 直接落在
-  `/var/mobile/Library/Preferences/reynard.bemly.moe.plist`。改法：scp 拉回
+  `/var/mobile/Library/Preferences/moe.bemly.reynard.plist`。改法：scp 拉回
   Mac → `plutil -convert xml1` → 手改 `<true/>` 为 `<false/>`（注意
   `plutil -replace` 会把 key 里的点当 keypath，**改不动这个扁平键**）→
   binary1 转回 → scp 上机 `chown mobile:mobile` → `kill cfprefsd` → 冷启动生效。
@@ -736,12 +740,34 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
 - usbmux 僵死时（`idevice_id` 空 + SSH reset，但 `ioreg` 能看到 iPad）先重起 Mac 侧
   `iproxy`；还不行就走 WiFi SSH 直连（`root@192.168.1.8`，同口令），不用等 USB。
 - cycript 间歇 `InjectLibrary` assert：重启 App 即恢复（顺带验证冷启动）。
+  **2026-09-20 补充**：这轮变得高频（连续杀目标）。经验：① 冷启后等 ~20s 再注，
+  先跑一条 `echo "true"` 的 trivial 脚本热身，成功后再上正式脚本；② 脚本风格照抄
+  设备 `/tmp/` 里 09-17 会话留下的成套验证脚本（`UIApp` builtin、单次
+  `writeToFile` 回显），别用 `[UIApplication sharedApplication]` 直呼；
+  ③ 设备 /tmp 不重启就一直活着：`tap-lib.cy`（点第 4 个 ToolbarButton）、
+  `showdev.cy`（**直接 present DeveloperPreferencesViewController 到 root**，进
+  Developer 页的最短路径；注意此时无 navigationController，走 openLinkInBrowser
+  的 else 分支，页面不会自动关，dismiss 后看 tab）、`drive-bench.cy`（地址栏）
+  都可直接复用；  ④ didSelectRowAt 驱动设置行：拿可见 UITableView 的 delegate 直调，
+  行号按 `rows(for:)` 布局算（诊断区 = section 2）。
+- ⑤ 地址栏 drive 新写法（2026-09-21）：地址栏类名是 `Reynard.AddressBarTextField`，
+  按 `UITextField` 子串匹配会**漏掉真地址栏**（只剩 delegate 为 nil 的内部 view），
+  必须按 `TextField` 匹配再剔 `Label`/`ContentView`，delegate 用 `[dd class]`
+  直取（`description` 中转多余）；`extern void* fopen` 会被 cycript 报 syntax error，
+  回显一律走纯 ObjC `[NSString writeToFile:encoding:4]` 单次写（见 `/tmp/drive-bench.cy`
+  定稿版）。另：`uiopen` 在锁屏设备上直接 RequestDenied（syslog 关键词 Locked），
+  先让用户亮屏解锁再动手。
 
 ## Git 约定
 
-- `.github/workflows/` 保持删除状态（fork 本地构建+ldid，用不上上游 CI；
-  留着的话推 tag/describe 都会误触发 Build Release/Update Source 空跑挂红）。
-  合并上游时若复活 workflow 文件，解完冲突后重新删掉再提交。
+- `.github/workflows/` 只保留我们自己的 `sync-upstream.yml`（定时同步上游+构建+发版，
+  见下）；上游的 workflow 文件在本 fork 用不上（本地构建+ldid），合并上游时若复活，
+  解完冲突后删掉上游文件、只保留 `sync-upstream.yml` 再提交。
+
+- **平时不得手动上传/覆盖 GitHub release 资产**（2026-09-21 用户明确规定；
+  09-18 那次滚动覆盖是最后一次手动操作）。**唯一例外是 `sync-upstream.yml` 自动化**：
+  它按 `CURRENT_VERSION` 打 tag `<version>-ios12`，同名 release 删掉重建、没有则新建。
+  新包平时只放本地 `dist/` + 仓库外备份目录。
 
 - `main` 跟踪 `bemly/main`（公开主线），保持干净可编；推送前先确认与 `bemly/main` 同步。
   `origin/main` 是上游只读存档，早已分叉，不要以它为基准、不要往它推。
@@ -846,10 +872,100 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
   "FindInPage"**（`Reynard.FindInPageActionBar` 也含该子串，模糊匹配会选中
   页内查找框，setText 静默无效）；③ cycript 文件模式 + fopen/fprintf 写
   `/tmp/cydrive.log`（extern 原型）是本机唯一可靠回显通道。
-- Release 资产已滚动更新（2026-09-18）：`/tmp/Reynard-merge.ipa` 以
-  `Reynard-Jailbroken.ipa` 名义覆盖上传到 GitHub release `0.13.1-ios12`
- （repo 惯例 = 同版本滚动换资产+改描述，旧资产本地 `dist/` 有副本）。
+- Release 资产说明（2026-09-18 曾滚动覆盖过一次，此做法已废）：当时 `/tmp/Reynard-merge.ipa` 以
+  `Reynard-Jailbroken.ipa` 名义覆盖上传到 GitHub release `0.13.1-ios12`。
+  **现行规定：GitHub release 保留原样，任何人不得上传新资产、不得覆盖已有资产。**
+  新包只放本地 `dist/`（+ 仓库外备份目录）。
   坑：该包 CFBundleVersion 戳是 `b080a71`（build-app.sh 在旧 HEAD 时跑的），
-  **实际内容=9404527 合并树**——验证法：XUL 里 grep `GeckoPencilSupport` 符号 +
-  Diagnostics 有 cssanim/webgl-anim。判断包内容以二进制符号为准，别信版本戳。
-  `gh release upload` 121MB 偶发 HTTP 500，重试即过。
+  **实际内容=9404527 合并树**——判断包内容以二进制符号为准，别信版本戳：
+  XUL 里 grep `GeckoPencilSupport` 符号 + Diagnostics 有 cssanim/webgl-anim。
+
+## iOS 12.0 适配实录（2026-09-20，起因：mini5 iOS 12.2 闪退）
+
+- 现象：iPad mini 5（A12、12.2、unc0ver/Cydia + AppSync）装 release ipa
+  （爱思改 Info.plist `MinimumOSVersion=12.2` 绕过安装检查）点开即闪。
+- 定案：**dyld minos 门禁**。release 包内所有 Mach-O（主程序/XUL/9 个 dylib/appex）
+  `LC_BUILD_VERSION minos=12.4`，dyld 加载时拒载 minos>当前系统 的镜像 →
+  一行代码没跑就死。Info.plist 的 MinimumOSVersion 只管 installd 安装检查，
+  改它没用；快速验证可用 `vtool -set-build-version` 原地改 minos，正式包必须重编。
+- 12.4→12.0 全部改动点（**5 个文件，缺一不可**）：
+  ① `browser/Configuration/Reynard.xcconfig`；② pbxproj **10 处 target 级**
+  `IPHONEOS_DEPLOYMENT_TARGET = 12.4`（target 级会盖掉 xcconfig，只改 xcconfig 无效）；
+  ③ `tools/development/build-gecko.sh` 的 `--enable-ios-target=12.0`
+  （configure 只是普通版本串，无下限校验；引擎侧是 configure 级变更 → 全量重编 ~50 分钟）；
+  ④ `tools/development/build-idevice.sh`（rust 静态库对象自带 minos，链接取 max
+  会传染给宿主二进制，改完必须重编 `libidevice_ffi.a`）；
+  ⑤ `tools/release/create-ipa.sh`（jb_ptrace_jit 的 `-miphoneos-version-min`）。
+- 验证法：解包 ipa 后 `otool -l` 扫每个 Mach-O 的 `LC_BUILD_VERSION` minos；
+  静态库用 `otool -l xxx.a | grep minos | sort -u`（216 对象全 12.0）。
+- 弱链接风险评估：browser 代码 grep 无任何 12.1–12.4 可用性门禁（现有门禁几乎全在
+  13.0），12.0→12.4 系统 API 增量极小；12.0–12.3 真机未测，README 改为
+  "按 12.0 构建、实测 12.5.8/A7"。旧 12.4 包备份在仓库外
+  `../reynard-ipa-backups/Reynard-Jailbroken-12.4-9404527.ipa`。
+- 新坑：`tools/release/build-app.sh` 开头 `rm -rf dist/`——会删掉旧 release 资产
+  的本地唯一副本，重跑打包前先把 `dist/Reynard-Jailbroken.ipa` 拷出仓库。
+- **打包顺序铁律（本次起执行）**：先 commit 源码改动，再跑 `build-app.sh`
+  （它拿 `git rev-parse HEAD` 盖 CFBundleVersion），否则包戳=旧 SHA、内容=新改动，
+  重演 b080a71 坑。12.0 首包即按此流程：commit b44287d → 重打 → 戳=内容。
+- 12.0 包真机验证（2026-09-20，iPhone 5s/12.5.8，包
+  `dist/Reynard-Jailbroken.ipa` 戳 b44287d）：ideviceinstaller 安装 → 冷启
+ （`restoresTabsOnLaunch` 仍是 False，无风暴）→ 主页/favicon 正常
+ （IMG_0135）→ cycript drive 地址栏 example.com 完整渲染（IMG_0136）→
+  3 分钟存活 RSS 134MB、无新崩溃。A12/12.2 侧仍待 mini5 用户实测。
+
+## 上游合并实录（分支 `merge/upstream-20260920`，上游 62c3cac→0019395 共 7 提交）
+
+- 内容：0.14.0 版本号、Crowdin 翻译、toolbar-inset 大修（APZ/PresContext/
+  BrowserChild/nsWindow 等 27 个 patch）、iPad 横屏、全屏触摸偏移、cubeb
+  RemoteIO 崩溃修。**submodule 指针未动**（仍 3bf8f468），但 C++ patch 面大，
+  合并后必须重打补丁 + mach build。
+- 冲突 3 文件：`Reynard.xcconfig`（取上游 0.14.0，保我方 12.0 部署目标）；
+  `ContentView.swift`（我方 self. 闭包版 vs 上游新公式——保 self. 版、吸收
+  `focusedInputBottom: viewportFrame.minY` 一行）；`nsWindow.mm.patch`
+  （见下）。
+- **nsWindow.mm.patch 重建流程（比 0918 更顺）**：双方 patch 各自**普通
+  `git apply`** 到临时仓的 pristine 文件（不要先 `--3way`——unmerged index
+  会让后续 checkout 静默失效，冲突标记混进文件让 patch(1) 误报 reversed），
+  `diff` 成品确认 `FocusForHardwareKeyboard` 等区两边逐字节相同后 `git
+  merge-file`（**别带 -p**，带 -p 结果进 stdout、第一个文件原样不动），
+  9 处冲突按索引批量裁决：1-5 取我方（textInteraction nil 守卫 + 等价区），
+  6-9 取上游（SetFixedLayerMargins 早退、`offset` 公式、
+  `UpdateDynamicToolbarHeights` 改名、`setDynamicToolbarMaxHeight:minHeight:`），
+  临时仓 `git diff` 重生成 1557 行整份 patch，最后 pristine+新 patch roundtrip
+  逐字节 == 合并成品才入库。
+- **patch 集合变化触发的覆盖率校验新形态**：上游这次**删了**
+  `ExpectedGeckoMetrics.cpp.patch`、**新增** `nsCSSRendering.cpp.patch`，
+  脏树 vs patch 覆盖的集合差不再是"全等"——出现
+  dirty-not-patched（旧补丁残留，reset 后归 pristine）和
+  patched-not-dirty（新补丁待打，重打后变脏）各 1 个属**预期**，
+  逐个能解释即可 reset。52 个新文件目标 reset 后要删干净再 apply。
+- 357 补丁全量重打零冲突；产物校验三连：新文件 wc -c 非空 ✓、
+  删除型 patch 目标 == pristine ✓、nsWindow.mm == 合并成品 ✓。
+- **血案二连（都在 mach build 环节）**：① 我合的 nsWindow.mm 有拼接错误
+ （merge-file 在 4/5 两冲突间留下的"共享区"其实属于函数体内部，两边都取 ours
+  会把函数提前闭合、剩余体成孤儿；brace 平衡检查挡不住这种错，靠编译才暴露）。
+  教训：patch 重建后必须**双向全文件 diff**（合并成品 vs 我们版 应=恰好上游改动；
+  vs 上游版 应=恰好我方改动），逐 hunk 过目后再入库。② 上游合并重编时**直接
+  `./mach build` 会吃进陈旧 .mozconfig**——build-gecko.sh 原本构建后恢复
+  12.4 时代的 .mozconfig.bak，结果 XUL 链出 minos=12.4（等于白编，12.2 设备
+  照样 dyld 拒载）。已改脚本：生成的 mozconfig 持久化、不再恢复陈备份；重编
+  引擎一律走 `tools/development/build-gecko.sh`，编完 `otool -l XUL` 验 minos。
+- **血案②闭环验证（2026-09-21，iPhone 5s）**：合并后 dist 里 XUL 实测
+  `minos=12.4`（strings 含 `GeckoPencilSupport`，代码是最新的，只有目标错——
+  坐实"裸 mach 吃陈配置"）；走 `build-gecko.sh` 全量重编 45 分钟后 XUL
+  `minos=12.0`（sdk 26.5 不变），Debug 包内主二进制 + 全部 dylib 同为 12.0，
+  装机冷启主页正常（IMG_0140）。注意 `.mozconfig.bak` 已不再生成，
+  备份恢复逻辑别加回来。
+- **Release 12.0 包+iPad JIT 验证（2026-09-21，同分支）**：`0b47449` 提交后
+  `DEVELOPER_DIR=Xcode26 build-app.sh --no-signing`（27 拒 12.0 目标，必须指定 26），
+  `create-ipa.sh --jailbroken`，包 `dist/Reynard-Jailbroken.ipa` 戳与 HEAD 一致。
+  拆包 39 个 Mach-O：iOS 实际装载的 21 个全 `minos 12.0`
+  （主二进制/XUL/GeckoView/gecko dylib/appex/ptrace 双 helper）；
+  17 个 `libswift*.dylib` 是工具链自带的 `LC_VERSION_MIN_IPHONEOS 7.0` 老格式
+  （最低 iOS 7，照载）；`nsinstall` 是 platform=macOS 的宿主工具（旧包同样存在，
+  iOS 不加载）。iPad 装机冷启 + cycript 驱动地址栏加载包内 `bench.html`，
+  `RUNS[75,68,66,66]`（IMG_0207）= Ion 稳态，Release 下 JIT 正常。
+
+
+
+

@@ -10,8 +10,8 @@ import UIKit
 enum AddressBarMenu {
     @available(iOS 13.0, *)
     private struct Identifier {
-        static let addressBarMenu = UIMenu.Identifier("reynard.bemly.moe.AddressBarMenu")
-        static let manageAddonsMenu = UIMenu.Identifier("reynard.bemly.moe.AddressBarMenu.ManageAddons")
+        static let addressBarMenu = UIMenu.Identifier("moe.bemly.reynard.AddressBarMenu")
+        static let manageAddonsMenu = UIMenu.Identifier("moe.bemly.reynard.AddressBarMenu.ManageAddons")
     }
     
     struct AddonItem {
