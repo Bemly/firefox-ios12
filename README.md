@@ -38,7 +38,7 @@ WebGL probe page (rotating triangle, `renderer=WebGL 1.0`):
 
 ## Requirements
 
-- iPhone/iPad on **iOS 12.4 – 12.5.x** (A7 devices were the test target)
+- iPhone/iPad on **iOS 12.0 – 12.5.x** (built for iOS 12.0; the tested configuration is 12.5.8 on A7 devices)
 - A **jailbreak** (checkra1n works)
 - [AppSync Unified](https://github.com/akemin-dayo/AppSync) installed from Cydia/Sileo
 

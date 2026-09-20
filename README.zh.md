@@ -38,7 +38,7 @@ WebGL 探针页（旋转三角，`renderer=WebGL 1.0`）：
 
 ## 环境要求
 
-- **iOS 12.4 – 12.5.x** 的 iPhone/iPad（测试目标是 A7 设备）
+- **iOS 12.0 – 12.5.x** 的 iPhone/iPad（按 iOS 12.0 构建；实测环境是 A7 设备上的 12.5.8）
 - 已**越狱**（checkra1n 可用）
 - 从 Cydia/Sileo 安装 [AppSync Unified](https://github.com/akemin-dayo/AppSync)
 

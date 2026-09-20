@@ -75,7 +75,7 @@ fi
 {
 	echo "ac_add_options --enable-application=mobile/ios"
 	echo "ac_add_options --target=$TARGET"
-	echo "ac_add_options --enable-ios-target=12.4"
+	echo "ac_add_options --enable-ios-target=12.0"
 	echo "ac_add_options --enable-webrtc"
 	echo "ac_add_options --enable-optimize"
 	echo "ac_add_options --enable-release"

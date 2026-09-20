@@ -853,3 +853,29 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
   **实际内容=9404527 合并树**——验证法：XUL 里 grep `GeckoPencilSupport` 符号 +
   Diagnostics 有 cssanim/webgl-anim。判断包内容以二进制符号为准，别信版本戳。
   `gh release upload` 121MB 偶发 HTTP 500，重试即过。
+
+## iOS 12.0 适配实录（2026-09-20，起因：mini5 iOS 12.2 闪退）
+
+- 现象：iPad mini 5（A12、12.2、unc0ver/Cydia + AppSync）装 release ipa
+  （爱思改 Info.plist `MinimumOSVersion=12.2` 绕过安装检查）点开即闪。
+- 定案：**dyld minos 门禁**。release 包内所有 Mach-O（主程序/XUL/9 个 dylib/appex）
+  `LC_BUILD_VERSION minos=12.4`，dyld 加载时拒载 minos>当前系统 的镜像 →
+  一行代码没跑就死。Info.plist 的 MinimumOSVersion 只管 installd 安装检查，
+  改它没用；快速验证可用 `vtool -set-build-version` 原地改 minos，正式包必须重编。
+- 12.4→12.0 全部改动点（**5 个文件，缺一不可**）：
+  ① `browser/Configuration/Reynard.xcconfig`；② pbxproj **10 处 target 级**
+  `IPHONEOS_DEPLOYMENT_TARGET = 12.4`（target 级会盖掉 xcconfig，只改 xcconfig 无效）；
+  ③ `tools/development/build-gecko.sh` 的 `--enable-ios-target=12.0`
+  （configure 只是普通版本串，无下限校验；引擎侧是 configure 级变更 → 全量重编 ~50 分钟）；
+  ④ `tools/development/build-idevice.sh`（rust 静态库对象自带 minos，链接取 max
+  会传染给宿主二进制，改完必须重编 `libidevice_ffi.a`）；
+  ⑤ `tools/release/create-ipa.sh`（jb_ptrace_jit 的 `-miphoneos-version-min`）。
+- 验证法：解包 ipa 后 `otool -l` 扫每个 Mach-O 的 `LC_BUILD_VERSION` minos；
+  静态库用 `otool -l xxx.a | grep minos | sort -u`（216 对象全 12.0）。
+- 弱链接风险评估：browser 代码 grep 无任何 12.1–12.4 可用性门禁（现有门禁几乎全在
+  13.0），12.0→12.4 系统 API 增量极小；12.0–12.3 真机未测，README 改为
+  "按 12.0 构建、实测 12.5.8/A7"。旧 12.4 包备份在仓库外
+  `../reynard-ipa-backups/Reynard-Jailbroken-12.4-9404527.ipa`。
+- 新坑：`tools/release/build-app.sh` 开头 `rm -rf dist/`——会删掉旧 release 资产
+  的本地唯一副本，重跑打包前先把 `dist/Reynard-Jailbroken.ipa` 拷出仓库。
+

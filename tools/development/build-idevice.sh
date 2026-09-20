@@ -10,7 +10,7 @@ FFI_DIR="$SUBMODULE_PATH/ffi"
 OUTPUT_LIB="$REPO_ROOT/browser/Reynard/JIT/RPPairing/libidevice_ffi.a"
 
 TARGET_DIR="$SUBMODULE_PATH/target"
-DEPLOYMENT_TARGET="12.4"
+DEPLOYMENT_TARGET="12.0"
 
 if [ ! -e "$SUBMODULE_PATH/.git" ]; then
   git -C "$REPO_ROOT" submodule update --init --recursive support/idevice
