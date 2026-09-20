@@ -159,9 +159,13 @@
   （JIT Bench / Video 720p / Video Drops 240p / Animation Composite），点开走
   `file://` 直接加载包内页。验证：`IMG_0187` 点行即开 tab，
   `RUNS[78,66,67,67]` warmup 形状 = Release 下主进程 JIT 正常。
-- Xcode 的 Resources phase 是**空的**（历史遗留，`Assets.car`/lproj 靠工具链自动编），
-  散文件不会自动进包：打包时 Mac 端 `rm -rf "$APP/Diagnostics" && cp -R ...`
-  拷进去（先删再拷——`cp -R` 到已存在目录会再嵌套一层，已踩一次）。
+- Xcode 的 Resources phase 是**空的**（历史遗留，`Assets.car`/lproj 靠工具链自动编）。
+  ~~打包时 Mac 端手工拷 Diagnostics~~ **该惯例已废（2026-09-20）**：工程实为 Xcode16
+  文件系统同步组（`PBXFileSystemSynchronizedRootGroup`），Resources 下散文件**自动进包
+  但拍平在 bundle 根**（不保留 Diagnostics/ 子目录）。诊断页"点开没反应"根因即此：
+  `diagnosticsURL` 用 `subdirectory: "Diagnostics"` 查找 → nil → 静默失败；旧包能工作
+  纯因发版时手工拷过子目录，脚本里从无此步。已改为「先子目录、回落根目录」双查，
+  Debug+Release 通用（commit 见 2026-09-20）。
 - 自驱进设置链（iPad 上 Library = sidebar，不是 modal）：bottom 6-button stack
   第 4 个 `ToolbarButton` 发 `sendActionsForControlEvents:64` 开书签侧栏 →
   nav `popToViewController` 回菜单 → 对 menu collectionView 调 delegate
@@ -736,6 +740,16 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
 - usbmux 僵死时（`idevice_id` 空 + SSH reset，但 `ioreg` 能看到 iPad）先重起 Mac 侧
   `iproxy`；还不行就走 WiFi SSH 直连（`root@192.168.1.8`，同口令），不用等 USB。
 - cycript 间歇 `InjectLibrary` assert：重启 App 即恢复（顺带验证冷启动）。
+  **2026-09-20 补充**：这轮变得高频（连续杀目标）。经验：① 冷启后等 ~20s 再注，
+  先跑一条 `echo "true"` 的 trivial 脚本热身，成功后再上正式脚本；② 脚本风格照抄
+  设备 `/tmp/` 里 09-17 会话留下的成套验证脚本（`UIApp` builtin、单次
+  `writeToFile` 回显），别用 `[UIApplication sharedApplication]` 直呼；
+  ③ 设备 /tmp 不重启就一直活着：`tap-lib.cy`（点第 4 个 ToolbarButton）、
+  `showdev.cy`（**直接 present DeveloperPreferencesViewController 到 root**，进
+  Developer 页的最短路径；注意此时无 navigationController，走 openLinkInBrowser
+  的 else 分支，页面不会自动关，dismiss 后看 tab）、`drive-bench.cy`（地址栏）
+  都可直接复用；④ didSelectRowAt 驱动设置行：拿可见 UITableView 的 delegate 直调，
+  行号按 `rows(for:)` 布局算（诊断区 = section 2）。
 
 ## Git 约定
 
