@@ -1222,7 +1222,7 @@ final class BrowserViewController: UIViewController, GeckoScreenOrientationDeleg
             return
         }
         
-        tabManager.selectedTab?.session.notifyScreenOrientationChanged(to: interfaceOrientation)
+        sidebarCoordinator.notifyScreenOrientationChanged(to: interfaceOrientation)
         completePendingOrientationRequestIfSatisfied()
     }
     

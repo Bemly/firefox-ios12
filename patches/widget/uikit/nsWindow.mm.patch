@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/nsWindow.mm b/widget/uikit/nsWindow.mm
-index f8749ea..bac2d86 100644
+index f8749ea..ac48dc7 100644
 --- a/widget/uikit/nsWindow.mm
 +++ b/widget/uikit/nsWindow.mm
 @@ -11,9 +11,10 @@
@@ -1118,7 +1118,7 @@ index f8749ea..bac2d86 100644
  int32_t nsWindow::RoundsWidgetCoordinatesTo() {
    if (BackingScaleFactor() == 2.0) {
      return 2;
-@@ -1117,10 +1396,185 @@ int32_t nsWindow::RoundsWidgetCoordinatesTo() {
+@@ -1117,10 +1396,196 @@ int32_t nsWindow::RoundsWidgetCoordinatesTo() {
    return 1;
  }
  
@@ -1145,6 +1145,11 @@ index f8749ea..bac2d86 100644
 +  if (mCompositorSession) {
 +    if (auto controller =
 +            mCompositorSession->GetUiCompositorControllerChild()) {
++      if (mDynamicToolbarMaxHeight == 0) {
++        controller->SetFixedLayerMargins(0, 0, aTopInset, aBottomInset);
++        return;
++      }
++
 +      ScreenIntCoord minimumTopMargin = 0;
 +      if (UIWindow* window = mNativeView.window) {
 +        const CGPoint safeAreaTop = [mNativeView
@@ -1155,9 +1160,12 @@ index f8749ea..bac2d86 100644
 +        minimumTopMargin =
 +            ScreenIntCoord(lround(topMargin * BackingScaleFactor()));
 +      }
++
++      // The top margin is the part of the web view covered at the top, which
++      // the page's layout viewport starts below.
 +      controller->SetFixedLayerMargins(
-+          std::max(aTopInset + aTopOffset, minimumTopMargin),
-+          aBottomOffset - aTopInset, aTopInset, aBottomInset);
++          std::max(aTopInset + aTopOffset, minimumTopMargin), offset, aTopInset,
++          aBottomInset);
 +    }
 +  }
 +}
@@ -1181,19 +1189,22 @@ index f8749ea..bac2d86 100644
 +  }
 +}
 +
-+void nsWindow::UpdateDynamicToolbarMaxHeight(ScreenIntCoord aHeight) {
-+  if (mDynamicToolbarMaxHeight == aHeight) {
++void nsWindow::UpdateDynamicToolbarHeights(ScreenIntCoord aMaxHeight,
++                                           ScreenIntCoord aMinHeight) {
++  if (mDynamicToolbarMaxHeight == aMaxHeight &&
++      mDynamicToolbarMinHeight == aMinHeight) {
 +    return;
 +  }
 +
-+  mDynamicToolbarMaxHeight = aHeight;
++  mDynamicToolbarMaxHeight = aMaxHeight;
++  mDynamicToolbarMinHeight = aMinHeight;
 +
 +  if (mWidgetListener) {
-+    mWidgetListener->DynamicToolbarMaxHeightChanged(aHeight);
++    mWidgetListener->DynamicToolbarMaxHeightChanged(aMaxHeight);
 +  }
 +
 +  if (mAttachedWidgetListener) {
-+    mAttachedWidgetListener->DynamicToolbarMaxHeightChanged(aHeight);
++    mAttachedWidgetListener->DynamicToolbarMaxHeightChanged(aMaxHeight);
 +  }
 +}
 +
@@ -1304,7 +1315,7 @@ index f8749ea..bac2d86 100644
  void nsWindow::HandleMainThreadCATransaction() {
    // Trigger a synchronous OMTC composite. This will call NextSurface and
    // NotifySurfaceReady on the compositor thread to update mNativeLayerRoot's
-@@ -1198,6 +1652,8 @@ void nsWindow::UnsuspendAsyncCATransactions() {
+@@ -1198,6 +1663,8 @@ void nsWindow::UnsuspendAsyncCATransactions() {
    }
  }
  
@@ -1313,7 +1324,7 @@ index f8749ea..bac2d86 100644
  EventDispatcher* nsWindow::GetEventDispatcher() const {
    if (mIOSView) {
      return mIOSView->mEventDispatcher;
-@@ -1205,28 +1661,131 @@ EventDispatcher* nsWindow::GetEventDispatcher() const {
+@@ -1205,28 +1672,131 @@ EventDispatcher* nsWindow::GetEventDispatcher() const {
    return nullptr;
  }
  
@@ -1459,7 +1470,7 @@ index f8749ea..bac2d86 100644
  NS_IMPL_ISUPPORTS(IOSView, nsIGeckoViewEventDispatcher, nsIGeckoViewView)
  
  nsresult IOSView::GetInitData(JSContext* aCx,
-@@ -1247,6 +1806,59 @@ nsresult IOSView::GetInitData(JSContext* aCx,
+@@ -1247,6 +1817,62 @@ nsresult IOSView::GetInitData(JSContext* aCx,
    return mWindow ? (UIView*)mWindow->GetNativeData(NS_NATIVE_WIDGET) : nil;
  }
  
@@ -1470,10 +1481,13 @@ index f8749ea..bac2d86 100644
 +  }
 +}
 +
-+- (void)setDynamicToolbarMaxHeight:(CGFloat)height {
++- (void)setDynamicToolbarMaxHeight:(CGFloat)height
++                         minHeight:(CGFloat)minHeight {
 +  if (mWindow) {
-+    mWindow->UpdateDynamicToolbarMaxHeight(
-+        ScreenIntCoord(lround(height * mWindow->BackingScaleFactor())));
++    const CGFloat scale = mWindow->BackingScaleFactor();
++    mWindow->UpdateDynamicToolbarHeights(
++        ScreenIntCoord(lround(height * scale)),
++        ScreenIntCoord(lround(minHeight * scale)));
 +  }
 +}
 +
@@ -1519,7 +1533,7 @@ index f8749ea..bac2d86 100644
  - (void)close {
    if (mWindow) {
      if (IOSView* iosView = mWindow->GetIOSView()) {
-@@ -1260,6 +1872,10 @@ nsresult IOSView::GetInitData(JSContext* aCx,
+@@ -1260,6 +1886,10 @@ nsresult IOSView::GetInitData(JSContext* aCx,
      outerWin->ForceClose();
    }
  }
@@ -1530,7 +1544,7 @@ index f8749ea..bac2d86 100644
  @end
  
  id<GeckoViewWindow> GeckoViewOpenWindow(NSString* aId,
-@@ -1302,6 +1918,7 @@ id<GeckoViewWindow> GeckoViewOpenWindow(NSString* aId,
+@@ -1302,6 +1932,7 @@ id<GeckoViewWindow> GeckoViewOpenWindow(NSString* aId,
    MOZ_ASSERT(window);
  
    window->SetIOSView(iosView.forget());

@@ -1,5 +1,5 @@
 diff --git a/gfx/layers/RepaintRequest.h b/gfx/layers/RepaintRequest.h
-index c5506d2c09a8..76b3d230f4aa 100644
+index c5506d2c09a8..96deb8585cb5 100644
 --- a/gfx/layers/RepaintRequest.h
 +++ b/gfx/layers/RepaintRequest.h
 @@ -13,6 +13,7 @@
@@ -10,15 +10,26 @@ index c5506d2c09a8..76b3d230f4aa 100644
  #include "mozilla/ScrollSnapTargetId.h"  // for ScrollSnapTargetIds
  #include "mozilla/TimeStamp.h"           // for TimeStamp
  #include "mozilla/gfx/BasePoint.h"       // for BasePoint
-@@ -96,6 +97,7 @@ struct RepaintRequest {
+@@ -71,6 +72,9 @@ struct RepaintRequest {
+         mCumulativeResolution(aOther.GetCumulativeResolution()),
+         mDevPixelsPerCSSPixel(aOther.GetDevPixelsPerCSSPixel()),
+         mScrollOffset(aOther.GetVisualScrollOffset()),
++        mObscuredTopInset(aOther.GetZoom().scale > 0
++                              ? aOther.GetObscuredTopInset() / aOther.GetZoom()
++                              : CSSCoord(0)),
+         mZoom(aOther.GetZoom()),
+         mScrollGeneration(aOther.GetScrollGeneration()),
+         mScrollGenerationOnApz(aScrollGenerationOnApz),
+@@ -96,6 +100,8 @@ struct RepaintRequest {
             mCumulativeResolution == aOther.mCumulativeResolution &&
             mDevPixelsPerCSSPixel == aOther.mDevPixelsPerCSSPixel &&
             mScrollOffset == aOther.mScrollOffset &&
 +           mFixedPositionMargins == aOther.mFixedPositionMargins &&
++           mObscuredTopInset == aOther.mObscuredTopInset &&
             // don't compare mZoom
             mScrollGeneration == aOther.mScrollGeneration &&
             mDisplayPortMargins == aOther.mDisplayPortMargins &&
-@@ -163,6 +165,13 @@ struct RepaintRequest {
+@@ -163,6 +169,15 @@ struct RepaintRequest {
  
    const CSSPoint& GetVisualScrollOffset() const { return mScrollOffset; }
  
@@ -29,15 +40,20 @@ index c5506d2c09a8..76b3d230f4aa 100644
 +    mFixedPositionMargins = aMargins;
 +  }
 +
++  CSSCoord GetObscuredTopInset() const { return mObscuredTopInset; }
++
    const CSSToParentLayerScale& GetZoom() const { return mZoom; }
  
    ScrollOffsetUpdateType GetScrollUpdateType() const {
-@@ -260,6 +269,9 @@ struct RepaintRequest {
+@@ -260,6 +275,12 @@ struct RepaintRequest {
    // to the scrollable content's origin.
    CSSPoint mScrollOffset;
  
 +  // Compositor margins relative to the last paint, at APZ's current zoom.
 +  Maybe<CSSMargin> mFixedPositionMargins;
++
++  // Height of the toolbar covering the top of the visual viewport.
++  CSSCoord mObscuredTopInset;
 +
    // The "user zoom". Content is painted by gecko at mCumulativeResolution *
    // mDevPixelsPerCSSPixel, but will be drawn to the screen at mZoom. In the

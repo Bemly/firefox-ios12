@@ -1,8 +1,16 @@
 diff --git a/layout/base/nsPresContext.cpp b/layout/base/nsPresContext.cpp
-index 02a771ca9348..fdcdd252e09a 100644
+index 02a771ca9348..2a5421ca3ce5 100644
 --- a/layout/base/nsPresContext.cpp
 +++ b/layout/base/nsPresContext.cpp
-@@ -714,7 +714,7 @@ void nsPresContext::Init(nsDeviceContext* aDeviceContext) {
+@@ -244,6 +244,7 @@ nsPresContext::nsPresContext(dom::Document* aDocument, nsPresContextType aType)
+       mLastFontInflationScreenSize(gfxSize(-1.0, -1.0)),
+       mCurAppUnitsPerDevPixel(0),
+       mDynamicToolbarMaxHeight(0),
++      mDynamicToolbarMinHeight(0),
+       mDynamicToolbarHeight(0),
+       mPageSize(-1, -1),
+       mPageScale(0.0),
+@@ -714,12 +715,13 @@ void nsPresContext::Init(nsDeviceContext* aDeviceContext) {
  
    mEventManager->SetPresContext(this);
  
@@ -11,31 +19,43 @@ index 02a771ca9348..fdcdd252e09a 100644
    if (IsRootContentDocumentCrossProcess()) {
      if (BrowserChild* browserChild = BrowserChild::GetFrom(GetDocShell())) {
        if (MOZ_LIKELY(!Preferences::HasUserValue(
-@@ -2904,13 +2904,16 @@ void nsPresContext::SetDynamicToolbarMaxHeight(ScreenIntCoord aHeight) {
+               "layout.dynamic-toolbar-max-height"))) {
+         mDynamicToolbarMaxHeight = browserChild->GetDynamicToolbarMaxHeight();
++        mDynamicToolbarMinHeight = browserChild->GetDynamicToolbarMinHeight();
+         mDynamicToolbarHeight = mDynamicToolbarMaxHeight;
+       }
+     }
+@@ -2892,18 +2894,27 @@ void nsPresContext::SetInitialVisibleArea(const nsRect& aRect) {
+   SetVisibleArea(aRect);
+ }
+ 
+-void nsPresContext::SetDynamicToolbarMaxHeight(ScreenIntCoord aHeight) {
++void nsPresContext::SetDynamicToolbarMaxHeight(ScreenIntCoord aHeight,
++                                               ScreenIntCoord aMinHeight) {
+   MOZ_ASSERT(IsRootContentDocumentCrossProcess());
+ 
+-  if (mDynamicToolbarMaxHeight == aHeight) {
++  if (mDynamicToolbarMaxHeight == aHeight &&
++      mDynamicToolbarMinHeight == aMinHeight) {
+     return;
+   }
++  const bool minHeightChanged = mDynamicToolbarMinHeight != aMinHeight;
+   mDynamicToolbarMaxHeight = aHeight;
++  mDynamicToolbarMinHeight = aMinHeight;
+   mDynamicToolbarHeight = aHeight;
+ 
    AdjustSizeForViewportUnits();
  
    if (RefPtr<mozilla::PresShell> presShell = mPresShell) {
--    // Changing the max height of the dynamic toolbar changes the ICB size, we
--    // need to kick a reflow with the current window dimensions since the max
--    // height change doesn't change the window dimensions but
--    // PresShell::ResizeReflow ends up subtracting the new dynamic toolbar
--    // height from the window dimensions and kick a reflow with the proper ICB
--    // size.
--    presShell->ForceResizeReflowWithCurrentDimensions();
-+    if (presShell->UsesMobileViewportSizing()) {
-+      presShell->ForceResizeReflowWithCurrentDimensions();
-+    } else {
-+      LayoutDeviceIntSize size;
-+      if (nsLayoutUtils::GetDocumentViewerSize(this, size)) {
-+        presShell->SetLayoutViewportSize(
-+            LayoutDeviceIntSize::ToAppUnits(size, AppUnitsPerDevPixel()),
-+            false);
-+      }
++    if (minHeightChanged) {
++      presShell->StyleSet()->InvalidateForViewportUnits(
++          ServoStyleSet::OnlyDynamic::No);
 +    }
-   }
- }
- 
-@@ -2960,15 +2963,13 @@ void nsPresContext::UpdateDynamicToolbarOffset(ScreenIntCoord aOffset) {
++
+     // Changing the max height of the dynamic toolbar changes the ICB size, we
+     // need to kick a reflow with the current window dimensions since the max
+     // height change doesn't change the window dimensions but
+@@ -2960,15 +2971,14 @@ void nsPresContext::UpdateDynamicToolbarOffset(ScreenIntCoord aOffset) {
      return;
    }
  
@@ -46,18 +66,45 @@ index 02a771ca9348..fdcdd252e09a 100644
 -  // the area covered by the dynamic toolbar, it also ensures that each
 -  // position:fixed or position:sticky element is painted at the correct
 -  // position on the main-thread.
+-  if (mDynamicToolbarHeight == 0 || aOffset == -mDynamicToolbarMaxHeight) {
+-    mPresShell->MarkFixedFramesForReflow();
 +  // Resize fixed elements as the toolbar moves, including when it remains
 +  // partially visible in its minimized state.
 +  mPresShell->MarkFixedFramesForReflow();
 +
 +  // Update sticky positions and dispatch a regular resize event when the
-+  // toolbar becomes fully hidden or starts to reappear.
-   if (mDynamicToolbarHeight == 0 || aOffset == -mDynamicToolbarMaxHeight) {
--    mPresShell->MarkFixedFramesForReflow();
++  // toolbar becomes fully collapsed or starts to reappear.
++  if (mDynamicToolbarHeight <= mDynamicToolbarMinHeight ||
++      mDynamicToolbarMaxHeight + aOffset <= mDynamicToolbarMinHeight) {
      mPresShell->MarkStickyFramesForReflow();
      mPresShell->ScheduleResizeEventIfNeeded(
          PresShell::ResizeEventKind::Regular);
-@@ -3051,19 +3052,18 @@ nscoord nsPresContext::GetBimodalDynamicToolbarHeightInAppUnits() const {
+@@ -3014,7 +3024,7 @@ DynamicToolbarState nsPresContext::GetDynamicToolbarState() const {
+   if (mDynamicToolbarMaxHeight == mDynamicToolbarHeight) {
+     return DynamicToolbarState::Expanded;
+   }
+-  if (mDynamicToolbarHeight == 0) {
++  if (mDynamicToolbarHeight <= mDynamicToolbarMinHeight) {
+     return DynamicToolbarState::Collapsed;
+   }
+   return DynamicToolbarState::InTransition;
+@@ -3034,7 +3044,7 @@ nscoord nsPresContext::GetDynamicToolbarMaxHeightInAppUnits() const {
+     return 0;
+   }
+   return CSSPixel::ToAppUnits(
+-      ScreenCoord(GetDynamicToolbarMaxHeight()) /
++      ScreenCoord(GetDynamicToolbarMaxHeight() - mDynamicToolbarMinHeight) /
+       // For viewport units the dynamic toolbar height needs to be the height
+       // as if this document is scaled by 1.0 whatever the current zoom scale
+       // is.
+@@ -3046,24 +3056,24 @@ nscoord nsPresContext::GetBimodalDynamicToolbarHeightInAppUnits() const {
+     return 0;
+   }
+   return GetDynamicToolbarState() == DynamicToolbarState::Collapsed
+-             ? CSSPixel::ToAppUnits(ScreenCoord(GetDynamicToolbarMaxHeight()) /
++             ? CSSPixel::ToAppUnits(ScreenCoord(GetDynamicToolbarMaxHeight() -
++                                                mDynamicToolbarMinHeight) /
+                                     GetMVMScale(mPresShell))
               : 0;
  }
  
