@@ -764,6 +764,10 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
   留着的话推 tag/describe 都会误触发 Build Release/Update Source 空跑挂红）。
   合并上游时若复活 workflow 文件，解完冲突后重新删掉再提交。
 
+- **GitHub release 保留原样，任何人不得上传新资产、不得覆盖已有资产**
+  （2026-09-21 用户明确规定；09-18 那次滚动覆盖是最后一次）。新包只放
+  本地 `dist/` + 仓库外备份目录。
+
 - `main` 跟踪 `bemly/main`（公开主线），保持干净可编；推送前先确认与 `bemly/main` 同步。
   `origin/main` 是上游只读存档，早已分叉，不要以它为基准、不要往它推。
   不要在 main 上堆验证代码。
@@ -867,13 +871,13 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
   "FindInPage"**（`Reynard.FindInPageActionBar` 也含该子串，模糊匹配会选中
   页内查找框，setText 静默无效）；③ cycript 文件模式 + fopen/fprintf 写
   `/tmp/cydrive.log`（extern 原型）是本机唯一可靠回显通道。
-- Release 资产已滚动更新（2026-09-18）：`/tmp/Reynard-merge.ipa` 以
-  `Reynard-Jailbroken.ipa` 名义覆盖上传到 GitHub release `0.13.1-ios12`
- （repo 惯例 = 同版本滚动换资产+改描述，旧资产本地 `dist/` 有副本）。
+- Release 资产说明（2026-09-18 曾滚动覆盖过一次，此做法已废）：当时 `/tmp/Reynard-merge.ipa` 以
+  `Reynard-Jailbroken.ipa` 名义覆盖上传到 GitHub release `0.13.1-ios12`。
+  **现行规定：GitHub release 保留原样，任何人不得上传新资产、不得覆盖已有资产。**
+  新包只放本地 `dist/`（+ 仓库外备份目录）。
   坑：该包 CFBundleVersion 戳是 `b080a71`（build-app.sh 在旧 HEAD 时跑的），
-  **实际内容=9404527 合并树**——验证法：XUL 里 grep `GeckoPencilSupport` 符号 +
-  Diagnostics 有 cssanim/webgl-anim。判断包内容以二进制符号为准，别信版本戳。
-  `gh release upload` 121MB 偶发 HTTP 500，重试即过。
+  **实际内容=9404527 合并树**——判断包内容以二进制符号为准，别信版本戳：
+  XUL 里 grep `GeckoPencilSupport` 符号 + Diagnostics 有 cssanim/webgl-anim。
 
 ## iOS 12.0 适配实录（2026-09-20，起因：mini5 iOS 12.2 闪退）
 
