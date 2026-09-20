@@ -748,8 +748,15 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
   `showdev.cy`（**直接 present DeveloperPreferencesViewController 到 root**，进
   Developer 页的最短路径；注意此时无 navigationController，走 openLinkInBrowser
   的 else 分支，页面不会自动关，dismiss 后看 tab）、`drive-bench.cy`（地址栏）
-  都可直接复用；④ didSelectRowAt 驱动设置行：拿可见 UITableView 的 delegate 直调，
+  都可直接复用；  ④ didSelectRowAt 驱动设置行：拿可见 UITableView 的 delegate 直调，
   行号按 `rows(for:)` 布局算（诊断区 = section 2）。
+- ⑤ 地址栏 drive 新写法（2026-09-21）：地址栏类名是 `Reynard.AddressBarTextField`，
+  按 `UITextField` 子串匹配会**漏掉真地址栏**（只剩 delegate 为 nil 的内部 view），
+  必须按 `TextField` 匹配再剔 `Label`/`ContentView`，delegate 用 `[dd class]`
+  直取（`description` 中转多余）；`extern void* fopen` 会被 cycript 报 syntax error，
+  回显一律走纯 ObjC `[NSString writeToFile:encoding:4]` 单次写（见 `/tmp/drive-bench.cy`
+  定稿版）。另：`uiopen` 在锁屏设备上直接 RequestDenied（syslog 关键词 Locked），
+  先让用户亮屏解锁再动手。
 
 ## Git 约定
 
@@ -944,6 +951,15 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
   `minos=12.0`（sdk 26.5 不变），Debug 包内主二进制 + 全部 dylib 同为 12.0，
   装机冷启主页正常（IMG_0140）。注意 `.mozconfig.bak` 已不再生成，
   备份恢复逻辑别加回来。
+- **Release 12.0 包+iPad JIT 验证（2026-09-21，同分支）**：`0b47449` 提交后
+  `DEVELOPER_DIR=Xcode26 build-app.sh --no-signing`（27 拒 12.0 目标，必须指定 26），
+  `create-ipa.sh --jailbroken`，包 `dist/Reynard-Jailbroken.ipa` 戳与 HEAD 一致。
+  拆包 39 个 Mach-O：iOS 实际装载的 21 个全 `minos 12.0`
+  （主二进制/XUL/GeckoView/gecko dylib/appex/ptrace 双 helper）；
+  17 个 `libswift*.dylib` 是工具链自带的 `LC_VERSION_MIN_IPHONEOS 7.0` 老格式
+  （最低 iOS 7，照载）；`nsinstall` 是 platform=macOS 的宿主工具（旧包同样存在，
+  iOS 不加载）。iPad 装机冷启 + cycript 驱动地址栏加载包内 `bench.html`，
+  `RUNS[75,68,66,66]`（IMG_0207）= Ion 稳态，Release 下 JIT 正常。
 
 
 
