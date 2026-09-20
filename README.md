@@ -17,7 +17,7 @@ On iOS 12 the bundled WebKit is a decade old and most modern websites simply bre
 
 - **Modern web rendering** — complex sites (Google Search, GitHub, web apps) render and run their JavaScript.
 - **SpiderMonkey JIT enabled in the main process** — this port is single-process, so the JIT is enabled directly in the app process (~18× faster JS than the interpreter baseline on a benchmark loop). No debugger attach or root helper is required on an AppSync-signed jailbroken device.
-- **Video playback** — H.264 playback works (720p plays). Decoding is hardware-assisted, but there are no GPU overlays and page compositing is CPU-rendered (SWGL), so high-resolution video is CPU-heavy on the A7.
+- **Video playback** — H.264 playback works (720p plays). Decoding is VT hardware and video frames are presented zero-copy (hardware overlay path, bypassing page compositing); the rest of the page is CPU-composited (SWGL), so high-resolution video still costs significant CPU on the A7.
 - **WebGL rendering** — WebGL 1.0 contexts create and animate (verified with an on-device rotating-triangle probe page).
 - **iOS 12 build target** — every binary in the package is built for iOS 12.0 (`minos 12.0`), and all iOS 13+ API usage is gated with runtime fallbacks. On-device diagnostics pages (JIT bench, video, animation, WebGL) live under Settings → Advanced → Developer.
 
