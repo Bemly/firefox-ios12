@@ -184,12 +184,15 @@ jobs:
       - name: Replace same-version release or create new one
         run: |
           set -eu
+          # release job 不 checkout 仓库（只有 artifact），gh 认不出仓库，
+          # 必须显式 -R（否则报 failed to run git: not a git repository）。
+          REPO="$GITHUB_REPOSITORY"
           TAG="${{ needs.sync.outputs.version }}-ios12"
           echo "release tag: $TAG"
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          if gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
             echo "release $TAG exists, deleting before re-creating"
-            gh release delete "$TAG" -y --cleanup-tag
+            gh release delete "$TAG" -y --cleanup-tag -R "$REPO"
           fi
-          gh release create "$TAG" dist/Reynard-Jailbroken.ipa \
+          gh release create "$TAG" dist/Reynard-Jailbroken.ipa -R "$REPO" \
             --title "Reynard iOS 12 $TAG" \
             --notes "Automated build from main (upstream sync). Jailbroken IPA for iOS 12, install with AppSync Unified."
