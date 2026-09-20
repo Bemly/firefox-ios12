@@ -118,20 +118,24 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   cycript 驱动地址栏加载 bench.html，看 RUNS 数组有无 warmup 形状。
 
 
-## 媒体/视频现状（2026-09-16 实测）
+## 媒体/视频现状（09-16 初测 + 09-17 修正，最终结论以 09-17 为准）
 
 
 - **视频能放**：本地 720p30 H.264+AAC mp4 全屏播放成功（
   `AppleDecoderModule` 已注册，ffvpx 软解兜底也在），240p 丢帧约 4%。
-- **但没有可用的硬件加速**：播放时 app CPU 40–95%（720p）/22–65%（240p）；
-  纯 CSS 全屏动画（只有合成、无解码）CPU 也有 28–46% → 合成端是 **CPU 软合成**
-  （SWGL 特征，GPU 合成该是个位数）。解码端大概率也是 ffvpx 软解在扛大头。
-  真实网站高分辨率视频会卡顿、A7 发热。
+- ~~**但没有可用的硬件加速**~~（09-16 初判，**已被 09-17 推翻**，保留只作历史）：
+  当时见播放 CPU 高即判解码+合成全软，后续证实误判了解码端，见下。
+- **09-17 定论**：VT 解码器默认即被选中（iOS 不在 blocklist，
+  `CanUseHardwareVideoDecoding` 默认 true），session 创建成功——**解码走 VT 硬解**；
+  **视频帧零拷贝上屏**（硬件叠加层路径，不经过 SWGL 页面合成；GPU 合成 A/B 实验里
+  视频 240p/720p 双无差即实证）。A7 上仍高的 CPU 来自 SWGL 合成侧
+  （NV12→RGB + 页面合成；隐藏视频法隔离：720p 解码约 16-19%，合成约 20-30%）。
+  真实网站高分辨率视频依然会吃 CPU、A7 发热，但瓶颈在页面合成，不在解码器。
 - 诊断法：局域网 `http.server` + ffmpeg 生成 testsrc2 测试视频 + JS
   `getVideoPlaybackQuality()` 读 decoded/dropped + `ps` 采样 CPU 对比
-  （静态页 0% / 纯动画 ≈ 纯合成成本 / 视频 ≈ 合成+解码）。
-- 若要真加速，两块都要动：解码走 VT 硬解零拷贝（IOSurface→合成器）+
-  合成端上 GPU（WebRender GL/Metal 而非 SWGL）。属后续工程方向。
+  （静态页 0% / 纯动画 ≈ 纯合成成本 / 视频 ≈ 合成+解码）+ 隐藏视频法隔离解码成本。
+- 若要真加速，剩合成端上 GPU（WebRender GL/Metal 而非 SWGL；CSS 动画已证省约 40%，
+  见 GPU 合成验证结论）。属后续工程方向。
 
 
 ## GPU 合成方向（分支 `local/gpu-compositing-wr-gl`，实验中）
