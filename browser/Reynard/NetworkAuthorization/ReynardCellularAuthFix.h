@@ -16,7 +16,7 @@
 
 /// app 的 bundle id，必须用字面量语法赋值，且必须与本次构建的 bundle id 一致
 /// （传 [NSBundle mainBundle].bundleIdentifier 这类动态字符串不会触发系统更新，原因未知 —— ZIK 实测结论）
-static NSString *const ReynardCellularAuthAppBundleIdentifier = @"reynard.bemly.moe";
+static NSString *const ReynardCellularAuthAppBundleIdentifier = @"moe.bemly.reynard";
 
 @interface ReynardCellularAuthFix : NSObject
 

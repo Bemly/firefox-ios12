@@ -12,8 +12,8 @@ import UIKit
 final class JITController {
     static let shared = JITController()
     
-    private let attachQueue = DispatchQueue(label: "reynard.bemly.moe.JITController.AttachQueue", qos: .userInitiated)
-    private let watchdogQueue = DispatchQueue(label: "reynard.bemly.moe.JITController.WatchdogQueue", qos: .userInitiated)
+    private let attachQueue = DispatchQueue(label: "moe.bemly.reynard.JITController.AttachQueue", qos: .userInitiated)
+    private let watchdogQueue = DispatchQueue(label: "moe.bemly.reynard.JITController.WatchdogQueue", qos: .userInitiated)
     private var attachedPIDs: Set<Int32> = []
     private var preflightWatchdogs: [Int32: DispatchWorkItem] = [:]
     private var hasHandledFailure = false

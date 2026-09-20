@@ -87,7 +87,7 @@ final class FaviconStore {
     
     private let fileManager: FileManager
     private let storage: StorageURLs
-    private let stateQueue = DispatchQueue(label: "reynard.bemly.moe.FaviconStore.Queue", qos: .utility)
+    private let stateQueue = DispatchQueue(label: "moe.bemly.reynard.FaviconStore.Queue", qos: .utility)
     private var database: OpaquePointer?
     private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     

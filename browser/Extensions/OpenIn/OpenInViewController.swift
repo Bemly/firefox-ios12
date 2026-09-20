@@ -124,7 +124,7 @@ final class OpenInViewController: UIViewController {
     
     private func finishWithError(message: String) {
         let error = NSError(
-            domain: "reynard.bemly.moe.OpenIn",
+            domain: "moe.bemly.reynard.OpenIn",
             code: 1,
             userInfo: [NSLocalizedDescriptionKey: message]
         )

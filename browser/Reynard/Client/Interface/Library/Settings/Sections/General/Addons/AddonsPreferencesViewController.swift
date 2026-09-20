@@ -46,7 +46,7 @@ final class AddonsPreferencesViewController: SettingsTableViewController {
     }()
     private static var hasLoadedInstalledAddons = false
     
-    private let iconLoadingQueue = DispatchQueue(label: "reynard.bemly.moe.AddonsPreferencesViewController.IconLoadingQueue", qos: .utility)
+    private let iconLoadingQueue = DispatchQueue(label: "moe.bemly.reynard.AddonsPreferencesViewController.IconLoadingQueue", qos: .utility)
     private var loadingIconIDs = Set<String>()
     private var installedAddons: [Addon] = []
     private var unsupportedAddons: [Addon] = []

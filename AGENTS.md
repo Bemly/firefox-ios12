@@ -374,7 +374,7 @@ AppShellDelegate，SceneDelegate 只有 13+ 才有，AppDelegate 里也没有 op
   SafariSharedUI 私有方法在 iOS 12 缺失，原来直接 `assertionFailure`，
   已改静默回退默认值。凡是“新系统才有”的私有 API 探测，失败路径一律静默回退，
   不要断言。
-- 包名已改为 `reynard.bemly.moe`（2026-09-16，用户要求）：改点含 pbxproj 四处
+- 包名已改为 `moe.bemly.reynard`（2026-09-21 纠正写反的 `reynard.bemly.moe`）：改点含 pbxproj 四处
   `PRODUCT_BUNDLE_IDENTIFIER`、Info.plist 的 `CFBundleURLName`、主/Helper 的
   `application-identifier`、代码里 `com.minh-ton.Reynard` 字符串
   （菜单 ID/队列 label）、`tools/release/create-ipa.sh`；`DEVELOPMENT_TEAM`
@@ -705,11 +705,11 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
   的多 tab 会在 1GB 设备上引发内存风暴：实测两次冷启动分别于启动后 ~45s/~9s
   被 jetsam 杀（JetsamEvent-2026-09-17-004242/004637），cycript 都来不及
   attach。**注意重装 App 会把该开关重置回默认开**（2026-09-17 实测：重装后
-  `reynard.bemly.moe.plist` 只剩 2 键、无此键即默认 true）。
+  `moe.bemly.reynard.plist` 只剩 2 键、无此键即默认 true）。
   用户可在设置 > 通用 > 主页 > 启动时 重开/关闭。
 - 绕过法（不用重启 App 的进程内改法没用，boolCache）：App 是 platform
   application 不走沙盒容器，UserDefaults 直接落在
-  `/var/mobile/Library/Preferences/reynard.bemly.moe.plist`。改法：scp 拉回
+  `/var/mobile/Library/Preferences/moe.bemly.reynard.plist`。改法：scp 拉回
   Mac → `plutil -convert xml1` → 手改 `<true/>` 为 `<false/>`（注意
   `plutil -replace` 会把 key 里的点当 keypath，**改不动这个扁平键**）→
   binary1 转回 → scp 上机 `chown mobile:mobile` → `kill cfprefsd` → 冷启动生效。
@@ -760,13 +760,14 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
 
 ## Git 约定
 
-- `.github/workflows/` 保持删除状态（fork 本地构建+ldid，用不上上游 CI；
-  留着的话推 tag/describe 都会误触发 Build Release/Update Source 空跑挂红）。
-  合并上游时若复活 workflow 文件，解完冲突后重新删掉再提交。
+- `.github/workflows/` 只保留我们自己的 `sync-upstream.yml`（定时同步上游+构建+发版，
+  见下）；上游的 workflow 文件在本 fork 用不上（本地构建+ldid），合并上游时若复活，
+  解完冲突后删掉上游文件、只保留 `sync-upstream.yml` 再提交。
 
-- **GitHub release 保留原样，任何人不得上传新资产、不得覆盖已有资产**
-  （2026-09-21 用户明确规定；09-18 那次滚动覆盖是最后一次）。新包只放
-  本地 `dist/` + 仓库外备份目录。
+- **平时不得手动上传/覆盖 GitHub release 资产**（2026-09-21 用户明确规定；
+  09-18 那次滚动覆盖是最后一次手动操作）。**唯一例外是 `sync-upstream.yml` 自动化**：
+  它按 `CURRENT_VERSION` 打 tag `<version>-ios12`，同名 release 删掉重建、没有则新建。
+  新包平时只放本地 `dist/` + 仓库外备份目录。
 
 - `main` 跟踪 `bemly/main`（公开主线），保持干净可编；推送前先确认与 `bemly/main` 同步。
   `origin/main` 是上游只读存档，早已分叉，不要以它为基准、不要往它推。

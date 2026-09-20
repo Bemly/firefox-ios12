@@ -33,7 +33,7 @@ final class HistoryStore {
     
     private let fileManager: FileManager
     private let storage: StorageURLs
-    private let stateQueue = DispatchQueue(label: "reynard.bemly.moe.HistoryStore.Queue", qos: .userInitiated)
+    private let stateQueue = DispatchQueue(label: "moe.bemly.reynard.HistoryStore.Queue", qos: .userInitiated)
     private var database: OpaquePointer?
     private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     
