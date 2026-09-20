@@ -878,4 +878,13 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
   `../reynard-ipa-backups/Reynard-Jailbroken-12.4-9404527.ipa`。
 - 新坑：`tools/release/build-app.sh` 开头 `rm -rf dist/`——会删掉旧 release 资产
   的本地唯一副本，重跑打包前先把 `dist/Reynard-Jailbroken.ipa` 拷出仓库。
+- **打包顺序铁律（本次起执行）**：先 commit 源码改动，再跑 `build-app.sh`
+  （它拿 `git rev-parse HEAD` 盖 CFBundleVersion），否则包戳=旧 SHA、内容=新改动，
+  重演 b080a71 坑。12.0 首包即按此流程：commit b44287d → 重打 → 戳=内容。
+- 12.0 包真机验证（2026-09-20，iPhone 5s/12.5.8，包
+  `dist/Reynard-Jailbroken.ipa` 戳 b44287d）：ideviceinstaller 安装 → 冷启
+ （`restoresTabsOnLaunch` 仍是 False，无风暴）→ 主页/favicon 正常
+ （IMG_0135）→ cycript drive 地址栏 example.com 完整渲染（IMG_0136）→
+  3 分钟存活 RSS 134MB、无新崩溃。A12/12.2 侧仍待 mini5 用户实测。
+
 
