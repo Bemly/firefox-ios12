@@ -901,4 +901,50 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
  （IMG_0135）→ cycript drive 地址栏 example.com 完整渲染（IMG_0136）→
   3 分钟存活 RSS 134MB、无新崩溃。A12/12.2 侧仍待 mini5 用户实测。
 
+## 上游合并实录（分支 `merge/upstream-20260920`，上游 62c3cac→0019395 共 7 提交）
+
+- 内容：0.14.0 版本号、Crowdin 翻译、toolbar-inset 大修（APZ/PresContext/
+  BrowserChild/nsWindow 等 27 个 patch）、iPad 横屏、全屏触摸偏移、cubeb
+  RemoteIO 崩溃修。**submodule 指针未动**（仍 3bf8f468），但 C++ patch 面大，
+  合并后必须重打补丁 + mach build。
+- 冲突 3 文件：`Reynard.xcconfig`（取上游 0.14.0，保我方 12.0 部署目标）；
+  `ContentView.swift`（我方 self. 闭包版 vs 上游新公式——保 self. 版、吸收
+  `focusedInputBottom: viewportFrame.minY` 一行）；`nsWindow.mm.patch`
+  （见下）。
+- **nsWindow.mm.patch 重建流程（比 0918 更顺）**：双方 patch 各自**普通
+  `git apply`** 到临时仓的 pristine 文件（不要先 `--3way`——unmerged index
+  会让后续 checkout 静默失效，冲突标记混进文件让 patch(1) 误报 reversed），
+  `diff` 成品确认 `FocusForHardwareKeyboard` 等区两边逐字节相同后 `git
+  merge-file`（**别带 -p**，带 -p 结果进 stdout、第一个文件原样不动），
+  9 处冲突按索引批量裁决：1-5 取我方（textInteraction nil 守卫 + 等价区），
+  6-9 取上游（SetFixedLayerMargins 早退、`offset` 公式、
+  `UpdateDynamicToolbarHeights` 改名、`setDynamicToolbarMaxHeight:minHeight:`），
+  临时仓 `git diff` 重生成 1557 行整份 patch，最后 pristine+新 patch roundtrip
+  逐字节 == 合并成品才入库。
+- **patch 集合变化触发的覆盖率校验新形态**：上游这次**删了**
+  `ExpectedGeckoMetrics.cpp.patch`、**新增** `nsCSSRendering.cpp.patch`，
+  脏树 vs patch 覆盖的集合差不再是"全等"——出现
+  dirty-not-patched（旧补丁残留，reset 后归 pristine）和
+  patched-not-dirty（新补丁待打，重打后变脏）各 1 个属**预期**，
+  逐个能解释即可 reset。52 个新文件目标 reset 后要删干净再 apply。
+- 357 补丁全量重打零冲突；产物校验三连：新文件 wc -c 非空 ✓、
+  删除型 patch 目标 == pristine ✓、nsWindow.mm == 合并成品 ✓。
+- **血案二连（都在 mach build 环节）**：① 我合的 nsWindow.mm 有拼接错误
+ （merge-file 在 4/5 两冲突间留下的"共享区"其实属于函数体内部，两边都取 ours
+  会把函数提前闭合、剩余体成孤儿；brace 平衡检查挡不住这种错，靠编译才暴露）。
+  教训：patch 重建后必须**双向全文件 diff**（合并成品 vs 我们版 应=恰好上游改动；
+  vs 上游版 应=恰好我方改动），逐 hunk 过目后再入库。② 上游合并重编时**直接
+  `./mach build` 会吃进陈旧 .mozconfig**——build-gecko.sh 原本构建后恢复
+  12.4 时代的 .mozconfig.bak，结果 XUL 链出 minos=12.4（等于白编，12.2 设备
+  照样 dyld 拒载）。已改脚本：生成的 mozconfig 持久化、不再恢复陈备份；重编
+  引擎一律走 `tools/development/build-gecko.sh`，编完 `otool -l XUL` 验 minos。
+- **血案②闭环验证（2026-09-21，iPhone 5s）**：合并后 dist 里 XUL 实测
+  `minos=12.4`（strings 含 `GeckoPencilSupport`，代码是最新的，只有目标错——
+  坐实"裸 mach 吃陈配置"）；走 `build-gecko.sh` 全量重编 45 分钟后 XUL
+  `minos=12.0`（sdk 26.5 不变），Debug 包内主二进制 + 全部 dylib 同为 12.0，
+  装机冷启主页正常（IMG_0140）。注意 `.mozconfig.bak` 已不再生成，
+  备份恢复逻辑别加回来。
+
+
+
 

@@ -109,7 +109,9 @@ fi
 cd "$FIREFOX_DIR"
 ./mach build
 
-rm "$FIREFOX_DIR/.mozconfig"
-if [ -f "$FIREFOX_DIR/.mozconfig.bak" ]; then
-	mv "$FIREFOX_DIR/.mozconfig.bak" "$FIREFOX_DIR/.mozconfig"
-fi
+# Keep the generated mozconfig on disk (do NOT restore a stale backup):
+# a leftover .mozconfig with an old --enable-ios-target makes any direct
+# `./mach build` reconfigure the tree at the wrong deployment target
+# (2026-09-20: merge rebuild via bare mach produced XUL minos 12.4 this way).
+rm -f "$FIREFOX_DIR/.mozconfig.bak"
+
