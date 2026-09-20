@@ -965,6 +965,11 @@ Reynard **179712 页 = 702MB**，与上限分毫不差）。
   （最低 iOS 7，照载）；`nsinstall` 是 platform=macOS 的宿主工具（旧包同样存在，
   iOS 不加载）。iPad 装机冷启 + cycript 驱动地址栏加载包内 `bench.html`，
   `RUNS[75,68,66,66]`（IMG_0207）= Ion 稳态，Release 下 JIT 正常。
+- **CI 首包验证（2026-09-21，iPad）**：`gh run download` 取 run 35530802200 的
+  `Reynard-Jailbroken.ipa`（短直链 blob 只有几十秒有效期，409 即过期，走 gh 通道），
+  包名 `moe.bemly.reynard`/0.14.0、主二进制+XUL 皆 `minos 12.0`。
+  装机（新包名=新 App，旧 `reynard.bemly.moe` 并存）冷启 + 同法驱动 bench，
+  `RUNS[83,73,73,69]`（IMG_0208）= Ion 稳态，CI 链产物 JIT 正常。
 
 
 
