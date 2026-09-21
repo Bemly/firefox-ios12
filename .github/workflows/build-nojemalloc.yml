@@ -1,0 +1,151 @@
+# Build no-jemalloc variant and attach to the same version release.
+#
+# - 单独 workflow 避免与主构建抢超时（macOS runner 单 job 360min 上限，jemalloc +
+#   no-jemalloc 串起来超长）。平时由主 workflow 的 release 建好 `<version>-ios12` 后
+#   手动 dispatch 本 workflow 追加资产；也支持定时或直接 dispatch 全量编。
+# - 产物名 `Reynard-Jailbroken-nojemalloc.ipa`（无 jemalloc，走系统 malloc，
+#   规避 A12/unc0ver 12.2 上的 substitute 对 jemalloc zone 的 hook 崩溃）。
+# - 不删 release，只 `gh release upload --clobber` 追加/覆盖同名资产。
+
+name: Build no-jemalloc IPA
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 1'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build jailbroken IPA (no-jemalloc)
+    runs-on: macos-26
+    timeout-minutes: 360
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          submodules: false
+
+      - name: Set up Xcode 26.6
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.6'
+
+      - name: Install build dependencies
+        run: |
+          brew install python@3.12 lld cbindgen llvm
+          echo "$(brew --prefix python@3.12)/libexec/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix lld)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix llvm)/bin" >> "$GITHUB_PATH"
+
+      - name: Initialize submodules
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive support/idevice
+          git submodule update --init --depth 1 engine/firefox
+
+      - name: Update Gecko source
+        run: ./tools/development/update-gecko.sh
+
+      - name: Apply Gecko patches
+        run: ./tools/development/apply-patches.sh
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - name: Hash Rust toolchain for cache
+        id: rust_toolchain
+        run: echo "hash=$(rustc -Vv | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Gecko dependency cache (no-jemalloc)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.mozbuild
+          key: ios12-gecko-deps-nojemalloc-${{ steps.rust_toolchain.outputs.hash }}-${{ hashFiles('engine/release.txt') }}
+          restore-keys: |
+            ios12-gecko-deps-nojemalloc-${{ steps.rust_toolchain.outputs.hash }}-
+            ios12-gecko-deps-${{ steps.rust_toolchain.outputs.hash }}-
+
+      - name: Restore idevice build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            support/idevice/target
+            browser/Reynard/JIT/RPPairing/libidevice_ffi.a
+          key: ios12-idevice-${{ steps.rust_toolchain.outputs.hash }}-${{ hashFiles('support/idevice/Cargo.lock', 'support/idevice/Cargo.toml', 'tools/development/build-idevice.sh') }}
+          restore-keys: |
+            ios12-idevice-${{ steps.rust_toolchain.outputs.hash }}-
+
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Build Gecko (no jemalloc)
+        env:
+          CC: clang
+          CXX: clang++
+          LD: ld64.lld
+        run: ./tools/development/build-gecko.sh --disable-jemalloc --use-sccache --auto-clobber
+
+      - name: Build idevice support library
+        run: ./tools/development/build-idevice.sh
+
+      - name: Install packaging dependencies
+        run: brew install ldid
+
+      - name: Build app
+        run: ./tools/release/build-app.sh --no-signing
+
+      - name: Create jailbroken IPA (no-jemalloc)
+        run: |
+          ./tools/release/create-ipa.sh --jailbroken
+          mv dist/Reynard-Jailbroken.ipa dist/Reynard-Jailbroken-nojemalloc.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Reynard-Jailbroken-nojemalloc.ipa
+          path: dist/Reynard-Jailbroken-nojemalloc.ipa
+          if-no-files-found: error
+
+  attach:
+    name: Attach to version release
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Check out main (for version)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download IPA artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Reynard-Jailbroken-nojemalloc.ipa
+          path: dist
+
+      - name: Upload to existing release
+        run: |
+          set -eu
+          REPO="$GITHUB_REPOSITORY"
+          VERSION="$(sed -n 's/^CURRENT_VERSION = //p' browser/Configuration/Reynard.xcconfig | tr -d ' ')"
+          TAG="$VERSION-ios12"
+          echo "target tag: $TAG"
+          if ! gh release view "$TAG" -R "$REPO" >/dev/null 2>&1; then
+            echo "release $TAG not found, creating empty one first"
+            gh release create "$TAG" -R "$REPO" --title "Reynard iOS 12 $TAG" --notes "Automated build (no-jemalloc variant, appended)."
+          fi
+          gh release upload "$TAG" dist/Reynard-Jailbroken-nojemalloc.ipa -R "$REPO" --clobber
