@@ -1,13 +1,10 @@
-# Sync upstream & build release (iOS 12 fork automation).
+# Sync upstream & build release (jemalloc, default)
 #
 # - 每周一定时（+ 可手动触发）：合并 minh-ton/reynard-browser 的 main，
-#   上游 workflows 照例丢弃（只保留本文件），合完推回本仓库 main。
-# - 有新提交（或手动触发）时在 macOS runner 上全量构建 jailbroken IPA。
-# - 构建成功后按 CURRENT_VERSION 打 tag `<version>-ios12`：
-#   同名 release 已存在则删掉重建，不存在则新建。
-# - 本仓库唯一允许动 GitHub release 的入口；平时一律不动 release。
-#
-# 注意：bundle id 是 moe.bemly.reynard（2026-09-21 由写反的 reynard.bemly.moe 纠正）。
+#   上游 workflows 照例丢弃（只保留本仓自有 workflows），合完推回本仓库 main。
+# - 有新提交（或手动触发）时在 macOS runner 上全量构建标准 jailbroken IPA（jemalloc）。
+# - 按 CURRENT_VERSION 打 tag `<version>-ios12`：同名 release 删掉重建。
+# - 本仓唯一允许删/建 release 的入口（nojemalloc workflow 只负责往同 tag 追加资产）。
 
 name: Sync upstream & build release
 
@@ -48,16 +45,17 @@ jobs:
           else
             SHORT="$(git rev-parse --short upstream/main)"
             git merge --no-ff --no-edit -m "chore: merge upstream/main $SHORT" upstream/main
-            # 上游 workflows 在本 fork 用不上（本地构建 + ldid），照例丢弃，
-            # 但保留本自动化文件。
             KEEP_DIR="$(mktemp -d)"
-            if [ -f .github/workflows/sync-upstream.yml ]; then
-              cp .github/workflows/sync-upstream.yml "$KEEP_DIR/"
-            fi
+            for f in .github/workflows/sync-upstream.yml .github/workflows/build-nojemalloc.yml; do
+              if [ -f "$f" ]; then
+                mkdir -p "$KEEP_DIR/$(dirname "$f")"
+                cp "$f" "$KEEP_DIR/$f"
+              fi
+            done
             rm -rf .github/workflows
-            if [ -f "$KEEP_DIR/sync-upstream.yml" ]; then
+            if [ -d "$KEEP_DIR/.github/workflows" ]; then
               mkdir -p .github/workflows
-              cp "$KEEP_DIR/sync-upstream.yml" .github/workflows/
+              cp -R "$KEEP_DIR/.github/workflows/" .github/workflows/
             fi
             git add -A
             if ! git diff --cached --quiet; then
@@ -70,7 +68,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   build:
-    name: Build jailbroken IPA
+    name: Build jailbroken IPA (jemalloc)
     needs: sync
     if: ${{ needs.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on: macos-26
@@ -184,8 +182,6 @@ jobs:
       - name: Replace same-version release or create new one
         run: |
           set -eu
-          # release job 不 checkout 仓库（只有 artifact），gh 认不出仓库，
-          # 必须显式 -R（否则报 failed to run git: not a git repository）。
           REPO="$GITHUB_REPOSITORY"
           TAG="${{ needs.sync.outputs.version }}-ios12"
           echo "release tag: $TAG"
@@ -195,4 +191,4 @@ jobs:
           fi
           gh release create "$TAG" dist/Reynard-Jailbroken.ipa -R "$REPO" \
             --title "Reynard iOS 12 $TAG" \
-            --notes "Automated build from main (upstream sync). Jailbroken IPA for iOS 12, install with AppSync Unified."
+            --notes "Automated build from main (upstream sync). Jailbroken IPA for iOS 12 (moe.bemly.reynard, minos 12.0), install with AppSync Unified. A12 unc0ver substitute conflict on 12.2: see no-jemalloc variant."
