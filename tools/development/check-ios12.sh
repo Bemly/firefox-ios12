@@ -47,7 +47,7 @@ if [ "$(uname -s)" = Darwin ]; then
 	SDK="$(xcrun --sdk iphoneos --show-sdk-path)" || exit 1
 	SDK_VERSION="$(xcrun --sdk iphoneos --show-sdk-version)"
 	echo "Xcode: $(xcodebuild -version | tr '\n' ' '); SDK $SDK_VERSION"
-	"${SWIFTC[@]}" --version 2>&1 | head -1
+	xcrun swiftc --version 2>/dev/null | grep -i "swift version"
 	PLATFORM_FLAGS=()
 else
 	# --- Linux: open-source toolchain -------------------------------------

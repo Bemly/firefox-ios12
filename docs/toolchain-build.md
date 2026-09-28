@@ -142,3 +142,9 @@
 - 脚本必须兼容 macOS 的 `/bin/bash` 3.2：不用 `mapfile`/关联数组，空数组展开用
   `${a[@]+"${a[@]}"}`（3.2 + `set -u` 下空数组 `"${a[@]}"` 直接报 unbound）。本机编了
   bash-3.2.57 实跑过 Linux 模式 PASS；macOS 模式的 `xcrun` 分支只能在 runner 上验证。
+- **macOS runner 实测（2026-09-28，run 36492080529，分支手动 dispatch nojemalloc、检查过后
+  在 Gecko 子模块克隆时取消）**：`Xcode 26.6 Build version 17F113 ; SDK 26.5`，4 个 target +
+  Concurrency/ObjC/资源检查全过，`result: PASS`，检查步骤 73 秒（Linux 云端首次 5 分钟、
+  之后约 1 分钟）。验证这类 CI 改动的安全姿势：在分支上 dispatch **nojemalloc**（分支 run 不碰
+  release，也不会 workflow_run 连锁别的），看完检查步骤就取消；别在分支上 dispatch sync
+ （sync 成功会连锁触发**默认分支**上的 nojemalloc 逻辑）。
