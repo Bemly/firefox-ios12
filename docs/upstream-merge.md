@@ -252,3 +252,20 @@
 - workflow：两份都改成 `checkout ref: github.ref_name`，非 main 分支 dispatch 跳过
   merge/push 和 release/attach，只出 artifact——本次合并分支就用它验证 jemalloc +
   nojemalloc 两个包能编出来。
+- **0.15.0 首轮 CI 失败复盘（2026-09-28）**：main 上 run 36446518789 跑 5h11m，
+  Gecko 编完（本轮 5h，09-20 冷编 3h48m）、App 编译挂在上游新文件
+  `ReaderPreferencesViewController` 的 `super.init(style: .insetGrouped)`（iOS 13+），
+  修为既有 shim `.appGrouped`。根因是合并时只用手写关键字 grep 审 iOS 12 兼容，
+  清单不全；已改为 `tools/development/check-ios12-linux.sh` 本地真编译（见
+  `docs/toolchain-build.md`），PASS 后才触发 CI。同一轮本地编译确认：Swift 4 个
+  target 零错误、无 Concurrency 运行时引用、App 侧 ObjC 零可用性警告、资源名全对上、
+  idevice 0.1.68 `full` 特性导出了 JITSupport.m 用到的 5 个 cryptex 函数；引擎新增
+  patch 行 API 扫描只剩已守卫的 `fontDescriptorWithDesign:` 和两个误报。
+- 同一日志里的 CI 性能问题（未处理，待定方案）：Gecko 步骤 `Swap in/out (MB): 98742`，
+  macos runner 内存严重不足、大部分时间在换页；sccache Post 统计 0 请求、09-20→09-28
+  （156.0→156.0.1 小版本）耗时不降反升，GHA 缓存基本没命中（全量 Gecko 对象很可能超出
+  仓库 10GB 缓存上限被挤掉）。
+- 顺带发现的既有 bug（不在本次合并范围，未改）：`NetworkProxyPolicyController.swift:67`
+  `CFNetworkCopySystemProxySettings() as? [String: Any]` 编译器警告 “always fails”
+ （返回的是 `Unmanaged<CFDictionary>?`，要先 `takeRetainedValue()`），即“系统代理”
+  档位永远读不到系统代理设置；“自定义”档不受影响。
