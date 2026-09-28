@@ -42,7 +42,7 @@ final class ReaderPreferencesViewController: SettingsTableViewController {
     }
     
     init() {
-        super.init(style: .insetGrouped)
+        super.init(style: .appGrouped)
         title = NSLocalizedString("Reader", comment: "")
     }
     

@@ -10,6 +10,10 @@
   `docs/` 对应文件，然后提交 git。本条规则本身也要留在这里，不得遗忘。
 - 新的验证结论（如某包的 bench RUNS、minos 抽查结果）记到 `docs/` 相关文件
   末尾追加，不要另起大章节。
+- 合并上游 / 改 App 侧代码后，**先跑 `tools/development/check-ios12-linux.sh
+  <上次真机验证的提交>` 到 PASS 再触发 CI**（Linux 上 Swift 6.3.2 + iPhoneOS26.5 SDK
+  全量编 4 个 target 到 arm64 目标文件，诊断与 Xcode 一致，约 1 分钟；首次下载约 5 分钟）。
+  CI 一轮 Gecko 冷编 4～5 小时，别拿 CI 当编译器。详见 `docs/toolchain-build.md`。
 
 ## 文档索引
 
