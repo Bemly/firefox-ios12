@@ -17,6 +17,7 @@ final class Tab {
     var isPrivate: Bool
     var favicon: UIImage?
     var thumbnail: UIImage?
+    var isMuted: Bool
     let state = TabSessionState()
     
     init(
@@ -27,6 +28,7 @@ final class Tab {
         createdAt: Date? = Date(),
         favicon: UIImage? = nil,
         thumbnail: UIImage? = nil,
+        isMuted: Bool = false,
         isPrivate: Bool = false
     ) {
         self.id = id
@@ -36,6 +38,7 @@ final class Tab {
         self.createdAt = createdAt
         self.favicon = favicon
         self.thumbnail = thumbnail
+        self.isMuted = isMuted
         self.isPrivate = isPrivate
     }
 }

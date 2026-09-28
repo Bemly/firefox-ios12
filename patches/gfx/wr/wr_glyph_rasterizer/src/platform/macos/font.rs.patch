@@ -1,5 +1,5 @@
 diff --git a/gfx/wr/wr_glyph_rasterizer/src/platform/macos/font.rs b/gfx/wr/wr_glyph_rasterizer/src/platform/macos/font.rs
-index 3e18b99adaa5..283ae3118a3b 100644
+index 3e18b99adaa5..d73b09c9eff0 100644
 --- a/gfx/wr/wr_glyph_rasterizer/src/platform/macos/font.rs
 +++ b/gfx/wr/wr_glyph_rasterizer/src/platform/macos/font.rs
 @@ -21,6 +21,10 @@ use core_graphics::geometry::{CG_AFFINE_TRANSFORM_IDENTITY, CGRect};
@@ -116,7 +116,7 @@ index 3e18b99adaa5..283ae3118a3b 100644
      if variations.is_empty() {
          return ct_font;
      }
-@@ -215,9 +290,69 @@ fn new_ct_font_with_variations(ct_font_desc: &CTFontDescriptor, size: f64, varia
+@@ -215,9 +290,76 @@ fn new_ct_font_with_variations(ct_font_desc: &CTFontDescriptor, size: f64, varia
      let vals_dict = CFDictionary::from_CFType_pairs(&vals);
      let variation_attribute = unsafe { CFString::wrap_under_get_rule(kCTFontVariationAttribute) };
      let attrs_dict = CFDictionary::from_CFType_pairs(&[(variation_attribute, vals_dict)]);
@@ -158,6 +158,13 @@ index 3e18b99adaa5..283ae3118a3b 100644
 +        })
 +}
 +
++#[cfg(target_os = "ios")]
++pub fn new_system_ui_cg_font(name: &str, system_font_traits: u32) -> Option<CGFont> {
++    new_system_ui_font(name, system_font_traits)
++        .ok()
++        .map(|font| font.copy_to_CGFont())
++}
++
 +fn resolve_native_font(
 +    handle: &NativeFontHandle,
 +) -> Result<(CTFontDescriptor, bool), NativeFontResolutionError> {
@@ -188,7 +195,7 @@ index 3e18b99adaa5..283ae3118a3b 100644
  }
  
  // We rely on Gecko to determine whether the font may have color glyphs to avoid
-@@ -257,7 +392,13 @@ impl FontContext {
+@@ -257,7 +399,13 @@ impl FontContext {
              Err(_) => return,
              Ok(cg_font) => cg_font,
          };
@@ -203,7 +210,7 @@ index 3e18b99adaa5..283ae3118a3b 100644
      }
  
      /// Whether the font described by `template` contains embedded bitmap
-@@ -274,34 +415,16 @@ impl FontContext {
+@@ -274,34 +422,16 @@ impl FontContext {
              return;
          }
  
@@ -248,7 +255,7 @@ index 3e18b99adaa5..283ae3118a3b 100644
          };
  
          // If the NativeFontHandle includes a file path, add this to the descriptor
-@@ -317,8 +440,13 @@ impl FontContext {
+@@ -317,8 +447,13 @@ impl FontContext {
              }
          }
  
@@ -264,7 +271,7 @@ index 3e18b99adaa5..283ae3118a3b 100644
      }
  
      pub fn delete_font(&mut self, font_key: &FontKey) {
-@@ -344,8 +472,13 @@ impl FontContext {
+@@ -344,8 +479,13 @@ impl FontContext {
              match self.ct_fonts.entry((font_key, FontSize::from_f64_px(size), variations.to_vec())) {
                  Entry::Occupied(entry) => Some((*entry.get()).clone()),
                  Entry::Vacant(entry) => {
@@ -280,7 +287,7 @@ index 3e18b99adaa5..283ae3118a3b 100644
                      entry.insert(ct_font.clone());
                      Some(ct_font)
                  }
-@@ -906,4 +1039,3 @@ enum GlyphType {
+@@ -906,4 +1046,3 @@ enum GlyphType {
      Vector,
      Bitmap,
  }

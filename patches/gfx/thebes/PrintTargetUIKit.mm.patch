@@ -1,0 +1,143 @@
+diff --git a/gfx/thebes/PrintTargetUIKit.mm b/gfx/thebes/PrintTargetUIKit.mm
+new file mode 100644
+index 000000000000..093b25744437
+--- /dev/null
++++ b/gfx/thebes/PrintTargetUIKit.mm
+@@ -0,0 +1,137 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#include "PrintTargetUIKit.h"
++
++#include <algorithm>
++#include <limits>
++
++#include "cairo-quartz.h"
++#include "mozilla/gfx/HelpersCairo.h"
++#include "nsIOutputStream.h"
++
++namespace mozilla::gfx {
++
++static size_t WriteStreamBytes(void* aInfo, const void* aBuffer,
++                               size_t aCount) {
++  auto* stream = static_cast<nsIOutputStream*>(aInfo);
++  auto* data = static_cast<const char*>(aBuffer);
++  size_t remaining = aCount;
++  while (remaining) {
++    uint32_t written = 0;
++    uint32_t toWrite = uint32_t(
++        std::min(remaining, size_t(std::numeric_limits<uint32_t>::max())));
++    if (NS_WARN_IF(NS_FAILED(stream->Write(data, toWrite, &written))) ||
++        !written) {
++      break;
++    }
++    data += written;
++    remaining -= written;
++  }
++  return aCount - remaining;
++}
++
++static void ReleaseStream(void* aInfo) {
++  auto* stream = static_cast<nsIOutputStream*>(aInfo);
++  stream->Close();
++  NS_RELEASE(stream);
++}
++
++PrintTargetUIKit::PrintTargetUIKit(CGContextRef aPDFContext,
++                                   const IntSize& aSize)
++    : PrintTarget(nullptr, aSize), mPDFContext(aPDFContext) {}
++
++PrintTargetUIKit::~PrintTargetUIKit() {
++  if (!mDidClose) {
++    CGPDFContextClose(mPDFContext);
++  }
++  CGContextRelease(mPDFContext);
++}
++
++/* static */ already_AddRefed<PrintTargetUIKit> PrintTargetUIKit::CreateOrNull(
++    nsIOutputStream* aOutputStream, const IntSize& aSize) {
++  if (!aOutputStream || !Factory::CheckSurfaceSize(aSize)) {
++    return nullptr;
++  }
++
++  NS_ADDREF(aOutputStream);
++  CGDataConsumerCallbacks callbacks = {WriteStreamBytes, ReleaseStream};
++  CGDataConsumerRef consumer = CGDataConsumerCreate(aOutputStream, &callbacks);
++  CGRect pageBox{{0, 0}, {CGFloat(aSize.width), CGFloat(aSize.height)}};
++  CGContextRef pdfContext = CGPDFContextCreate(consumer, &pageBox, nullptr);
++  CGDataConsumerRelease(consumer);
++  if (!pdfContext) {
++    return nullptr;
++  }
++
++  RefPtr<PrintTargetUIKit> target = new PrintTargetUIKit(pdfContext, aSize);
++  return target.forget();
++}
++
++already_AddRefed<DrawTarget> PrintTargetUIKit::GetReferenceDrawTarget() {
++  if (!mReferenceDrawTarget) {
++    CGDataConsumerCallbacks callbacks = {
++        [](void*, const void*, size_t aCount) { return aCount; }, nullptr};
++    CGDataConsumerRef consumer = CGDataConsumerCreate(nullptr, &callbacks);
++    CGContextRef context = CGPDFContextCreate(consumer, nullptr, nullptr);
++    CGDataConsumerRelease(consumer);
++    cairo_surface_t* surface =
++        cairo_quartz_surface_create_for_cg_context(context, 1, 1);
++    CGContextRelease(context);
++    if (cairo_surface_status(surface)) {
++      cairo_surface_destroy(surface);
++      return nullptr;
++    }
++    mReferenceDrawTarget =
++        Factory::CreateDrawTargetForCairoSurface(surface, IntSize(1, 1));
++    cairo_surface_destroy(surface);
++  }
++  return do_AddRef(mReferenceDrawTarget);
++}
++
++nsresult PrintTargetUIKit::BeginPrinting(const nsAString&, const nsAString&,
++                                         uint64_t, int32_t, int32_t) {
++  return NS_OK;
++}
++
++nsresult PrintTargetUIKit::EndPrinting() {
++  if (!mDidClose) {
++    CGContextFlush(mPDFContext);
++    CGPDFContextClose(mPDFContext);
++    mDidClose = true;
++  }
++  return NS_OK;
++}
++
++nsresult PrintTargetUIKit::AbortPrinting() { return EndPrinting(); }
++
++nsresult PrintTargetUIKit::BeginPage(const IntSize& aSizeInPoints) {
++  CGRect bounds = CGRectMake(0, 0, aSizeInPoints.width, aSizeInPoints.height);
++  CGContextBeginPage(mPDFContext, &bounds);
++  CGContextSaveGState(mPDFContext);
++  CGContextTranslateCTM(mPDFContext, 0, aSizeInPoints.height);
++  CGContextScaleCTM(mPDFContext, 1, -1);
++
++  cairo_surface_t* surface = cairo_quartz_surface_create_for_cg_context(
++      mPDFContext, aSizeInPoints.width, aSizeInPoints.height);
++  if (cairo_surface_status(surface)) {
++    cairo_surface_destroy(surface);
++    return NS_ERROR_FAILURE;
++  }
++  mCairoSurface = surface;
++  return PrintTarget::BeginPage(aSizeInPoints);
++}
++
++nsresult PrintTargetUIKit::EndPage() {
++  cairo_surface_finish(mCairoSurface);
++  mCairoSurface = nullptr;
++  CGContextRestoreGState(mPDFContext);
++  CGContextEndPage(mPDFContext);
++  return PrintTarget::EndPage();
++}
++
++}  // namespace mozilla::gfx

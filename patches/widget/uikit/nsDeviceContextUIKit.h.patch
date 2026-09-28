@@ -1,0 +1,39 @@
+diff --git a/widget/uikit/nsDeviceContextUIKit.h b/widget/uikit/nsDeviceContextUIKit.h
+new file mode 100644
+index 000000000000..0e2371c69706
+--- /dev/null
++++ b/widget/uikit/nsDeviceContextUIKit.h
+@@ -0,0 +1,33 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#ifndef nsDeviceContextUIKit_h
++#define nsDeviceContextUIKit_h
++
++#include "mozilla/gfx/PrintPromise.h"
++#include "nsIDeviceContextSpec.h"
++
++class nsDeviceContextSpecUIKit final : public nsIDeviceContextSpec {
++ public:
++  NS_DECL_ISUPPORTS
++
++  already_AddRefed<PrintTarget> MakePrintTarget() final;
++  NS_IMETHOD Init(nsIPrintSettings* aPrintSettings,
++                  bool aIsPrintPreview) override;
++  NS_IMETHOD BeginDocument(const nsAString& aTitle,
++                           const nsAString& aPrintToFileName,
++                           mozilla::dom::WindowContext*, int32_t aStartPage,
++                           int32_t aEndPage) override;
++  RefPtr<mozilla::gfx::PrintEndDocumentPromise> EndDocument() override;
++  NS_IMETHOD BeginPage(const IntSize& aSizeInPoints) override { return NS_OK; }
++  NS_IMETHOD EndPage() override { return NS_OK; }
++
++ private:
++  ~nsDeviceContextSpecUIKit() = default;
++};
++
++#endif  // nsDeviceContextUIKit_h

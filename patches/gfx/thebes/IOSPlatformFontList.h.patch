@@ -1,0 +1,27 @@
+diff --git a/gfx/thebes/IOSPlatformFontList.h b/gfx/thebes/IOSPlatformFontList.h
+index c24caaf7f8b4..d827215f40cb 100644
+--- a/gfx/thebes/IOSPlatformFontList.h
++++ b/gfx/thebes/IOSPlatformFontList.h
+@@ -20,6 +20,13 @@ class IOSPlatformFontList final : public CoreTextFontList {
+                                nsACString& aSystemFontName,
+                                gfxFontStyle& aFontStyle);
+ 
++  bool FindAndAddFamiliesLocked(
++      FontVisibilityProvider* aFontVisibilityProvider,
++      mozilla::StyleGenericFontFamily aGeneric, const nsACString& aFamily,
++      nsTArray<FamilyAndGeneric>* aOutput, FindFamiliesFlags aFlags,
++      gfxFontStyle* aStyle = nullptr, nsAtom* aLanguage = nullptr,
++      gfxFloat aDevToCssSize = 1.0) MOZ_REQUIRES(mLock) override;
++
+  protected:
+   nsTArray<std::pair<const char**, uint32_t>> GetFilteredPlatformFontLists()
+       override;
+@@ -30,6 +37,8 @@ class IOSPlatformFontList final : public CoreTextFontList {
+   // Only the friend class gfxPlatformMac constructs this.
+   IOSPlatformFontList();
+   virtual ~IOSPlatformFontList();
++
++  RefPtr<gfxFontFamily> mNewYorkFontFamily;
+ };
+ 
+ #endif /* IOSPlatformFontList_H_ */

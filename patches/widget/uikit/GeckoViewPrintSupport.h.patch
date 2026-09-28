@@ -1,0 +1,34 @@
+diff --git a/widget/uikit/GeckoViewPrintSupport.h b/widget/uikit/GeckoViewPrintSupport.h
+new file mode 100644
+index 000000000000..ed8317c6219b
+--- /dev/null
++++ b/widget/uikit/GeckoViewPrintSupport.h
+@@ -0,0 +1,28 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#ifndef mozilla_widget_GeckoViewPrintSupport_h
++#define mozilla_widget_GeckoViewPrintSupport_h
++
++#import <Foundation/Foundation.h>
++
++class nsPIDOMWindowOuter;
++
++namespace mozilla::widget {
++
++using PrintFileCompletion = void (^_Nonnull)(NSURL* _Nullable fileURL,
++                                             NSError* _Nullable error);
++
++void PrintToPDF(nsPIDOMWindowOuter* _Nullable aOuterWindow,
++                NSNumber* _Nullable aBrowsingContextId,
++                PrintFileCompletion aCompletion);
++void SavePDFDocument(NSString* _Nonnull aSourceURL,
++                     PrintFileCompletion aCompletion);
++
++}  // namespace mozilla::widget
++
++#endif  // mozilla_widget_GeckoViewPrintSupport_h

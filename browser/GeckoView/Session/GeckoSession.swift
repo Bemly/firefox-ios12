@@ -131,6 +131,12 @@ public class GeckoSession {
         set { promptHandler.setDelegate(newValue) }
     }
     
+    lazy var printHandler = newPrintHandler(self)
+    public var printDelegate: PrintDelegate? {
+        get { printHandler.delegate(as: PrintDelegate.self) }
+        set { printHandler.setDelegate(newValue) }
+    }
+    
     lazy var selectionActionHandler = newSelectionActionHandler(self)
     public var selectionActionDelegate: SelectionActionDelegate? {
         get { selectionActionHandler.delegate(as: SelectionActionDelegate.self) }
@@ -169,6 +175,7 @@ public class GeckoSession {
         progressHandler,
         scrollHandler,
         promptHandler,
+        printHandler,
         selectionActionHandler,
         mediaSessionHandler,
         autofillHandler,
@@ -265,6 +272,7 @@ public class GeckoSession {
         progressDelegate = nil
         scrollDelegate = nil
         promptDelegate = nil
+        printDelegate = nil
         selectionActionDelegate = nil
         mediaSessionDelegate?.onDeactivated(session: self)
         mediaSessionDelegate = nil
@@ -400,6 +408,81 @@ public class GeckoSession {
                 "heightType": 0,
                 "behavior": animated ? 0 : 1,
             ])
+    }
+    
+    // MARK: - Printing
+    
+    // NOTE (iOS 12 port): completion-based instead of async/await.
+    public func printToPDF(
+        browsingContextId: Int64? = nil,
+        completion: @escaping (Result<URL, Error>) -> Void
+    ) {
+        guard let window else {
+            completion(.failure(GeckoHandlerError("session window is unavailable")))
+            return
+        }
+        
+        let printPage = { [weak self] in
+            if browsingContextId == nil {
+                self?.setFocused(true)
+            }
+            let browsingContextId = browsingContextId.map { NSNumber(value: $0) }
+            window.printToPDF(browsingContextId: browsingContextId) { fileURL, error in
+                if let fileURL {
+                    completion(.success(fileURL))
+                } else {
+                    completion(.failure(error ?? GeckoHandlerError("PDF generation failed")))
+                }
+            }
+        }
+        
+        guard browsingContextId == nil else {
+            printPage()
+            return
+        }
+        
+        dispatcher.query(type: "GeckoView:IsPdfJs") { [weak self] result in
+            guard let self,
+                  case .success(let isPDFDocument) = result,
+                  PayloadValue.bool(isPDFDocument) == true else {
+                printPage()
+                return
+            }
+            
+            self.dispatcher.query(type: "GeckoView:PDFSave") { result in
+                let response: Any?
+                switch result {
+                case .success(let value):
+                    response = value
+                case .failure(let error):
+                    completion(.failure(error))
+                    return
+                }
+                
+                let payload: [String: Any?]
+                if let values = response as? [String: Any] {
+                    payload = values.mapValues { $0 }
+                } else if let values = response as? [String: Any?] {
+                    payload = values
+                } else {
+                    completion(.failure(GeckoHandlerError("Invalid PDF document response")))
+                    return
+                }
+                
+                guard let sourceURL = PayloadValue.string(payload["url"]) else {
+                    completion(.failure(GeckoHandlerError("PDF document source is unavailable")))
+                    return
+                }
+                
+                window.savePDFDocument(sourceURL: sourceURL) { fileURL, error in
+                    if let fileURL {
+                        completion(.success(fileURL))
+                    } else {
+                        completion(.failure(error ?? GeckoHandlerError("PDF document save failed")))
+                    }
+                }
+            }
+        }
     }
     
     // MARK: - State Updates

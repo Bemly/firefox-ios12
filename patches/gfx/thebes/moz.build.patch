@@ -1,8 +1,22 @@
 diff --git a/gfx/thebes/moz.build b/gfx/thebes/moz.build
-index a9f68b056300..04861d1ebe25 100644
+index a9f68b056300..26d11f05f196 100644
 --- a/gfx/thebes/moz.build
 +++ b/gfx/thebes/moz.build
-@@ -244,6 +244,7 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
+@@ -123,6 +123,13 @@ elif CONFIG["MOZ_WIDGET_TOOLKIT"] in ("cocoa", "uikit"):
+         SOURCES += [
+             "PrintTargetCG.mm",
+         ]
++    else:
++        EXPORTS.mozilla.gfx += [
++            "PrintTargetUIKit.h",
++        ]
++        SOURCES += [
++            "PrintTargetUIKit.mm",
++        ]
+ elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
+     EXPORTS += [
+         "gfxFT2FontBase.h",
+@@ -244,6 +251,7 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
      ]
  elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "uikit":
      UNIFIED_SOURCES += [

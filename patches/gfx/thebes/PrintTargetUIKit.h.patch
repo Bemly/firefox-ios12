@@ -1,0 +1,52 @@
+diff --git a/gfx/thebes/PrintTargetUIKit.h b/gfx/thebes/PrintTargetUIKit.h
+new file mode 100644
+index 000000000000..27840a712de7
+--- /dev/null
++++ b/gfx/thebes/PrintTargetUIKit.h
+@@ -0,0 +1,46 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#ifndef MOZILLA_GFX_PRINTTARGETUIKIT_H
++#define MOZILLA_GFX_PRINTTARGETUIKIT_H
++
++#include <CoreGraphics/CoreGraphics.h>
++
++#include "PrintTarget.h"
++
++class nsIOutputStream;
++
++namespace mozilla::gfx {
++
++class PrintTargetUIKit final : public PrintTarget {
++ public:
++  static already_AddRefed<PrintTargetUIKit> CreateOrNull(
++      nsIOutputStream* aOutputStream, const IntSize& aSize);
++
++  nsresult BeginPrinting(const nsAString& aTitle,
++                         const nsAString& aPrintToFileName,
++                         uint64_t aInnerWindowId, int32_t aStartPage,
++                         int32_t aEndPage) final;
++  nsresult EndPrinting() final;
++  nsresult AbortPrinting() final;
++  nsresult BeginPage(const IntSize& aSizeInPoints) final;
++  nsresult EndPage() final;
++
++  already_AddRefed<DrawTarget> GetReferenceDrawTarget() final;
++
++ private:
++  PrintTargetUIKit(CGContextRef aPDFContext, const IntSize& aSize);
++  ~PrintTargetUIKit();
++
++  CGContextRef mPDFContext;
++  RefPtr<DrawTarget> mReferenceDrawTarget;
++  bool mDidClose = false;
++};
++
++}  // namespace mozilla::gfx
++
++#endif  // MOZILLA_GFX_PRINTTARGETUIKIT_H

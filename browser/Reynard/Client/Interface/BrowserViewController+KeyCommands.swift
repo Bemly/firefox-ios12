@@ -25,7 +25,40 @@ extension BrowserViewController {
     }
     
     @objc func closeTabKeyCommand(_ sender: UIKeyCommand) {
-        closeTab()
+        if tabOverview.isPresented || tabOverview.isTransitionRunning {
+            closeTab()
+            return
+        }
+        
+        guard tabManager.selectedTab != nil else {
+            return
+        }
+        
+        toolbarController.reset()
+        let mode = tabManager.selectedTabMode
+        tabManager.removeTab(at: tabManager.selectedTabIndex, mode: mode, behavior: .adjacent)
+        
+        if mode == .regular && tabManager.regularTabs.isEmpty {
+            createNewTab(mode: .regular)
+        }
+    }
+    
+    @objc func printPageKeyCommand(_ sender: UIKeyCommand) {
+        guard hasSelectedWebPage,
+              let tab = tabManager.selectedTab,
+              tab.session.isOpen(),
+              UIPrintInteractionController.isPrintingAvailable else {
+            return
+        }
+        
+        PagePrintPreparationAlert.prepare({ operationCompletion in
+            tab.session.printToPDF(completion: operationCompletion)
+        }) { result in
+            guard case .success(let pdfFileURL) = result else {
+                return
+            }
+            PagePrintPresenter.present(pdfFileURL: pdfFileURL, jobName: tab.title) { _ in }
+        }
     }
     
     @objc func findInPageKeyCommand(_ sender: UIKeyCommand) {
@@ -51,15 +84,15 @@ extension BrowserViewController {
         }
     }
     
-    @objc func hardReloadPageKeyCommand(_ sender: UIKeyCommand) {
-        guard hasSelectedWebPage,
-              let session = tabManager.selectedTab?.session else {
+    @objc func toggleReaderKeyCommand(_ sender: UIKeyCommand) {
+        guard let tab = tabManager.selectedTab else {
             return
         }
-        if session.isOpen() {
-            session.reload(flags: GeckoSessionLoadFlags.bypassCache)
-        } else {
-            reloadTerminatedTab()
+        
+        if tab.state.readerMode.isActive {
+            _ = tabManager.readerMode.exit(in: tab)
+        } else if tab.state.readerMode.isReaderable {
+            _ = tabManager.readerMode.enter(in: tab)
         }
     }
     
@@ -92,7 +125,7 @@ extension BrowserViewController {
     }
     
     @objc func goBackKeyCommand(_ sender: UIKeyCommand) {
-        guard tabManager.selectedTab?.state.navigationState.canGoBack == true else {
+        guard tabManager.canGoBack else {
             return
         }
         exitFullscreenIfNeeded()
@@ -124,6 +157,10 @@ extension BrowserViewController {
     
     @objc func showDownloadsKeyCommand(_ sender: UIKeyCommand) {
         toggleLibrary(section: .downloads)
+    }
+    
+    @objc func showSettingsKeyCommand(_ sender: UIKeyCommand) {
+        toggleLibrary(section: .settings)
     }
     
     @objc func showTabOverviewKeyCommand(_ sender: UIKeyCommand) {
@@ -190,7 +227,7 @@ extension BrowserViewController {
         dismissAddressBarEditingAndOverlays()
         tabs.indices.reversed().forEach { index in
             if tabs[index].id != selectedTabID {
-                tabManager.removeTab(at: index, mode: mode)
+                tabManager.removeTab(at: index, mode: mode, behavior: .none)
             }
         }
     }

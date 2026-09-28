@@ -1,8 +1,33 @@
 diff --git a/dom/media/systemservices/CamerasParent.h b/dom/media/systemservices/CamerasParent.h
-index 18fe4aba162e..3bbc7cb306c2 100644
+index 18fe4aba162e..ca6a89c2686f 100644
 --- a/dom/media/systemservices/CamerasParent.h
 +++ b/dom/media/systemservices/CamerasParent.h
-@@ -180,7 +180,8 @@ class CamerasParent : public PCamerasParent {
+@@ -5,6 +5,8 @@
+ #ifndef mozilla_CamerasParent_h
+ #define mozilla_CamerasParent_h
+ 
++#include <set>
++
+ #include "api/video/video_sink_interface.h"
+ #include "modules/video_capture/video_capture.h"
+ #include "modules/video_capture/video_capture_defines.h"
+@@ -150,6 +152,7 @@ class AggregateCapturer final
+ };
+ 
+ class DeliverFrameRunnable;
++class DeliverIOSurfaceFrameRunnable;
+ 
+ class CamerasParent : public PCamerasParent {
+  public:
+@@ -165,6 +168,7 @@ class CamerasParent : public PCamerasParent {
+       : public media::Refcountable<nsTArray<RefPtr<VideoEngine>>> {};
+ 
+   friend DeliverFrameRunnable;
++  friend DeliverIOSurfaceFrameRunnable;
+ 
+   static already_AddRefed<CamerasParent> Create();
+ 
+@@ -180,7 +184,8 @@ class CamerasParent : public PCamerasParent {
     *   The returned promise will never be rejected.
     */
    static RefPtr<CameraAccessRequestPromise> RequestCameraAccess(
@@ -12,3 +37,37 @@ index 18fe4aba162e..3bbc7cb306c2 100644
  
    // Messages received from the child. These run on the IPC/PBackground thread.
    mozilla::ipc::IPCResult RecvPCamerasConstructor();
+@@ -209,6 +214,8 @@ class CamerasParent : public PCamerasParent {
+                                           const int& aStreamId) override;
+   mozilla::ipc::IPCResult RecvReleaseFrame(
+       const int& aCaptureId, mozilla::ipc::Shmem&& aShmem) override;
++  mozilla::ipc::IPCResult RecvReleaseFrameIOSurface(
++      const int& aCaptureId, const uint64_t& aFrameId) override;
+   void ActorDestroy(ActorDestroyReason aWhy) override;
+   mozilla::ipc::IPCResult RecvEnsureInitialized(
+       const CaptureEngine& aCapEngine) override;
+@@ -221,6 +228,11 @@ class CamerasParent : public PCamerasParent {
+     return mPBackgroundEventTarget.GetEventTarget();
+   };
+   ShmemBuffer GetBuffer(int aCaptureId, size_t aSize);
++  bool TryReservePendingFrame(int aCaptureId);
++  void ReleasePendingFrame(int aCaptureId);
++  Maybe<uint64_t> HoldIOSurfaceFrame(int aCaptureId,
++                                     const webrtc::VideoFrame& aFrame);
++  bool ReleaseIOSurfaceFrame(int aCaptureId, uint64_t aFrameId);
+ 
+   // helper to forward to the PBackground thread
+   virtual int DeliverFrameOverIPC(
+@@ -297,6 +309,12 @@ class CamerasParent : public PCamerasParent {
+   // allocating shmem buffers, and on the callback thread (varies by capture
+   // backend) for querying an existing pool for an available buffer.
+   DataMutex<std::map<int, ShmemPool>> mShmemPools;
++  DataMutex<std::set<int>> mPendingFrames;
++  struct IOSurfaceFrameState {
++    uint64_t mNextFrameId = 1;
++    std::map<int, std::map<uint64_t, webrtc::VideoFrame>> mFrames;
++  };
++  DataMutex<IOSurfaceFrameState> mIOSurfaceFrames;
+ 
+   // PBackgroundParent thread
+   const EventTargetCapability<nsISerialEventTarget> mPBackgroundEventTarget;

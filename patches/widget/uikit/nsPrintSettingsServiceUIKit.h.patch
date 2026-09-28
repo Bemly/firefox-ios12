@@ -1,0 +1,24 @@
+diff --git a/widget/uikit/nsPrintSettingsServiceUIKit.h b/widget/uikit/nsPrintSettingsServiceUIKit.h
+new file mode 100644
+index 000000000000..bcbd91c61dc9
+--- /dev/null
++++ b/widget/uikit/nsPrintSettingsServiceUIKit.h
+@@ -0,0 +1,18 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#ifndef nsPrintSettingsServiceUIKit_h
++#define nsPrintSettingsServiceUIKit_h
++
++#include "nsPrintSettingsService.h"
++
++class nsPrintSettingsServiceUIKit final : public nsPrintSettingsService {
++ public:
++  nsresult _CreatePrintSettings(nsIPrintSettings** aResult) override;
++};
++
++#endif  // nsPrintSettingsServiceUIKit_h

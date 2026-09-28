@@ -26,7 +26,9 @@ enum ApplicationMenuBuilder {
             UIKeyCommand(title: NSLocalizedString("New Private Tab", comment: ""), action: #selector(BrowserViewController.newPrivateTabKeyCommand(_:)), input: "n", modifierFlags: [.command, .shift]),
             UIKeyCommand(title: NSLocalizedString("Open Location", comment: ""), action: #selector(BrowserViewController.focusAddressBarKeyCommand(_:)), input: "l", modifierFlags: .command),
             UIKeyCommand(title: NSLocalizedString("Close Tab", comment: ""), action: #selector(BrowserViewController.closeTabKeyCommand(_:)), input: "w", modifierFlags: .command),
+            UIKeyCommand(title: NSLocalizedString("Print", comment: ""), action: #selector(BrowserViewController.printPageKeyCommand(_:)), input: "p", modifierFlags: .command),
             UIKeyCommand(title: NSLocalizedString("Downloads", comment: ""), action: #selector(BrowserViewController.showDownloadsKeyCommand(_:)), input: "j", modifierFlags: .command),
+            UIKeyCommand(title: NSLocalizedString("Settings", comment: ""), action: #selector(BrowserViewController.showSettingsKeyCommand(_:)), input: ",", modifierFlags: .command),
         ])
         builder.insertChild(fileMenu, atEndOfMenu: .file)
         
@@ -37,7 +39,7 @@ enum ApplicationMenuBuilder {
         
         let viewMenu = UIMenu(title: "", options: .displayInline, children: [
             UIKeyCommand(title: NSLocalizedString("Reload Page", comment: ""), action: #selector(BrowserViewController.reloadPageKeyCommand(_:)), input: "r", modifierFlags: .command),
-            UIKeyCommand(title: NSLocalizedString("Hard Reload Page", comment: ""), action: #selector(BrowserViewController.hardReloadPageKeyCommand(_:)), input: "r", modifierFlags: [.command, .shift]),
+            UIKeyCommand(title: NSLocalizedString("Show or Hide Reader", comment: ""), action: #selector(BrowserViewController.toggleReaderKeyCommand(_:)), input: "r", modifierFlags: [.command, .shift]),
             UIKeyCommand(title: NSLocalizedString("Zoom In", comment: ""), action: #selector(BrowserViewController.zoomInKeyCommand(_:)), input: "+", modifierFlags: .command),
             UIKeyCommand(title: NSLocalizedString("Zoom Out", comment: ""), action: #selector(BrowserViewController.zoomOutKeyCommand(_:)), input: "-", modifierFlags: .command),
             UIKeyCommand(title: NSLocalizedString("Actual Size", comment: ""), action: #selector(BrowserViewController.actualSizeKeyCommand(_:)), input: "0", modifierFlags: .command),

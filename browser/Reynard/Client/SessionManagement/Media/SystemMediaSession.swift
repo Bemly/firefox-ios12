@@ -15,6 +15,7 @@ protocol SystemMediaSessionObserver: AnyObject {
 }
 
 protocol SystemMediaSessionPlaybackObserver: AnyObject {
+    func systemMediaSessionDidActivate(for session: GeckoSession)
     func systemMediaSessionPlaybackStateDidChange(
         _ playbackState: SystemMediaSession.PlaybackState,
         for session: GeckoSession
@@ -47,6 +48,8 @@ final class SystemMediaSession: MediaSessionDelegate {
     private let commandCenter = MPRemoteCommandCenter.shared()
     private var sessionStates: [ObjectIdentifier: SessionState] = [:]
     private var playbackHistory: [ObjectIdentifier] = []
+    private var interruptedPlaybackSessions: Set<ObjectIdentifier> = []
+    private var preservedPlaybackSessions: Set<ObjectIdentifier> = []
     private var commandTargets: [Any] = []
     weak var observer: SystemMediaSessionObserver?
     weak var playbackObserver: SystemMediaSessionPlaybackObserver?
@@ -103,14 +106,19 @@ final class SystemMediaSession: MediaSessionDelegate {
     
     func onActivated(session: GeckoSession) {
         _ = state(for: session)
+        playbackObserver?.systemMediaSessionDidActivate(for: session)
         notifyStateChanged(for: session)
     }
     
     func onDeactivated(session: GeckoSession) {
         let identifier = ObjectIdentifier(session)
+        if preservedPlaybackSessions.remove(identifier) != nil {
+            return
+        }
         let wasActive = activeSession === session
         sessionStates.removeValue(forKey: identifier)?.artworkTask?.cancel()
         playbackHistory.removeAll { $0 == identifier }
+        interruptedPlaybackSessions.remove(identifier)
         
         if wasActive {
             activateMostRecentPlayingSession()
@@ -162,6 +170,7 @@ final class SystemMediaSession: MediaSessionDelegate {
            selectedSession !== session,
            let selectedState = sessionStates[ObjectIdentifier(selectedSession)],
            selectedState.playbackState != .none {
+            notifyPlaybackStateChanged(for: session)
             return
         }
         activate(session, state: state)
@@ -204,8 +213,13 @@ final class SystemMediaSession: MediaSessionDelegate {
         activate(session, state: state)
     }
     
-    func navigationStarted(in session: GeckoSession) {
+    func navigationStarted(in session: GeckoSession, preservingPlayback: Bool) {
         let identifier = ObjectIdentifier(session)
+        if preservingPlayback {
+            preservedPlaybackSessions.insert(identifier)
+            return
+        }
+        preservedPlaybackSessions.remove(identifier)
         guard selectedSession === session,
               let state = sessionStates[identifier] else {
             return
@@ -262,12 +276,11 @@ final class SystemMediaSession: MediaSessionDelegate {
     }
     
     private func notifyPlaybackStateChanged(for session: GeckoSession) {
-        guard selectedSession === session else {
-            return
-        }
-        observer?.systemMediaSessionStateDidChange(self)
         let playbackState = sessionStates[ObjectIdentifier(session)]?.playbackState ?? .none
         playbackObserver?.systemMediaSessionPlaybackStateDidChange(playbackState, for: session)
+        if selectedSession === session {
+            observer?.systemMediaSessionStateDidChange(self)
+        }
     }
     
     private func activate(_ session: GeckoSession, state: SessionState) {
@@ -296,11 +309,33 @@ final class SystemMediaSession: MediaSessionDelegate {
     
     @objc private func handleAudioSessionInterruption(_ notification: Notification) {
         guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-              AVAudioSession.InterruptionType(rawValue: typeValue) == .began else {
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
             return
         }
-        for state in sessionStates.values where state.playbackState == .playing {
-            state.session?.mediaSession.pause()
+        switch type {
+        case .began:
+            interruptedPlaybackSessions.removeAll()
+            for (identifier, state) in sessionStates where state.playbackState == .playing {
+                guard let session = state.session else { continue }
+                interruptedPlaybackSessions.insert(identifier)
+                session.mediaSession.pause()
+            }
+        case .ended:
+            let sessionsToResume = interruptedPlaybackSessions
+            interruptedPlaybackSessions.removeAll()
+            guard let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt,
+                  AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume) else {
+                return
+            }
+            for identifier in sessionsToResume {
+                guard let state = sessionStates[identifier],
+                      state.playbackState != .none else {
+                    continue
+                }
+                state.session?.mediaSession.play()
+            }
+        @unknown default:
+            return
         }
     }
     

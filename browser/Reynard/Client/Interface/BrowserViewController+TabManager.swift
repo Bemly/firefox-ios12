@@ -21,6 +21,7 @@ extension BrowserViewController: TabManagerDelegate {
             contentView.setTab(nil)
         }
         refreshAddressBar()
+        updateNavigationButtons()
         
         if !tabOverview.isPresented {
             tabOverview.setMode(TabOverview.Mode(tabMode: tabManager.selectedTabMode), animated: false)
@@ -155,7 +156,7 @@ extension BrowserViewController: TabManagerDelegate {
     }
     
     func tabManager(_ tabManager: TabManager, didUpdateTabAt index: Int, reason: TabManagerUpdateReason) {
-        guard tabManager.activeTabs.indices.contains(index) else {
+        guard let tab = tabManager.activeTabs[safe: index] else {
             return
         }
         
@@ -173,7 +174,6 @@ extension BrowserViewController: TabManagerDelegate {
             if index == tabManager.selectedTabIndex {
                 contentView.resetScrollTracking()
                 toolbarController.reset(preserveManualCollapse: true)
-                let tab = tabManager.activeTabs[index]
                 contentView.noteHistoryLocationChange()
                 refreshAddressBar()
                 browserChrome.updatePageZoomLevel(tab.session.settings.pageZoom.level)
@@ -194,7 +194,6 @@ extension BrowserViewController: TabManagerDelegate {
             
         case .loading:
             if index == tabManager.selectedTabIndex {
-                let tab = tabManager.activeTabs[index]
                 browserChrome.setAddressBarLoadingProgress(
                     tab.state.loadingState.progress,
                     isLoading: tab.state.loadingState.isLoading
@@ -229,14 +228,20 @@ extension BrowserViewController: TabManagerDelegate {
             guard index == tabManager.selectedTabIndex else {
                 return
             }
-            let tab = tabManager.activeTabs[index]
             contentView.setPageBackgroundColor(sessionManager.pageBackgroundColor(for: tab.session))
             
         case .readerMode:
             if index == tabManager.selectedTabIndex {
                 refreshAddressBar()
             }
+            
+        case .audio:
+            refreshAddressBarAudioButton()
         }
+    }
+    
+    func tabManager(_ tabManager: TabManager, animateReturnTo tab: Tab, completion: @escaping () -> Void) {
+        browserChrome.animateAutomaticTabTransition(to: tab, returning: true, completion: completion)
     }
     
     func tabManager(_ tabManager: TabManager, animateNewTabSelectionAt index: Int, completion: @escaping () -> Void) {
@@ -255,7 +260,7 @@ extension BrowserViewController: TabManagerDelegate {
             }
             
             self.tabBar.setPendingExpansion(at: index)
-            self.browserChrome.animateAutomaticNewTabTransition(to: tabManager.activeTabs[index], completion: completion)
+            self.browserChrome.animateAutomaticTabTransition(to: tabManager.activeTabs[index], completion: completion)
         }
     }
     
@@ -323,7 +328,7 @@ extension BrowserViewController {
             captureThumbnail(forTabAt: index, mode: tabManager.selectedTabMode)
         case .customURL:
             guard let tab = tabManager.activeTabs[safe: index],
-                  URLUtils.isWebURL(Prefs.NewTabSettings.customNewTabURL) else {
+                  URLUtils.normalizedNewTabURL(from: Prefs.NewTabSettings.customNewTabURL) != nil else {
                 return
             }
             

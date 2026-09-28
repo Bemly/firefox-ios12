@@ -1,19 +1,275 @@
 diff --git a/dom/media/systemservices/CamerasParent.cpp b/dom/media/systemservices/CamerasParent.cpp
-index 6918f33c5f7a..784879c7d73b 100644
+index 6918f33c5f7a..23be9838fa67 100644
 --- a/dom/media/systemservices/CamerasParent.cpp
 +++ b/dom/media/systemservices/CamerasParent.cpp
-@@ -34,6 +34,10 @@
+@@ -34,6 +34,11 @@
  #include "video_engine/desktop_capture_impl.h"
  #include "video_engine/video_capture_factory.h"
  
 +#ifdef MOZ_WIDGET_UIKIT
 +#  include "objc_video_capture/capture_access.h"
++#  include "objc_video_capture/native_video_frame.h"
 +#endif
 +
  #if defined(_WIN32)
  #  include <process.h>
  #  define getpid() _getpid()
-@@ -1153,10 +1157,15 @@ ipc::IPCResult CamerasParent::RecvGetCaptureDevice(
+@@ -94,6 +99,15 @@ uint32_t FeasibilityDistance(int32_t candidate, int32_t requested) {
+          std::max(candidate, requested);
+ }
+ 
++uint32_t FrameRateFeasibilityDistance(
++    const webrtc::VideoCaptureCapability& aCandidate, int32_t aRequested) {
++  if (aCandidate.minFPS <= 0) {
++    return FeasibilityDistance(aCandidate.maxFPS, aRequested);
++  }
++  return FeasibilityDistance(
++      std::clamp(aRequested, aCandidate.minFPS, aCandidate.maxFPS), aRequested);
++}
++
+ // Singleton video engines. The sEngines RefPtr is IPC background thread only
+ // and outlives the CamerasParent instances. The array elements are video
+ // capture thread only.
+@@ -267,7 +281,8 @@ class DeliverFrameRunnable : public mozilla::Runnable {
+         mStreamIds(std::move(aStreamIds)),
+         mTrackingId(aTrackingId),
+         mBuffer(aFrame),
+-        mProperties(aProperties) {}
++        mProperties(aProperties),
++        mRetainsPendingFrame(true) {}
+ 
+   DeliverFrameRunnable(already_AddRefed<CamerasParent> aParent,
+                        CaptureEngine aEngine, int aCaptureId,
+@@ -281,7 +296,14 @@ class DeliverFrameRunnable : public mozilla::Runnable {
+         mStreamIds(std::move(aStreamIds)),
+         mTrackingId(aTrackingId),
+         mBuffer(std::move(aBuffer)),
+-        mProperties(aProperties) {}
++        mProperties(aProperties),
++        mRetainsPendingFrame(false) {}
++
++  ~DeliverFrameRunnable() override {
++    if (mRetainsPendingFrame) {
++      mParent->ReleasePendingFrame(mCaptureId);
++    }
++  }
+ 
+   NS_IMETHOD Run() override {
+     // runs on BackgroundEventTarget
+@@ -303,6 +325,51 @@ class DeliverFrameRunnable : public mozilla::Runnable {
+   const TrackingId mTrackingId;
+   Variant<ShmemBuffer, webrtc::VideoFrame> mBuffer;
+   const VideoFrameProperties mProperties;
++  const bool mRetainsPendingFrame;
++};
++
++class DeliverIOSurfaceFrameRunnable : public mozilla::Runnable {
++ public:
++  DeliverIOSurfaceFrameRunnable(
++      already_AddRefed<CamerasParent> aParent, int aCaptureId,
++      uint64_t aFrameId, nsTArray<int>&& aStreamIds,
++      webrtc::videocapturemodule::NativeIOSurfaceFrame aSurfaceFrame,
++      const VideoFrameProperties& aProperties)
++      : Runnable("camera::DeliverIOSurfaceFrameRunnable"),
++        mParent(aParent),
++        mCaptureId(aCaptureId),
++        mFrameId(aFrameId),
++        mStreamIds(std::move(aStreamIds)),
++        mSurfaceFrame(std::move(aSurfaceFrame)),
++        mProperties(aProperties) {}
++
++  ~DeliverIOSurfaceFrameRunnable() override {
++    if (!mSent) {
++      mParent->ReleaseIOSurfaceFrame(mCaptureId, mFrameId);
++    }
++  }
++
++  NS_IMETHOD Run() override {
++    mParent->mPBackgroundEventTarget.AssertOnCurrentThread();
++    if (mParent->mDestroyed) {
++      return NS_OK;
++    }
++    mSent = mParent->SendDeliverFrameIOSurface(
++        mCaptureId, mFrameId, mStreamIds, std::move(mSurfaceFrame.mSurface),
++        mSurfaceFrame.mPictureRect, mSurfaceFrame.mYUVColorSpace,
++        mSurfaceFrame.mColorPrimaries, mSurfaceFrame.mTransferFunction,
++        mProperties);
++    return NS_OK;
++  }
++
++ private:
++  const RefPtr<CamerasParent> mParent;
++  const int mCaptureId;
++  const uint64_t mFrameId;
++  const nsTArray<int> mStreamIds;
++  webrtc::videocapturemodule::NativeIOSurfaceFrame mSurfaceFrame;
++  const VideoFrameProperties mProperties;
++  bool mSent = false;
+ };
+ 
+ int CamerasParent::DeliverFrameOverIPC(
+@@ -383,6 +450,49 @@ ShmemBuffer CamerasParent::GetBuffer(int aCaptureId, size_t aSize) {
+   return pool.GetIfAvailable(aSize);
+ }
+ 
++bool CamerasParent::TryReservePendingFrame(int aCaptureId) {
++  auto guard = mPendingFrames.Lock();
++  return guard->insert(aCaptureId).second;
++}
++
++void CamerasParent::ReleasePendingFrame(int aCaptureId) {
++  auto guard = mPendingFrames.Lock();
++  MOZ_ALWAYS_TRUE(guard->erase(aCaptureId));
++}
++
++Maybe<uint64_t> CamerasParent::HoldIOSurfaceFrame(
++    int aCaptureId, const webrtc::VideoFrame& aFrame) {
++  auto guard = mIOSurfaceFrames.Lock();
++
++  // 2 frames, one is the current img, and one is the next img. This is because
++  // the current image only gets released when a new one arrives
++  constexpr size_t kMaxOutstandingFrames = 2;
++  auto& frames = guard->mFrames[aCaptureId];
++
++  if (frames.size() >= kMaxOutstandingFrames) {
++    return Nothing();
++  }
++
++  const uint64_t frameId = guard->mNextFrameId++;
++  frames.emplace(frameId, aFrame);
++  return Some(frameId);
++}
++
++bool CamerasParent::ReleaseIOSurfaceFrame(int aCaptureId, uint64_t aFrameId) {
++  auto guard = mIOSurfaceFrames.Lock();
++  auto it = guard->mFrames.find(aCaptureId);
++
++  if (it == guard->mFrames.end() || !it->second.erase(aFrameId)) {
++    return false;
++  }
++
++  if (it->second.empty()) {
++    guard->mFrames.erase(it);
++  }
++
++  return true;
++}
++
+ /*static*/
+ std::unique_ptr<AggregateCapturer> AggregateCapturer::Create(
+     nsISerialEventTarget* aVideoCaptureThread, CaptureEngine aCapEng,
+@@ -658,15 +768,20 @@ Maybe<webrtc::VideoCaptureCapability> AggregateCapturer::CombinedCapability(
+                                                  combinedCap->width)) +
+           uint64_t(ResolutionFeasibilityDistance(candidateCapability.height,
+                                                  combinedCap->height)) +
+-          uint64_t(FeasibilityDistance(candidateCapability.maxFPS,
+-                                       combinedCap->maxFPS));
++          uint64_t(FrameRateFeasibilityDistance(candidateCapability,
++                                                combinedCap->maxFPS));
+       if (distance < minDistance) {
+         minDistanceCapability = &candidateCapability;
+         minDistance = distance;
+       }
+     }
+     if (minDistanceCapability) {
++      const int32_t requestedFPS = combinedCap->maxFPS;
+       combinedCap = Some(*minDistanceCapability);
++      if (combinedCap->minFPS > 0) {
++        combinedCap->maxFPS =
++            std::clamp(requestedFPS, combinedCap->minFPS, combinedCap->maxFPS);
++      }
+     }
+   }
+   return combinedCap;
+@@ -771,7 +886,24 @@ void AggregateCapturer::OnFrame(const webrtc::VideoFrame& aVideoFrame) {
+ 
+   // Get frame properties
+   camera::VideoFrameProperties properties;
+-  VideoFrameUtils::InitFrameBufferProperties(aVideoFrame, properties);
++  Maybe<webrtc::videocapturemodule::NativeIOSurfaceFrame> surfaceFrame;
++
++  if (mCapEngine == CaptureEngine::CameraEngine) {
++    surfaceFrame =
++        webrtc::videocapturemodule::GetNativeIOSurfaceFrame(aVideoFrame);
++  }
++
++  if (surfaceFrame) {
++    properties.captureTime() = TimeStamp::Now();
++    properties.rtpTimeStamp() = aVideoFrame.rtp_timestamp();
++    properties.ntpTimeMs() = aVideoFrame.ntp_time_ms();
++    properties.renderTimeMs() = aVideoFrame.render_time_ms();
++    properties.rotation() = aVideoFrame.rotation();
++    properties.width() = aVideoFrame.width();
++    properties.height() = aVideoFrame.height();
++  } else {
++    VideoFrameUtils::InitFrameBufferProperties(aVideoFrame, properties);
++  }
+ 
+   for (auto it = parentsAndIds.begin(); it != parentsAndIds.end();) {
+     const auto& parent = it->first;
+@@ -784,6 +916,22 @@ void AggregateCapturer::OnFrame(const webrtc::VideoFrame& aVideoFrame) {
+     }
+ 
+     LOG_VERBOSE("CamerasParent({})::{}", fmt::ptr(parent.get()), __func__);
++
++    if (surfaceFrame) {
++      Maybe<uint64_t> frameId =
++          parent->HoldIOSurfaceFrame(mCaptureId, aVideoFrame);
++      if (!frameId) {
++        continue;
++      }
++      RefPtr<DeliverIOSurfaceFrameRunnable> runnable =
++          new DeliverIOSurfaceFrameRunnable(do_AddRef(parent), mCaptureId,
++                                            *frameId, std::move(ids),
++                                            *surfaceFrame, properties);
++      nsIEventTarget* target = parent->GetBackgroundEventTarget();
++      target->Dispatch(runnable, NS_DISPATCH_NORMAL);
++      continue;
++    }
++
+     RefPtr<DeliverFrameRunnable> runnable = nullptr;
+     // Get a shared memory buffer to copy the frame data into
+     ShmemBuffer shMemBuffer =
+@@ -791,8 +939,9 @@ void AggregateCapturer::OnFrame(const webrtc::VideoFrame& aVideoFrame) {
+     if (!shMemBuffer.Valid()) {
+       // Either we ran out of buffers or they're not the right size yet
+       LOG("Correctly sized Video shmem not available in DeliverFrame");
+-      // We will do the copy into a(n extra) temporary buffer inside
+-      // the DeliverFrameRunnable constructor.
++      if (!parent->TryReservePendingFrame(mCaptureId)) {
++        continue;
++      }
+     } else {
+       // Shared memory buffers of the right size are available, do the copy
+       // here.
+@@ -833,6 +982,15 @@ ipc::IPCResult CamerasParent::RecvReleaseFrame(const int& aCaptureId,
+   return IPC_OK();
+ }
+ 
++ipc::IPCResult CamerasParent::RecvReleaseFrameIOSurface(
++    const int& aCaptureId, const uint64_t& aFrameId) {
++  mPBackgroundEventTarget.AssertOnCurrentThread();
++  if (!ReleaseIOSurfaceFrame(aCaptureId, aFrameId)) {
++    return IPC_FAIL(this, "IOSurface frame was already released");
++  }
++  return IPC_OK();
++}
++
+ void CamerasParent::CloseEngines() {
+   mVideoCaptureThread->AssertOnCurrentThread();
+   LOG_FUNCTION();
+@@ -1093,8 +1251,8 @@ ipc::IPCResult CamerasParent::RecvGetCaptureCapability(
+ 
+             auto webrtcCaps = aValue.ResolveValue();
+             VideoCaptureCapability capCap(
+-                webrtcCaps.width, webrtcCaps.height, webrtcCaps.maxFPS,
+-                webrtcCaps.videoType, webrtcCaps.interlaced);
++                webrtcCaps.width, webrtcCaps.height, webrtcCaps.minFPS,
++                webrtcCaps.maxFPS, webrtcCaps.videoType, webrtcCaps.interlaced);
+             LOG("Capability: {} {} {} {} {}", webrtcCaps.width,
+                 webrtcCaps.height, webrtcCaps.maxFPS,
+                 static_cast<int>(webrtcCaps.videoType), webrtcCaps.interlaced);
+@@ -1153,10 +1311,15 @@ ipc::IPCResult CamerasParent::RecvGetCaptureDevice(
                return;
              }
              bool scary = (devicePid == getpid());
@@ -30,7 +286,35 @@ index 6918f33c5f7a..784879c7d73b 100644
            });
    return IPC_OK();
  }
-@@ -1687,13 +1696,21 @@ CamerasParent::CamerasParent()
+@@ -1424,6 +1587,7 @@ ipc::IPCResult CamerasParent::RecvStartCapture(
+                   webrtc::VideoCaptureCapability capability;
+                   capability.width = aIpcCaps.width();
+                   capability.height = aIpcCaps.height();
++                  capability.minFPS = aIpcCaps.minFPS();
+                   capability.maxFPS = aIpcCaps.maxFPS();
+                   capability.videoType =
+                       static_cast<webrtc::VideoType>(aIpcCaps.videoType());
+@@ -1638,6 +1802,10 @@ void CamerasParent::ActorDestroy(ActorDestroyReason aWhy) {
+       pool.Cleanup(this);
+     }
+   }
++  {
++    auto guard = mIOSurfaceFrames.Lock();
++    guard->mFrames.clear();
++  }
+   // We don't want to receive callbacks or anything if we can't
+   // forward them anymore anyway.
+   mDestroyed = true;
+@@ -1673,6 +1841,8 @@ CamerasParent::CamerasParent()
+       mAggregators(sAggregators),
+       mVideoCaptureFactory(EnsureVideoCaptureFactory()),
+       mShmemPools("CamerasParent::mShmemPools"),
++      mPendingFrames("CamerasParent::mPendingFrames"),
++      mIOSurfaceFrames("CamerasParent::mIOSurfaceFrames"),
+       mPBackgroundEventTarget(GetCurrentSerialEventTarget()),
+       mDestroyed(false),
+       mDestroyedCaptureThread(!mVideoCaptureThread) {
+@@ -1687,13 +1857,21 @@ CamerasParent::CamerasParent()
  }
  
  /* static */
@@ -53,7 +337,7 @@ index 6918f33c5f7a..784879c7d73b 100644
      return EnsureVideoCaptureFactory()->UpdateCameraAvailability()->Then(
          GetCurrentSerialEventTarget(),
          "CamerasParent::RequestCameraAccess update camera availability",
-@@ -1713,52 +1730,107 @@ auto CamerasParent::RequestCameraAccess(bool aAllowPermissionRequest)
+@@ -1713,52 +1891,107 @@ auto CamerasParent::RequestCameraAccess(bool aAllowPermissionRequest)
          });
    }
  

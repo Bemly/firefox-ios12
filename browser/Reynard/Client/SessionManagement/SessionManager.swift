@@ -95,6 +95,7 @@ final class SessionManager {
         session.progressDelegate = delegates.progress
         session.scrollDelegate = delegates.scroll
         session.promptDelegate = delegates.prompt
+        session.printDelegate = delegates.print
         session.selectionActionDelegate = delegates.selectionAction
         session.mediaSessionDelegate = delegates.mediaSession
     }

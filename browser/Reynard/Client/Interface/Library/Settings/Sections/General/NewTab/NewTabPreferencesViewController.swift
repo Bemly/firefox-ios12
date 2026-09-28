@@ -127,7 +127,7 @@ final class NewTabPreferencesViewController: SettingsTableViewController, UIText
             return true
         }
         
-        guard let url = URLUtils.normalizedCustomURL(from: submittedText) else {
+        guard let url = URLUtils.normalizedNewTabURL(from: submittedText) else {
             return false
         }
         
@@ -146,7 +146,7 @@ final class NewTabPreferencesViewController: SettingsTableViewController, UIText
         }
         
         guard Prefs.NewTabSettings.newTabDisplayOption == .customURL,
-              let url = URLUtils.normalizedCustomURL(from: editedText) else {
+              let url = URLUtils.normalizedNewTabURL(from: editedText) else {
             return
         }
         
@@ -199,7 +199,7 @@ final class NewTabPreferencesViewController: SettingsTableViewController, UIText
     
     private var showsCustomURLCheckmark: Bool {
         return Prefs.NewTabSettings.newTabDisplayOption == .customURL &&
-        URLUtils.isWebURL(Prefs.NewTabSettings.customNewTabURL)
+        URLUtils.normalizedNewTabURL(from: Prefs.NewTabSettings.customNewTabURL) != nil
     }
     
 }

@@ -1,5 +1,5 @@
 diff --git a/gfx/webrender_bindings/src/moz2d_renderer.rs b/gfx/webrender_bindings/src/moz2d_renderer.rs
-index c885ba051ebd..efb18c235d72 100644
+index c885ba051ebd..4b90fee4ae9b 100644
 --- a/gfx/webrender_bindings/src/moz2d_renderer.rs
 +++ b/gfx/webrender_bindings/src/moz2d_renderer.rs
 @@ -22,6 +22,7 @@ use std::collections::btree_map::BTreeMap;
@@ -10,20 +10,16 @@ index c885ba051ebd..efb18c235d72 100644
  use std::i32;
  use std::mem;
  use std::os::raw::c_void;
-@@ -32,6 +33,12 @@ use std::sync::Arc;
+@@ -32,6 +33,8 @@ use std::sync::Arc;
  use core_foundation::string::CFString;
  #[cfg(any(target_os = "macos", target_os = "ios"))]
  use core_graphics::font::CGFont;
 +#[cfg(target_os = "ios")]
-+use core_text::font::{kCTFontSystemFontType, new_ui_font_for_language};
-+#[cfg(target_os = "ios")]
-+use core_text::font_descriptor::{
-+    kCTFontBoldTrait, kCTFontCondensedTrait, kCTFontExpandedTrait, kCTFontItalicTrait,
-+};
++use webrender::glyph_rasterizer::platform::macos::font::new_system_ui_cg_font;
  #[cfg(any(target_os = "macos", target_os = "ios"))]
  use foreign_types::ForeignType;
  
-@@ -738,6 +745,50 @@ impl BlobImageHandler for Moz2dBlobImageHandler {
+@@ -738,6 +741,50 @@ impl BlobImageHandler for Moz2dBlobImageHandler {
  
  use bindings::{WrFontInstanceKey, WrFontKey, WrIdNamespace};
  
@@ -74,7 +70,7 @@ index c885ba051ebd..efb18c235d72 100644
  #[allow(improper_ctypes)] // this is needed so that rustc doesn't complain about passing the &Arc<Vec> to an extern function
  extern "C" {
      fn HasFontData(key: WrFontKey) -> bool;
-@@ -811,11 +862,14 @@ impl Moz2dBlobImageHandler {
+@@ -811,11 +858,14 @@ impl Moz2dBlobImageHandler {
          }
  
          #[cfg(target_os = "windows")]
@@ -91,13 +87,26 @@ index c885ba051ebd..efb18c235d72 100644
                  }
              }
  
-@@ -837,29 +891,82 @@ impl Moz2dBlobImageHandler {
+@@ -837,29 +887,71 @@ impl Moz2dBlobImageHandler {
                  .unwrap();
              let face = font.create_font_face();
              unsafe { AddNativeFontHandle(key, face.as_ptr() as *mut c_void, 0) };
 +            Ok(())
-+        }
-+
+         }
+ 
+-        #[cfg(any(target_os = "macos", target_os = "ios"))]
+-        fn process_native_font_handle(key: FontKey, handle: &NativeFontHandle) {
+-            let font = match CGFont::from_name(&CFString::new(&handle.name)) {
+-                Ok(font) => font,
+-                Err(_) => {
+-                    // If for some reason we failed to load a font descriptor, then our
+-                    // only options are to either abort or substitute a fallback font.
+-                    // It is preferable to use a fallback font instead so that rendering
+-                    // can at least still proceed in some fashion without erroring.
+-                    // Lucida Grande is the fallback font in Gecko, so use that here.
+-                    CGFont::from_name(&CFString::from_static_string("Lucida Grande"))
+-                        .expect("Failed reading font descriptor and could not load fallback font")
+-                },
 +        #[cfg(target_os = "macos")]
 +        fn process_native_font_handle(
 +            key: FontKey,
@@ -118,44 +127,20 @@ index c885ba051ebd..efb18c235d72 100644
 +            }
 +            unsafe { AddNativeFontHandle(key, font.as_ptr() as *mut c_void, 0) };
 +            Ok(())
-         }
- 
--        #[cfg(any(target_os = "macos", target_os = "ios"))]
--        fn process_native_font_handle(key: FontKey, handle: &NativeFontHandle) {
--            let font = match CGFont::from_name(&CFString::new(&handle.name)) {
--                Ok(font) => font,
--                Err(_) => {
--                    // If for some reason we failed to load a font descriptor, then our
--                    // only options are to either abort or substitute a fallback font.
--                    // It is preferable to use a fallback font instead so that rendering
--                    // can at least still proceed in some fashion without erroring.
--                    // Lucida Grande is the fallback font in Gecko, so use that here.
--                    CGFont::from_name(&CFString::from_static_string("Lucida Grande"))
--                        .expect("Failed reading font descriptor and could not load fallback font")
--                },
++        }
++
 +        #[cfg(target_os = "ios")]
 +        fn process_native_font_handle(
 +            key: FontKey,
 +            handle: &NativeFontHandle,
 +        ) -> Result<(), NativeFontResolutionError> {
 +            let font = if handle.is_system_font {
-+                let system_font = new_ui_font_for_language(kCTFontSystemFontType, 0.0, None);
-+                let trait_mask = kCTFontItalicTrait
-+                    | kCTFontBoldTrait
-+                    | kCTFontCondensedTrait
-+                    | kCTFontExpandedTrait;
-+                let trait_value = handle.system_font_traits & trait_mask;
-+                let system_font = if trait_value != 0 {
-+                    system_font
-+                        .clone_with_symbolic_traits(trait_value, trait_mask)
-+                        .ok_or_else(|| NativeFontResolutionError::SystemTraits {
-+                            requested: handle.name.clone(),
-+                            traits: handle.system_font_traits,
-+                        })?
-+                } else {
-+                    system_font
-+                };
-+                system_font.copy_to_CGFont()
++                new_system_ui_cg_font(&handle.name, handle.system_font_traits).ok_or_else(|| {
++                    NativeFontResolutionError::SystemTraits {
++                        requested: handle.name.clone(),
++                        traits: handle.system_font_traits,
++                    }
++                })?
 +            } else {
 +                let font = CGFont::from_name(&CFString::new(&handle.name)).map_err(|_| {
 +                    NativeFontResolutionError::NotFound {
@@ -188,7 +173,7 @@ index c885ba051ebd..efb18c235d72 100644
          }
  
          fn process_fonts(
-@@ -874,21 +981,34 @@ impl Moz2dBlobImageHandler {
+@@ -874,21 +966,34 @@ impl Moz2dBlobImageHandler {
                  if scaled_fonts.contains(&font.font_instance_key) {
                      continue;
                  }
@@ -227,7 +212,7 @@ index c885ba051ebd..efb18c235d72 100644
                      }
                      unsafe {
                          AddBlobFont(
-@@ -901,6 +1021,7 @@ impl Moz2dBlobImageHandler {
+@@ -901,6 +1006,7 @@ impl Moz2dBlobImageHandler {
                              instance.variations.len(),
                          );
                      }

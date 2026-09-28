@@ -12,6 +12,8 @@ extension BrowserViewController {
         items: [Any],
         sourceView: UIView,
         sourceRect: CGRect,
+        applicationActivities: [UIActivity]? = nil,
+        onActivityPerformed: ((UIActivity.ActivityType) -> Void)? = nil,
         completion: ((Bool, Error?) -> Void)? = nil
     ) {
         guard !items.isEmpty else {
@@ -20,15 +22,18 @@ extension BrowserViewController {
         
         let activityController = UIActivityViewController(
             activityItems: items,
-            applicationActivities: nil
+            applicationActivities: applicationActivities
         )
         if let popover = activityController.popoverPresentationController {
             popover.sourceView = sourceView
             popover.sourceRect = sourceRect
         }
-        if let completion {
-            activityController.completionWithItemsHandler = { _, completed, _, error in
-                completion(completed, error)
+        if onActivityPerformed != nil || completion != nil {
+            activityController.completionWithItemsHandler = { activityType, completed, _, error in
+                if completed, let activityType {
+                    onActivityPerformed?(activityType)
+                }
+                completion?(completed, error)
             }
         }
         present(activityController, animated: true)
@@ -151,7 +156,7 @@ extension BrowserViewController {
                 }
                 
                 self.tabBar.setPendingExpansion(at: createdIndex)
-                self.browserChrome.animateAutomaticNewTabTransition(to: tab) { [weak self] in
+                self.browserChrome.animateAutomaticTabTransition(to: tab) { [weak self] in
                     self?.tabManager.selectTab(at: createdIndex, mode: mode)
                 }
             }
@@ -170,7 +175,7 @@ extension BrowserViewController {
                 completion()
             }
         case .customURL:
-            if URLUtils.isWebURL(Prefs.NewTabSettings.customNewTabURL) {
+            if URLUtils.normalizedNewTabURL(from: Prefs.NewTabSettings.customNewTabURL) != nil {
                 tabManager.browse(to: Prefs.NewTabSettings.customNewTabURL, in: tab)
             }
             completion()

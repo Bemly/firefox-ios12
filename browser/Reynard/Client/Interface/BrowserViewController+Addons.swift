@@ -104,7 +104,7 @@ extension BrowserViewController: AddonCoordinatorDataSource, AddonCoordinatorDel
     }
     
     func closeAddonTab(_ coordinator: AddonCoordinator, at index: Int, mode: TabMode?) {
-        tabManager.removeTab(at: index, mode: mode)
+        tabManager.removeTab(at: index, mode: mode, behavior: .recent)
     }
     
     func confirmAddonDownload(

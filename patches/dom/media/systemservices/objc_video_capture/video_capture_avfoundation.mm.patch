@@ -1,0 +1,103 @@
+diff --git a/dom/media/systemservices/objc_video_capture/video_capture_avfoundation.mm b/dom/media/systemservices/objc_video_capture/video_capture_avfoundation.mm
+index 46b8395dacc9..152caeb9c3a0 100644
+--- a/dom/media/systemservices/objc_video_capture/video_capture_avfoundation.mm
++++ b/dom/media/systemservices/objc_video_capture/video_capture_avfoundation.mm
+@@ -4,12 +4,14 @@
+ 
+ #include "video_capture_avfoundation.h"
+ 
+-#import "api/video_frame_buffer/RTCNativeI420Buffer+Private.h"
+-#import "base/RTCI420Buffer.h"
++#import <CoreVideo/CVPixelBufferIOSurface.h>
++
+ #import "base/RTCVideoFrame.h"
+ #import "base/RTCVideoFrameBuffer.h"
+ #import "components/capturer/RTCCameraVideoCapturer.h"
++#import "components/video_frame_buffer/RTCCVPixelBuffer.h"
+ #import "helpers/NSString+StdString.h"
++#include "sdk/objc/native/src/objc_frame_buffer.h"
+ 
+ #include "CallbackThreadRegistry.h"
+ #include "api/scoped_refptr.h"
+@@ -44,6 +46,7 @@
+ AVCaptureDeviceFormat* _Nullable FindFormat(
+     AVCaptureDevice* _Nonnull aDevice,
+     webrtc::VideoCaptureCapability aCapability) {
++  AVCaptureDeviceFormat* _Nullable bestFormat = nullptr;
+   for (AVCaptureDeviceFormat* format in [aDevice formats]) {
+     CMVideoDimensions dimensions =
+         CMVideoFormatDescriptionGetDimensions(format.formatDescription);
+@@ -63,16 +66,20 @@
+             indexOfObjectPassingTest:^BOOL(AVFrameRateRange* _Nonnull obj,
+                                            NSUInteger idx,
+                                            BOOL* _Nonnull stop) {
+-              return static_cast<BOOL>(
+-                  DeviceInfoAvFoundation::ConvertAVFrameRateToCapabilityFPS(
+-                      obj.maxFrameRate) == aCapability.maxFPS);
++              return static_cast<BOOL>(obj.minFrameRate <= aCapability.maxFPS &&
++                                       obj.maxFrameRate >= aCapability.maxFPS);
+             }] == NSNotFound) {
+       continue;
+     }
+ 
+-    return format;
++    // If several formats satisfy the request, prefer the binned one
++    // Apparently from the WebKit source this format is "power-efficient"
++    // https://github.com/WebKit/WebKit/blob/d4034783047be1ef0c81de04566059564dd430d9/Source/WebCore/platform/mediastream/cocoa/AVVideoCaptureSource.mm#L1518-L1552
++    if (!bestFormat || (format.isVideoBinned && !bestFormat.isVideoBinned)) {
++      bestFormat = format;
++    }
+   }
+-  return nullptr;
++  return bestFormat;
+ }
+ }  // namespace
+ 
+@@ -85,14 +92,16 @@ - (void)setCapturer:
+ 
+ - (void)capturer:(RTCVideoCapturer* _Nonnull)capturer
+     didCaptureVideoFrame:(RTCVideoFrame* _Nonnull)frame {
+-  webrtc::scoped_refptr<webrtc::videocapturemodule::VideoCaptureAvFoundation>
+-      cap;
+-  {
+-    webrtc::MutexLock lock(&_mutex);
+-    cap = webrtc::scoped_refptr(_capturer);
++  @autoreleasepool {
++    webrtc::scoped_refptr<webrtc::videocapturemodule::VideoCaptureAvFoundation>
++        cap;
++    {
++      webrtc::MutexLock lock(&_mutex);
++      cap = webrtc::scoped_refptr(_capturer);
++    }
++    if (!cap) return;
++    cap->OnFrame(frame);
+   }
+-  if (!cap) return;
+-  cap->OnFrame(frame);
+ }
+ @end
+ 
+@@ -278,20 +287,13 @@ - (void)capturer:(RTCVideoCapturer* _Nonnull)capturer
+     mCaptureRecorder.Start(
+         0, "VideoCaptureAVFoundation"_ns, *mTrackingId, aFrame.width,
+         aFrame.height, mImageType.valueOr(CaptureStage::ImageType::Unknown));
+-    if (mCapability && mCapability->videoType != webrtc::VideoType::kI420) {
+-      mConversionRecorder.Start(0, "VideoCaptureAVFoundation"_ns, *mTrackingId,
+-                                aFrame.width, aFrame.height);
+-    }
+   }
+ 
+   const int64_t timestamp_us =
+       aFrame.timeStampNs / webrtc::kNumNanosecsPerMicrosec;
+-  RTCI420Buffer* buffer = [aFrame.buffer toI420];
+-  mConversionRecorder.Record(0);
+-  // Accessing the (intended-to-be-private) native buffer directly is hacky but
+-  // lets us skip two copies
+-  webrtc::scoped_refptr<webrtc::I420BufferInterface> nativeBuffer =
+-      buffer.nativeI420Buffer;
++
++  webrtc::scoped_refptr<webrtc::VideoFrameBuffer> nativeBuffer =
++      webrtc::make_ref_counted<webrtc::ObjCFrameBuffer>(aFrame.buffer);
+   auto frame = webrtc::VideoFrame::Builder()
+                    .set_video_frame_buffer(nativeBuffer)
+                    .set_rotation(ToNativeRotation(aFrame.rotation))

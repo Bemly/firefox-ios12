@@ -12,6 +12,7 @@ final class SiteSettingsViewController: UITableViewController, UINavigationContr
     private let permissionCellReuseIdentifier = "Cell"
     private let trackingProtectionSwitch = UISwitch()
     private let requestDesktopWebsiteSwitch = UISwitch()
+    private let useReaderAutomaticallySwitch = UISwitch()
     
     private enum Section {
         case availability
@@ -86,7 +87,6 @@ final class SiteSettingsViewController: UITableViewController, UINavigationContr
         .location,
     ]
     private let host: String
-    private let url: URL
     private let origin: String
     private let session: GeckoSession
     private let trackingProtection: TrackingProtectionManager
@@ -119,7 +119,6 @@ final class SiteSettingsViewController: UITableViewController, UINavigationContr
         }
         
         self.host = host
-        self.url = url
         self.origin = origin
         self.session = session
         self.trackingProtection = trackingProtection
@@ -136,6 +135,7 @@ final class SiteSettingsViewController: UITableViewController, UINavigationContr
         configureView()
         trackingProtectionSwitch.addTarget(self, action: #selector(trackingProtectionSwitchDidChange), for: .valueChanged)
         requestDesktopWebsiteSwitch.addTarget(self, action: #selector(requestDesktopWebsiteSwitchDidChange), for: .valueChanged)
+        useReaderAutomaticallySwitch.addTarget(self, action: #selector(useReaderAutomaticallySwitchDidChange), for: .valueChanged)
         loadPermissionsFromGecko()
         trackingProtection.refreshBlockedTrackers(for: session) { [weak self] in
             self?.tableView.reloadData()
@@ -169,7 +169,7 @@ final class SiteSettingsViewController: UITableViewController, UINavigationContr
             return Prefs.TrackingProtectionPreferences.level == .off
             || hasTrackingProtectionException ? 1 : 2
         case .content:
-            return 2
+            return 3
         case .permissions:
             return loadState == .loaded ? permissionRows.count : 0
         case .websiteActions:
@@ -345,24 +345,34 @@ final class SiteSettingsViewController: UITableViewController, UINavigationContr
     }
     
     private func contentCell(at indexPath: IndexPath) -> UITableViewCell {
-        guard indexPath.row == 0 else {
-            let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
-            cell.textLabel?.text = NSLocalizedString("Page Zoom", comment: "")
-            let titles = PageZoomLevels.all.map { PageZoomLevels.displayText(for: $0) }
-            let selectedIndex = PageZoomLevels.all.firstIndex(of: selectedPageZoomLevel) ?? 0
-            configureMenuCell(cell, titles: titles, selectedIndex: selectedIndex) { [weak self] index in
-                self?.applyPageZoomLevel(PageZoomLevels.all[index])
-            }
+        if indexPath.row == 0 {
+            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = NSLocalizedString("Request Desktop Website", comment: "")
+            requestDesktopWebsiteSwitch.isOn = SiteSettingsStore.shared.settings(for: host)?.websiteMode.map {
+                $0 == .desktop
+            } ?? Prefs.BrowsingSettings.requestDesktopWebsite
+            cell.accessoryView = requestDesktopWebsiteSwitch
+            cell.selectionStyle = .none
             return cell
         }
         
-        let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-        cell.textLabel?.text = NSLocalizedString("Request Desktop Website", comment: "")
-        requestDesktopWebsiteSwitch.isOn = SiteSettingsStore.shared.settings(for: url)?.websiteMode.map {
-            $0 == .desktop
-        } ?? Prefs.BrowsingSettings.requestDesktopWebsite
-        cell.accessoryView = requestDesktopWebsiteSwitch
-        cell.selectionStyle = .none
+        if indexPath.row == 1 {
+            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = NSLocalizedString("Use Reader Automatically", comment: "")
+            useReaderAutomaticallySwitch.isOn = SiteSettingsStore.shared.settings(for: host)?.readerMode
+            ?? Prefs.BrowsingSettings.useReaderAutomatically
+            cell.accessoryView = useReaderAutomaticallySwitch
+            cell.selectionStyle = .none
+            return cell
+        }
+        
+        let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
+        cell.textLabel?.text = NSLocalizedString("Page Zoom", comment: "")
+        let titles = PageZoomLevels.all.map { PageZoomLevels.displayText(for: $0) }
+        let selectedIndex = PageZoomLevels.all.firstIndex(of: selectedPageZoomLevel) ?? 0
+        configureMenuCell(cell, titles: titles, selectedIndex: selectedIndex) { [weak self] index in
+            self?.applyPageZoomLevel(PageZoomLevels.all[index])
+        }
         return cell
     }
     
@@ -415,7 +425,7 @@ final class SiteSettingsViewController: UITableViewController, UINavigationContr
     }
     
     private func handleContentSelection(at indexPath: IndexPath) {
-        guard indexPath.row == 1 else {
+        guard indexPath.row == 2 else {
             return
         }
         
@@ -492,6 +502,11 @@ final class SiteSettingsViewController: UITableViewController, UINavigationContr
         session.reload()
     }
     
+    @objc private func useReaderAutomaticallySwitchDidChange(_ sender: UISwitch) {
+        _ = SiteSettingsStore.shared.setReaderMode(sender.isOn, for: host)
+        session.reload()
+    }
+    
     @objc private func dismissModal() {
         dismiss(animated: true)
     }
@@ -499,12 +514,12 @@ final class SiteSettingsViewController: UITableViewController, UINavigationContr
     // MARK: - Page Zoom
     
     private var selectedPageZoomLevel: Int {
-        return SiteSettingsStore.shared.settings(for: url)?.pageZoom
+        return SiteSettingsStore.shared.settings(for: host)?.pageZoom
         ?? Prefs.BrowsingSettings.defaultPageZoomLevel
     }
     
     private func applyPageZoomLevel(_ level: Int) {
-        _ = SiteSettingsStore.shared.setPageZoom(level, for: url)
+        _ = SiteSettingsStore.shared.setPageZoom(level, for: host)
         updateSessionPageZoom(level)
         tableView.reloadData()
     }
@@ -703,9 +718,11 @@ final class SiteSettingsViewController: UITableViewController, UINavigationContr
         loadedGeckoPermissions = []
         hasTrackingProtectionException = false
         trackingProtection.clearBlockedTrackers(for: session)
-        _ = SiteSettingsStore.shared.clearPageZoom(forHost: host)
+        _ = SiteSettingsStore.shared.clearPageZoom(for: host)
         _ = SiteSettingsStore.shared.clearWebsiteMode(for: host)
+        _ = SiteSettingsStore.shared.clearReaderMode(for: host)
         requestDesktopWebsiteSwitch.isOn = Prefs.BrowsingSettings.requestDesktopWebsite
+        useReaderAutomaticallySwitch.isOn = Prefs.BrowsingSettings.useReaderAutomatically
         updateSessionPageZoom(Prefs.BrowsingSettings.defaultPageZoomLevel)
         tableView.reloadData()
         session.reload()

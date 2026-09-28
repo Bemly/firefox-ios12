@@ -129,6 +129,15 @@ final class TabOverviewCollection: NSObject {
         }
     }
     
+    func scrollToBottom(for mode: TabOverview.Mode) {
+        let collectionView = collectionView(for: mode)
+        collectionView.layoutIfNeeded()
+        let inset = collectionView.adjustedContentInset
+        let minimumY = -inset.top
+        let maximumY = max(minimumY, collectionView.contentSize.height - collectionView.bounds.height + inset.bottom)
+        collectionView.setContentOffset(CGPoint(x: collectionView.contentOffset.x, y: maximumY), animated: false)
+    }
+    
     func setPresentationVerticalOffset(_ offset: CGFloat) {
         presentationVerticalOffset = offset
         applyPresentationTransforms()

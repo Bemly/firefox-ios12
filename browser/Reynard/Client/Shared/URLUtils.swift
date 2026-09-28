@@ -57,6 +57,18 @@ enum URLUtils {
         return URL(string: "https://\(trimmedValue)")
     }
     
+    static func normalizedNewTabURL(from value: String) -> URL? {
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let url = URL(string: trimmedValue),
+           url.scheme?.lowercased() == "moz-extension",
+           let host = url.host,
+           !host.isEmpty {
+            return url
+        }
+        
+        return normalizedCustomURL(from: trimmedValue)
+    }
+    
     static func sanitizedURL(for url: URL) -> URL? {
         guard isWebURL(url),
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false),

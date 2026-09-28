@@ -1,0 +1,255 @@
+diff --git a/widget/uikit/GeckoViewPrintSupport.mm b/widget/uikit/GeckoViewPrintSupport.mm
+new file mode 100644
+index 000000000000..c103bf0925e8
+--- /dev/null
++++ b/widget/uikit/GeckoViewPrintSupport.mm
+@@ -0,0 +1,249 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#include "GeckoViewPrintSupport.h"
++
++#include "mozilla/dom/CanonicalBrowsingContext.h"
++#include "nsComponentManagerUtils.h"
++#include "nsContentUtils.h"
++#include "nsDirectoryServiceDefs.h"
++#include "nsDirectoryServiceUtils.h"
++#include "nsIChannel.h"
++#include "nsIContentPolicy.h"
++#include "nsIDocShellTreeOwner.h"
++#include "nsIFile.h"
++#include "nsIInputStream.h"
++#include "nsILoadInfo.h"
++#include "nsIOutputStream.h"
++#include "nsIPrintSettings.h"
++#include "nsIPrintSettingsService.h"
++#include "nsIRequest.h"
++#include "nsIStreamListener.h"
++#include "nsNetUtil.h"
++#include "nsPIDOMWindow.h"
++#include "nsStreamUtils.h"
++#include "nsString.h"
++
++namespace mozilla::widget {
++
++static NSError* PrintError(NSInteger aCode) {
++  return [NSError errorWithDomain:@"GeckoView.Printing"
++                             code:aCode
++                         userInfo:nil];
++}
++
++static nsresult CreateTemporaryPDF(nsIFile** aFile,
++                                   nsIOutputStream** aOutputStream) {
++  nsCOMPtr<nsIFile> file;
++  nsresult rv = NS_GetSpecialDirectory(NS_OS_TEMP_DIR, getter_AddRefs(file));
++  NS_ENSURE_SUCCESS(rv, rv);
++  rv = file->AppendNative("reynard-print.pdf"_ns);
++  NS_ENSURE_SUCCESS(rv, rv);
++  rv = file->CreateUnique(nsIFile::NORMAL_FILE_TYPE, 0600);
++  NS_ENSURE_SUCCESS(rv, rv);
++
++  nsCOMPtr<nsIOutputStream> outputStream;
++  rv = NS_NewLocalFileOutputStream(getter_AddRefs(outputStream), file);
++  if (NS_FAILED(rv)) {
++    file->Remove(false);
++    return rv;
++  }
++
++  file.forget(aFile);
++  outputStream.forget(aOutputStream);
++  return NS_OK;
++}
++
++static NSURL* FileURL(nsIFile* aFile) {
++  nsAutoString path;
++  if (NS_FAILED(aFile->GetPath(path))) {
++    return nil;
++  }
++  NSString* filePath = [NSString
++      stringWithCharacters:reinterpret_cast<const unichar*>(path.BeginReading())
++                    length:path.Length()];
++  return [NSURL fileURLWithPath:filePath];
++}
++
++static void RemoveFile(nsIFile* aFile) {
++  if (aFile) {
++    (void)aFile->Remove(false);
++  }
++}
++
++class PDFFileListener final : public nsIStreamListener {
++ public:
++  NS_DECL_ISUPPORTS
++  NS_DECL_NSIREQUESTOBSERVER
++  NS_DECL_NSISTREAMLISTENER
++
++  PDFFileListener(nsIFile* aFile, nsIOutputStream* aOutputStream,
++                  PrintFileCompletion aCompletion)
++      : mFile(aFile),
++        mOutputStream(aOutputStream),
++        mCompletion([aCompletion copy]) {}
++
++ private:
++  ~PDFFileListener() {
++    if (mCompletion) {
++      [mCompletion release];
++    }
++  }
++
++  void Complete(nsresult aStatus) {
++    mOutputStream->Close();
++    mOutputStream = nullptr;
++
++    if (NS_SUCCEEDED(aStatus)) {
++      NSURL* fileURL = FileURL(mFile);
++      if (fileURL) {
++        mCompletion(fileURL, nil);
++      } else {
++        RemoveFile(mFile);
++        mCompletion(nil, PrintError(8));
++      }
++    } else {
++      RemoveFile(mFile);
++      mCompletion(nil, PrintError(8));
++    }
++    [mCompletion release];
++    mCompletion = nil;
++  }
++
++  nsCOMPtr<nsIFile> mFile;
++  nsCOMPtr<nsIOutputStream> mOutputStream;
++  PrintFileCompletion mCompletion;
++};
++
++NS_IMPL_ISUPPORTS(PDFFileListener, nsIStreamListener, nsIRequestObserver)
++
++NS_IMETHODIMP PDFFileListener::OnStartRequest(nsIRequest*) { return NS_OK; }
++
++NS_IMETHODIMP PDFFileListener::OnDataAvailable(nsIRequest*,
++                                               nsIInputStream* aInputStream,
++                                               uint64_t, uint32_t aCount) {
++  uint32_t written = 0;
++  return aInputStream->ReadSegments(NS_CopySegmentToStream, mOutputStream,
++                                    aCount, &written);
++}
++
++NS_IMETHODIMP PDFFileListener::OnStopRequest(nsIRequest*, nsresult aStatus) {
++  Complete(aStatus);
++  return NS_OK;
++}
++
++void PrintToPDF(nsPIDOMWindowOuter* aOuterWindow, NSNumber* aBrowsingContextId,
++                PrintFileCompletion aCompletion) {
++  RefPtr<dom::CanonicalBrowsingContext> browsingContext;
++  if (aBrowsingContextId) {
++    browsingContext = dom::CanonicalBrowsingContext::Get(
++        aBrowsingContextId.unsignedLongLongValue);
++  } else if (aOuterWindow) {
++    nsCOMPtr<nsIDocShellTreeOwner> treeOwner = aOuterWindow->GetTreeOwner();
++    RefPtr<dom::BrowsingContext> primaryBrowsingContext;
++    if (treeOwner &&
++        NS_SUCCEEDED(treeOwner->GetPrimaryContentBrowsingContext(
++            getter_AddRefs(primaryBrowsingContext))) &&
++        primaryBrowsingContext) {
++      browsingContext = primaryBrowsingContext->Canonical();
++    }
++  }
++
++  PrintFileCompletion completion = [aCompletion copy];
++  auto fail = [completion](NSInteger aCode) {
++    completion(nil, PrintError(aCode));
++    [completion release];
++  };
++
++  if (!browsingContext) {
++    fail(2);
++    return;
++  }
++
++  nsCOMPtr<nsIPrintSettingsService> settingsService =
++      do_GetService("@mozilla.org/gfx/printsettings-service;1");
++  nsCOMPtr<nsIPrintSettings> settings;
++  nsCOMPtr<nsIFile> file;
++  nsCOMPtr<nsIOutputStream> outputStream;
++
++  if (!settingsService ||
++      NS_FAILED(
++          settingsService->CreateNewPrintSettings(getter_AddRefs(settings))) ||
++      !settings ||
++      NS_FAILED(CreateTemporaryPDF(getter_AddRefs(file),
++                                   getter_AddRefs(outputStream)))) {
++    fail(3);
++    return;
++  }
++
++  settings->SetPrinterName(u"Mozilla Save to PDF"_ns);
++  settings->SetOutputDestination(nsIPrintSettings::kOutputDestinationStream);
++  settings->SetOutputFormat(nsIPrintSettings::kOutputFormatPDF);
++  settings->SetOutputStream(outputStream);
++  settings->SetPrintSilent(true);
++
++  browsingContext->Print(settings)->Then(
++      GetCurrentSerialEventTarget(), __func__,
++      [file, completion](const dom::MaybeDiscardedBrowsingContext&) {
++        NSURL* fileURL = FileURL(file);
++        if (fileURL) {
++          completion(fileURL, nil);
++        } else {
++          RemoveFile(file);
++          completion(nil, PrintError(4));
++        }
++        [completion release];
++      },
++      [file, completion](nsresult) {
++        RemoveFile(file);
++        completion(nil, PrintError(6));
++        [completion release];
++      });
++}
++
++void SavePDFDocument(NSString* aSourceURL, PrintFileCompletion aCompletion) {
++  nsCOMPtr<nsIURI> uri;
++  nsresult rv =
++      NS_NewURI(getter_AddRefs(uri), nsDependentCString(aSourceURL.UTF8String));
++
++  if (NS_FAILED(rv)) {
++    aCompletion(nil, PrintError(7));
++    return;
++  }
++
++  nsCOMPtr<nsIFile> file;
++  nsCOMPtr<nsIOutputStream> outputStream;
++  rv = CreateTemporaryPDF(getter_AddRefs(file), getter_AddRefs(outputStream));
++
++  if (NS_FAILED(rv)) {
++    aCompletion(nil, PrintError(7));
++    return;
++  }
++
++  nsCOMPtr<nsIChannel> channel;
++  rv = NS_NewChannel(getter_AddRefs(channel), uri,
++                     nsContentUtils::GetSystemPrincipal(),
++                     nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_SEC_CONTEXT_IS_NULL,
++                     nsIContentPolicy::TYPE_OTHER);
++
++  if (NS_FAILED(rv)) {
++    RemoveFile(file);
++    aCompletion(nil, PrintError(7));
++    return;
++  }
++
++  RefPtr<PDFFileListener> listener =
++      new PDFFileListener(file, outputStream, aCompletion);
++  rv = channel->AsyncOpen(listener);
++
++  if (NS_FAILED(rv)) {
++    RemoveFile(file);
++    aCompletion(nil, PrintError(7));
++  }
++}
++
++}  // namespace mozilla::widget

@@ -27,10 +27,17 @@ struct ReaderViewAppearance {
 }
 
 struct ReaderModeState {
+    enum AutomaticEntry {
+        case allowed
+        case pending
+        case blocked(ObjectIdentifier)
+    }
+    
     var isReaderable = false
     var isActive = false
     var originalURL: String?
     var sourceScrollY: Int?
+    var automaticEntry = AutomaticEntry.allowed
 }
 
 protocol ReaderModeControllerDelegate: AnyObject {
@@ -111,6 +118,7 @@ final class ReaderModeController: AddonMessageDelegate, AddonPortDelegate {
             return false
         }
         
+        tab.state.readerMode.automaticEntry = .allowed
         tab.state.readerMode.isActive = true
         tab.state.readerMode.originalURL = originalURL
         delegate?.readerModeController(self, didChangeStateFor: tab)
@@ -126,6 +134,8 @@ final class ReaderModeController: AddonMessageDelegate, AddonPortDelegate {
         
         tab.state.readerMode.isActive = false
         tab.state.readerMode.isReaderable = false
+        tab.state.readerMode.automaticEntry = .pending
+        
         delegate?.readerModeController(self, didChangeStateFor: tab)
         
         if tab.state.sessionNavigationAvailability.canGoBack {
@@ -134,6 +144,34 @@ final class ReaderModeController: AddonMessageDelegate, AddonPortDelegate {
             port.postMessage(["action": "hide"])
         }
         return true
+    }
+    
+    private func enterAutomaticallyIfNeeded(in tab: Tab, from port: AddonPort) {
+        let portID = ObjectIdentifier(port)
+        switch tab.state.readerMode.automaticEntry {
+        case .allowed:
+            break
+        case .pending:
+            tab.state.readerMode.automaticEntry = .blocked(portID)
+            return
+        case let .blocked(blockedPortID):
+            guard blockedPortID != portID else {
+                return
+            }
+            tab.state.readerMode.automaticEntry = .allowed
+        }
+        
+        guard tab.state.readerMode.isReaderable,
+              let urlString = tab.url,
+              let host = URL(string: urlString)?.host else {
+            return
+        }
+        let usesReaderAutomatically = SiteSettingsStore.shared.settings(for: host)?.readerMode
+        ?? Prefs.BrowsingSettings.useReaderAutomatically
+        guard usesReaderAutomatically else {
+            return
+        }
+        _ = enter(in: tab)
     }
     
     func setFontSizeStep(_ step: Int, for session: GeckoSession?) {
@@ -256,6 +294,10 @@ final class ReaderModeController: AddonMessageDelegate, AddonPortDelegate {
             tab.state.readerMode.isReaderable = isReaderable
         }
         delegate?.readerModeController(self, didChangeStateFor: tab)
+        
+        if port.name == Self.contentPortName {
+            enterAutomaticallyIfNeeded(in: tab, from: port)
+        }
     }
     
     func addonPortDidDisconnect(_ port: AddonPort) {

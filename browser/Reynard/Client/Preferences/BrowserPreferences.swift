@@ -80,6 +80,7 @@ final class BrowserPreferences {
             key("BrowsingSettings", "openLinksInExternalApps"): true,
             key("BrowsingSettings", "openLinksInNewTabsBehavior"): OpenLinksInNewTabsBehavior.switchTabImmediately.rawValue,
             key("BrowsingSettings", "defaultPageZoomLevel"): PageZoomLevels.defaultLevel,
+            key("BrowsingSettings", "useReaderAutomatically"): false,
             key("BrowsingSettings", "readerViewFontSizeStep"): 3,
             key("BrowsingSettings", "readerViewFontType"): ReaderViewFontType.serif.rawValue,
             
@@ -359,6 +360,15 @@ final class BrowserPreferences {
                     return
                 }
                 prefs.set(newValue, forSetting: "BrowsingSettings", key: "defaultPageZoomLevel")
+            }
+        }
+        
+        static var useReaderAutomatically: Bool {
+            get {
+                return prefs.bool(forSetting: "BrowsingSettings", key: "useReaderAutomatically")
+            }
+            set {
+                prefs.set(newValue, forSetting: "BrowsingSettings", key: "useReaderAutomatically")
             }
         }
         

@@ -1,0 +1,57 @@
+diff --git a/widget/uikit/nsDeviceContextUIKit.mm b/widget/uikit/nsDeviceContextUIKit.mm
+new file mode 100644
+index 000000000000..46efdc84e17e
+--- /dev/null
++++ b/widget/uikit/nsDeviceContextUIKit.mm
+@@ -0,0 +1,51 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#include "nsDeviceContextUIKit.h"
++
++#include "mozilla/gfx/PrintTargetUIKit.h"
++#include "nsIOutputStream.h"
++#include "nsIPrintSettings.h"
++
++using mozilla::gfx::IntSize;
++using mozilla::gfx::PrintEndDocumentPromise;
++using mozilla::gfx::PrintTarget;
++using mozilla::gfx::PrintTargetUIKit;
++
++NS_IMPL_ISUPPORTS(nsDeviceContextSpecUIKit, nsIDeviceContextSpec)
++
++already_AddRefed<PrintTarget> nsDeviceContextSpecUIKit::MakePrintTarget() {
++  nsCOMPtr<nsIOutputStream> outputStream;
++  mPrintSettings->GetOutputStream(getter_AddRefs(outputStream));
++  if (!outputStream) {
++    return nullptr;
++  }
++
++  double width = 0;
++  double height = 0;
++  mPrintSettings->GetEffectiveSheetSize(&width, &height);
++  width /= TWIPS_PER_POINT_FLOAT;
++  height /= TWIPS_PER_POINT_FLOAT;
++  return PrintTargetUIKit::CreateOrNull(outputStream,
++                                        IntSize::Ceil(width, height));
++}
++
++NS_IMETHODIMP nsDeviceContextSpecUIKit::Init(nsIPrintSettings* aPrintSettings,
++                                             bool aIsPrintPreview) {
++  mPrintSettings = aPrintSettings;
++  return NS_OK;
++}
++
++NS_IMETHODIMP nsDeviceContextSpecUIKit::BeginDocument(
++    const nsAString&, const nsAString&, mozilla::dom::WindowContext*, int32_t,
++    int32_t) {
++  return NS_OK;
++}
++
++RefPtr<PrintEndDocumentPromise> nsDeviceContextSpecUIKit::EndDocument() {
++  return EndDocumentPromiseFromResult(NS_OK, __func__);
++}

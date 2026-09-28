@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 
 typedef struct AdapterHandle AdapterHandle;
+typedef struct Cryptex1AssetsHandle Cryptex1AssetsHandle;
 typedef struct DebugProxyHandle DebugProxyHandle;
 typedef struct DebugserverCommandHandle DebugserverCommandHandle;
 typedef struct HeartbeatClientHandle HeartbeatClientHandle;
@@ -22,6 +23,7 @@ typedef struct ProcessControlHandle ProcessControlHandle;
 typedef struct RemoteServerHandle RemoteServerHandle;
 typedef struct RpPairingFileHandle RpPairingFileHandle;
 typedef struct RsdHandshakeHandle RsdHandshakeHandle;
+typedef struct InstalledCryptexC InstalledCryptexC;
 
 typedef void *plist_t;
 
@@ -64,6 +66,18 @@ IdeviceFfiError *image_mounter_mount_personalized_rsd(
                                                       const uint8_t *trust_cache, size_t trust_cache_len,
                                                       const uint8_t *build_manifest, size_t build_manifest_len,
                                                       const void *info_plist, uint64_t unique_chip_id);
+
+IdeviceFfiError *cryptex1_assets_load(const char *restore_dir,
+                                      Cryptex1AssetsHandle **handle);
+void cryptex1_assets_free(Cryptex1AssetsHandle *handle);
+IdeviceFfiError *cryptexd_install_ddi(AdapterHandle *provider,
+                                      RsdHandshakeHandle *handshake,
+                                      Cryptex1AssetsHandle *assets,
+                                      InstalledCryptexC **installed);
+IdeviceFfiError *cryptexd_installed_ddi(AdapterHandle *provider,
+                                        RsdHandshakeHandle *handshake,
+                                        InstalledCryptexC **installed);
+void cryptexd_free_installed_cryptex(InstalledCryptexC *cryptex);
 
 IdeviceFfiError *heartbeat_connect_rsd(AdapterHandle *provider,
                                        RsdHandshakeHandle *handshake,

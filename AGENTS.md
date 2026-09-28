@@ -45,11 +45,13 @@
 - Release：先 commit（`build-app.sh` 拿 HEAD 盖版本戳），再
   `DEVELOPER_DIR=Xcode26 build-app.sh --no-signing` + `create-ipa.sh --jailbroken`。
 - 打包前先把 `dist/*.ipa` 拷出仓库（`build-app.sh` 开头 `rm -rf dist/`）。
-- 包名 `moe.bemly.reynard`，部署目标 12.0，`CURRENT_VERSION = 0.14.0`。
+- 包名 `moe.bemly.reynard`，部署目标 12.0，`CURRENT_VERSION = 0.15.0`。
 
 ## Git / Release
 
 - `main` 跟踪 `bemly/main`；`origin/main` 只读存档；验证代码放 `archive/*`、`local/*`。
-- `.github/workflows/` 只保留 `sync-upstream.yml`；平时不得手动碰 GitHub release，
-  唯一例外是该自动化（按 `<version>-ios12` 建/替换同名 release）。
+- `.github/workflows/` 只保留 `sync-upstream.yml`（jemalloc）+ `build-nojemalloc.yml`；
+  平时不得手动碰 GitHub release，唯一例外是这两个自动化（按 `<version>-ios12`
+  建/替换同名 release，nojemalloc 只追加资产）。非 main 分支手动 dispatch =
+  仅编译验证（不合并、不推送、不碰 release），合并分支进 main 前先用它过 CI。
 - 详见 `docs/upstream-merge.md`。

@@ -1,8 +1,44 @@
 diff --git a/dom/media/systemservices/CamerasChild.h b/dom/media/systemservices/CamerasChild.h
-index bbd6f951700c..bf1df41341e2 100644
+index bbd6f951700c..8a57af05e97f 100644
 --- a/dom/media/systemservices/CamerasChild.h
 +++ b/dom/media/systemservices/CamerasChild.h
-@@ -163,7 +163,7 @@ class CamerasChild final : public PCamerasChild {
+@@ -19,6 +19,10 @@
+ 
+ namespace mozilla {
+ 
++namespace layers {
++class Image;
++}
++
+ namespace ipc {
+ class BackgroundChildImpl;
+ }  // namespace ipc
+@@ -30,6 +34,9 @@ class FrameRelay {
+   virtual void OnCaptureEnded() = 0;
+   virtual int DeliverFrame(
+       uint8_t* buffer, const mozilla::camera::VideoFrameProperties& props) = 0;
++  virtual int DeliverFrame(
++      layers::Image* aImage,
++      const mozilla::camera::VideoFrameProperties& aProps) = 0;
+ };
+ 
+ struct CapturerElement {
+@@ -152,6 +159,14 @@ class CamerasChild final : public PCamerasChild {
+       const int& aCaptureId, nsTArray<int>&& aStreamIds,
+       mozilla::ipc::Shmem&& aShmem,
+       const VideoFrameProperties& aProps) override;
++  mozilla::ipc::IPCResult RecvDeliverFrameIOSurface(
++      const int& aCaptureId, const uint64_t& aFrameId,
++      nsTArray<int>&& aStreamIds, layers::IOSurfacePort&& aSurface,
++      const gfx::IntRect& aPictureRect,
++      const gfx::YUVColorSpace& aYUVColorSpace,
++      const gfx::ColorSpace2& aColorPrimaries,
++      const gfx::TransferFunction& aTransferFunction,
++      const VideoFrameProperties& aProps) override;
+ 
+   mozilla::ipc::IPCResult RecvDeviceChange() override;
+ 
+@@ -163,7 +178,7 @@ class CamerasChild final : public PCamerasChild {
        const VideoCaptureCapability& capability) override;
    mozilla::ipc::IPCResult RecvReplyGetCaptureDevice(
        const nsACString& device_name, const nsACString& device_id,
@@ -11,7 +47,7 @@ index bbd6f951700c..bf1df41341e2 100644
    mozilla::ipc::IPCResult RecvReplyFailure(void) override;
    mozilla::ipc::IPCResult RecvReplySuccess(void) override;
    void ActorDestroy(ActorDestroyReason aWhy) override;
-@@ -192,7 +192,8 @@ class CamerasChild final : public PCamerasChild {
+@@ -192,7 +207,8 @@ class CamerasChild final : public PCamerasChild {
                         char* device_nameUTF8,
                         const unsigned int device_nameUTF8Length,
                         char* unique_idUTF8,
@@ -21,7 +57,7 @@ index bbd6f951700c..bf1df41341e2 100644
    int EnsureInitialized(CaptureEngine aCapEngine);
    int InvalidateDesktopCaptureDeviceCache(CaptureEngine aCapEngine);
  
-@@ -267,6 +268,7 @@ class CamerasChild final : public PCamerasChild {
+@@ -267,6 +283,7 @@ class CamerasChild final : public PCamerasChild {
    nsCString mReplyDeviceName;
    nsCString mReplyDeviceID;
    bool mReplyScary;
