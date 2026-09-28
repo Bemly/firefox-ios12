@@ -102,7 +102,7 @@
 
 
 
-## Linux 本地 iOS 12 编译检查（2026-09-28，`tools/development/check-ios12-linux.sh`）
+## 不编 Gecko 的 iOS 12 编译检查（2026-09-28，`tools/development/check-ios12.sh`）
 
 
 - 起因：0.15.0 合并后 main 上 CI 跑了 5h11m，Gecko 编完、App 编译第 1 分钟挂在一个
@@ -134,3 +134,11 @@
 - 验证：从零缓存跑一遍 4m59s，撤掉修复时准确报出与 CI 同一行的 `insetGrouped` 错误；
   修复后 51 秒 PASS。自动链接列表里的 `-lswift_Concurrency` 每个 Swift 5.5+ 模块都有
  （0.14.0 真机包同样有），判据是有没有未定义符号引用，而不是 autolink。
+- **两种模式**（同一脚本，按 `uname` 自动选）：macOS 上直接用当前 Xcode 的
+  `xcrun swiftc/clang/nm` + `xcrun --show-sdk-path` 的 iPhoneOS SDK——CI 走这条，与正式
+  构建同一个苹果编译器（`swiftlang-6.3.2.1.2`）和同一份 SDK，不依赖第三方镜像、不下 1GB
+  工具链；Linux 上走开源 `swift-6.3.2-RELEASE` + `xybp888/iOS-SDKs` 镜像（版本一致，但不是
+  苹果构建、SDK 非官方渠道，只作云端/无 Mac 时本地迭代用）。
+- 脚本必须兼容 macOS 的 `/bin/bash` 3.2：不用 `mapfile`/关联数组，空数组展开用
+  `${a[@]+"${a[@]}"}`（3.2 + `set -u` 下空数组 `"${a[@]}"` 直接报 unbound）。本机编了
+  bash-3.2.57 实跑过 Linux 模式 PASS；macOS 模式的 `xcrun` 分支只能在 runner 上验证。

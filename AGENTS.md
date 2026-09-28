@@ -10,9 +10,10 @@
   `docs/` 对应文件，然后提交 git。本条规则本身也要留在这里，不得遗忘。
 - 新的验证结论（如某包的 bench RUNS、minos 抽查结果）记到 `docs/` 相关文件
   末尾追加，不要另起大章节。
-- 合并上游 / 改 App 侧代码后，**先跑 `tools/development/check-ios12-linux.sh
-  <上次真机验证的提交>` 到 PASS 再触发 CI**（Linux 上 Swift 6.3.2 + iPhoneOS26.5 SDK
-  全量编 4 个 target 到 arm64 目标文件，诊断与 Xcode 一致，约 1 分钟；首次下载约 5 分钟）。
+- 合并上游 / 改 App 侧代码后，**先跑 `tools/development/check-ios12.sh
+  <上次真机验证的提交>` 到 PASS 再触发 CI**（不编 Gecko，全量编 App 侧 4 个 target 到
+  arm64-apple-ios12.0 目标文件；Mac 上用 Xcode 自带编译器+SDK，Linux 云端环境用开源
+  Swift 6.3.2 + 镜像 iPhoneOS26.5 SDK，约 1 分钟，首次下载约 5 分钟）。
   CI 一轮 Gecko 冷编 4～5 小时，别拿 CI 当编译器。详见 `docs/toolchain-build.md`。
 
 ## 文档索引
@@ -58,7 +59,8 @@
   平时不得手动碰 GitHub release，唯一例外是这两个自动化（按 `<version>-ios12`
   建/替换同名 release，nojemalloc 只追加资产）。非 main 分支手动 dispatch =
   仅编译验证（不合并、不推送、不碰 release），合并分支进 main 前先用它过 CI。
-- 两个 workflow 在 macOS 构建前都先在 ubuntu-24.04 跑 `check-ios12-linux.sh`（约 5 分钟），
-  sync 是“合并→检查→通过才推 main”；dispatch 勾 `check_only` 只跑检查。nojemalloc 不再
+- 两个 workflow 在 Gecko 构建前都先用 macOS runner 上的 Xcode 26.6 跑 `check-ios12.sh`
+  （与正式构建同编译器同 SDK，几分钟）：sync 是“合并→检查→通过才推 main”，dispatch 勾
+  `check_only` 只跑检查；nojemalloc 在 build job 装好 Xcode 后第一步就查。nojemalloc 不再
   定时，只在 sync 的 release job 成功后连锁（或手动 dispatch）。
 - 详见 `docs/upstream-merge.md`。

@@ -7,8 +7,8 @@
 #   规避 A12/unc0ver 12.2 上的 substitute 对 jemalloc zone 的 hook 崩溃）。
 # - 不删 release，只 `gh release upload --clobber` 追加/覆盖同名资产。
 # - 在非 main 分支上手动 dispatch = 仅编译验证：只产出 artifact，不碰 release。
-# - macOS 构建前先在 Linux 上跑 iOS 12 编译检查（check-ios12-linux.sh，约 5 分钟），
-#   不过就不启动 4～5 小时的 Gecko 构建。
+# - build job 装好 Xcode 后第一步先跑 iOS 12 编译检查（check-ios12.sh，Xcode 自带编译器
+#   + SDK，几分钟），不过就不进入 4～5 小时的 Gecko 构建。
 
 name: Build no-jemalloc IPA
 
@@ -65,23 +65,9 @@ jobs:
           fi
           echo "should_build=false" >> "$GITHUB_OUTPUT"
 
-  precheck:
-    name: iOS 12 compile check (Linux)
-    needs: check
-    if: ${{ needs.check.outputs.should_build == 'true' }}
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Check out branch
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref_name }}
-
-      - name: iOS 12 compile check (Linux, Swift + iPhoneOS SDK)
-        run: ./tools/development/check-ios12-linux.sh
-
   build:
     name: Build jailbroken IPA (no-jemalloc)
-    needs: [check, precheck]
+    needs: check
     if: ${{ needs.check.outputs.should_build == 'true' }}
     runs-on: macos-26
     timeout-minutes: 360
@@ -99,6 +85,9 @@ jobs:
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: '26.6'
+
+      - name: iOS 12 compile check (Xcode swiftc + iPhoneOS SDK, no Gecko build)
+        run: ./tools/development/check-ios12.sh
 
       - name: Install build dependencies
         run: |
