@@ -269,3 +269,16 @@
   `CFNetworkCopySystemProxySettings() as? [String: Any]` 编译器警告 “always fails”
  （返回的是 `Unmanaged<CFDictionary>?`，要先 `takeRetainedValue()`），即“系统代理”
   档位永远读不到系统代理设置；“自定义”档不受影响。
+- **workflow 加 Linux 预检查（2026-09-28）**：`sync-upstream.yml` 的 sync job 改成
+  合并（本地）→ `check-ios12-linux.sh <合并前 HEAD>` → 通过才 `git push origin HEAD:main`，
+  不过则 main 不动、macOS 构建不启动（runner 换 `ubuntu-24.04`，脚本按发行版下 Swift 包）。
+  dispatch 新增 `check_only` 输入：只跑合并预演 + 检查。`build-nojemalloc.yml` 在 macOS
+  构建前加 `precheck` job 跑同一脚本。
+- **nojemalloc 连锁条件改准**：旧逻辑是 “sync 成功 + 25h 内 git log 有 merge upstream/main”，
+  分支验证 run / 空跑都会误触发去编 main 并往 release 追加（今天下午那次分支 run 因为被取消
+  才没连上）。现改为 `gh run view <触发 run> --json jobs` 查 “Create or replace version
+  release” job 是否 success——release 是删掉重建的，重建后必须补 nojemalloc，正好是这个条件
+ （为此加 `actions: read` 权限）。同时删掉周一 03:00 的 cron：sync 02:00 起编，03:00 那份会
+  并行重复编，且可能先于 release 重建而追加、随后被删。
+- 注意：workflow_run 连锁永远用**默认分支**上的 workflow 文件。改 nojemalloc 逻辑的 PR
+  合进 main 之前，别在分支上 dispatch sync 做验证——main 上旧逻辑会被连锁触发。

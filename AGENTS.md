@@ -58,4 +58,7 @@
   平时不得手动碰 GitHub release，唯一例外是这两个自动化（按 `<version>-ios12`
   建/替换同名 release，nojemalloc 只追加资产）。非 main 分支手动 dispatch =
   仅编译验证（不合并、不推送、不碰 release），合并分支进 main 前先用它过 CI。
+- 两个 workflow 在 macOS 构建前都先在 ubuntu-24.04 跑 `check-ios12-linux.sh`（约 5 分钟），
+  sync 是“合并→检查→通过才推 main”；dispatch 勾 `check_only` 只跑检查。nojemalloc 不再
+  定时，只在 sync 的 release job 成功后连锁（或手动 dispatch）。
 - 详见 `docs/upstream-merge.md`。
