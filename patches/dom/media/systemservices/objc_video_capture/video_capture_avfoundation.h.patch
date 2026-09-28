@@ -1,0 +1,13 @@
+diff --git a/dom/media/systemservices/objc_video_capture/video_capture_avfoundation.h b/dom/media/systemservices/objc_video_capture/video_capture_avfoundation.h
+index 1516f57d67bd..45e956bf2260 100644
+--- a/dom/media/systemservices/objc_video_capture/video_capture_avfoundation.h
++++ b/dom/media/systemservices/objc_video_capture/video_capture_avfoundation.h
+@@ -72,8 +72,6 @@ class VideoCaptureAvFoundation : public VideoCaptureImpl {
+   // Adds frame specific markers to the profiler while mTrackingId is set.
+   // Callback thread only.
+   mozilla::PerformanceRecorderMulti<mozilla::CaptureStage> mCaptureRecorder;
+-  mozilla::PerformanceRecorderMulti<mozilla::CopyVideoStage>
+-      mConversionRecorder;
+   std::atomic<ProfilerThreadId> mCallbackThreadId;
+ };
+ 

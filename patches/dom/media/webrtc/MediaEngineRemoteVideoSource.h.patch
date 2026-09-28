@@ -1,0 +1,25 @@
+diff --git a/dom/media/webrtc/MediaEngineRemoteVideoSource.h b/dom/media/webrtc/MediaEngineRemoteVideoSource.h
+index cbf7ea2722b9..3ac99a4eccd5 100644
+--- a/dom/media/webrtc/MediaEngineRemoteVideoSource.h
++++ b/dom/media/webrtc/MediaEngineRemoteVideoSource.h
+@@ -97,6 +97,8 @@ class MediaEngineRemoteVideoSource : public MediaEngineSource,
+   void OnCaptureEnded() override;
+   int DeliverFrame(uint8_t* aBuffer,
+                    const camera::VideoFrameProperties& aProps) override;
++  int DeliverFrame(layers::Image* aImage,
++                   const camera::VideoFrameProperties& aProps) override;
+ 
+   // MediaEngineSource
+   nsresult Allocate(const dom::MediaTrackConstraints& aConstraints,
+@@ -135,6 +137,11 @@ class MediaEngineRemoteVideoSource : public MediaEngineSource,
+       dom::MediaTrackCapabilities& aOutCapabilities) const override;
+ 
+  private:
++  gfx::IntSize PrepareFrame(const camera::VideoFrameProperties& aProps);
++  int DeliverImage(already_AddRefed<layers::Image> aImage,
++                   const camera::VideoFrameProperties& aProps,
++                   const gfx::IntSize& aSize);
++
+   /**
+    * Returns the number of capabilities for the underlying device.
+    *

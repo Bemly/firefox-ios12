@@ -111,6 +111,7 @@ final class AboutSettingsSection {
         cell.detailTextLabel?.textColor = .appSecondaryLabel
         cell.selectionStyle = .none
         cell.accessoryType = .none
+        cell.configureDetailTextCopying()
         return cell
     }
     

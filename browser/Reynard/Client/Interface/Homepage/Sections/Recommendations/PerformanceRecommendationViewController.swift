@@ -408,6 +408,10 @@ final class PerformanceRecommendationViewController: UIViewController, HomepageR
         if isPrivateBrowsing || contentMode.isDetached {
             return nil
         }
+
+        if getEntitlementValue("com.apple.private.security.no-sandbox") {
+            return nil
+        }
         
         if isiOS174OrNewer && !Prefs.JITSettings.isJITEnabled {
             return .enableInAppJIT

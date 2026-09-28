@@ -5,6 +5,8 @@
 # - 有新提交（或手动触发）时在 macOS runner 上全量构建标准 jailbroken IPA（jemalloc）。
 # - 按 CURRENT_VERSION 打 tag `<version>-ios12`：同名 release 删掉重建。
 # - 本仓唯一允许删/建 release 的入口（nojemalloc workflow 只负责往同 tag 追加资产）。
+# - 在非 main 分支上手动 dispatch = 仅编译验证：不合并上游、不推送、不碰 release，
+#   只产出 artifact（用于合并分支在进 main 前先过一遍 CI 构建）。
 
 name: Sync upstream & build release
 
@@ -24,16 +26,23 @@ jobs:
       changed: ${{ steps.merge.outputs.changed }}
       version: ${{ steps.merge.outputs.version }}
     steps:
-      - name: Check out main
+      - name: Check out branch
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
 
       - name: Merge upstream if there are new commits
         id: merge
         run: |
           set -eu
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "non-main ref (${{ github.ref_name }}): build-only verification, skip upstream merge"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            VERSION="$(sed -n 's/^CURRENT_VERSION = //p' browser/Configuration/Reynard.xcconfig | tr -d ' ')"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote add upstream https://github.com/minh-ton/reynard-browser.git
@@ -76,10 +85,10 @@ jobs:
     env:
       SCCACHE_GHA_ENABLED: "true"
     steps:
-      - name: Check out main
+      - name: Check out branch
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
           submodules: false
 
@@ -169,6 +178,7 @@ jobs:
   release:
     name: Create or replace version release
     needs: [sync, build]
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

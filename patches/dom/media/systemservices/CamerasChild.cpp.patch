@@ -1,8 +1,58 @@
 diff --git a/dom/media/systemservices/CamerasChild.cpp b/dom/media/systemservices/CamerasChild.cpp
-index 1aea3ded5809..8019816e167a 100644
+index 1aea3ded5809..b0bc15e989ce 100644
 --- a/dom/media/systemservices/CamerasChild.cpp
 +++ b/dom/media/systemservices/CamerasChild.cpp
-@@ -300,7 +300,7 @@ mozilla::ipc::IPCResult CamerasChild::RecvReplyGetCaptureCapability(
+@@ -6,10 +6,14 @@
+ 
+ #undef FF
+ 
++#include <functional>
++
++#include "MacIOSurfaceImage.h"
+ #include "MediaUtils.h"
+ #include "mozilla/Assertions.h"
+ #include "mozilla/Logging.h"
+ #include "mozilla/SyncRunnable.h"
++#include "mozilla/gfx/MacIOSurface.h"
+ #include "mozilla/ipc/BackgroundChild.h"
+ #include "mozilla/ipc/PBackgroundChild.h"
+ #include "nsThreadUtils.h"
+@@ -21,6 +25,26 @@ mozilla::LazyLogModule gCamerasChildLog("CamerasChild");
+ 
+ namespace mozilla::camera {
+ 
++class CameraMacIOSurfaceImage final : public layers::MacIOSurfaceImage {
++ public:
++  CameraMacIOSurfaceImage(MacIOSurface* aSurface,
++                          const gfx::IntRect& aPictureRect,
++                          std::function<void()>&& aRelease)
++      : MacIOSurfaceImage(aSurface),
++        mPictureRect(aPictureRect),
++        mRelease(std::move(aRelease)) {}
++
++  gfx::IntSize GetSize() const override { return mPictureRect.Size(); }
++  gfx::IntPoint GetOrigin() const override { return mPictureRect.TopLeft(); }
++  gfx::IntRect GetPictureRect() const override { return mPictureRect; }
++
++ private:
++  ~CameraMacIOSurfaceImage() override { mRelease(); }
++
++  const gfx::IntRect mPictureRect;
++  std::function<void()> mRelease;
++};
++
+ CamerasSingleton::CamerasSingleton()
+     : mCamerasMutex("CamerasSingleton::mCamerasMutex"),
+       mCameras(nullptr),
+@@ -289,6 +313,7 @@ mozilla::ipc::IPCResult CamerasChild::RecvReplyGetCaptureCapability(
+   mReplySuccess = true;
+   mReplyCapability->width = ipcCapability.width();
+   mReplyCapability->height = ipcCapability.height();
++  mReplyCapability->minFPS = ipcCapability.minFPS();
+   mReplyCapability->maxFPS = ipcCapability.maxFPS();
+   mReplyCapability->videoType =
+       static_cast<webrtc::VideoType>(ipcCapability.videoType());
+@@ -300,7 +325,7 @@ mozilla::ipc::IPCResult CamerasChild::RecvReplyGetCaptureCapability(
  int CamerasChild::GetCaptureDevice(
      CaptureEngine aCapEngine, unsigned int list_number, char* device_nameUTF8,
      const unsigned int device_nameUTF8Length, char* unique_idUTF8,
@@ -11,7 +61,7 @@ index 1aea3ded5809..8019816e167a 100644
    LOG("{}", __PRETTY_FUNCTION__);
    nsCOMPtr<nsIRunnable> runnable =
        mozilla::NewRunnableMethod<CaptureEngine, unsigned int>(
-@@ -315,6 +315,9 @@ int CamerasChild::GetCaptureDevice(
+@@ -315,6 +340,9 @@ int CamerasChild::GetCaptureDevice(
      if (scary) {
        *scary = mReplyScary;
      }
@@ -21,7 +71,7 @@ index 1aea3ded5809..8019816e167a 100644
      LOG("Got {} name {} id", device_nameUTF8, unique_idUTF8);
    }
    return dispatcher.ReturnValue();
-@@ -322,7 +325,7 @@ int CamerasChild::GetCaptureDevice(
+@@ -322,7 +350,7 @@ int CamerasChild::GetCaptureDevice(
  
  mozilla::ipc::IPCResult CamerasChild::RecvReplyGetCaptureDevice(
      const nsACString& device_name, const nsACString& device_id,
@@ -30,7 +80,7 @@ index 1aea3ded5809..8019816e167a 100644
    LOG("{}", __PRETTY_FUNCTION__);
    MonitorAutoLock monitor(mReplyMonitor);
    mReceivedReply = true;
-@@ -330,6 +333,7 @@ mozilla::ipc::IPCResult CamerasChild::RecvReplyGetCaptureDevice(
+@@ -330,6 +358,7 @@ mozilla::ipc::IPCResult CamerasChild::RecvReplyGetCaptureDevice(
    mReplyDeviceName = device_name;
    mReplyDeviceID = device_id;
    mReplyScary = scary;
@@ -38,3 +88,63 @@ index 1aea3ded5809..8019816e167a 100644
    monitor.Notify();
    return IPC_OK();
  }
+@@ -414,8 +443,8 @@ int CamerasChild::StartCapture(CaptureEngine aCapEngine, const int capture_id,
+   LOG("{}", __PRETTY_FUNCTION__);
+   AddCallback(capture_id, cb);
+   VideoCaptureCapability capCap(webrtcCaps.width, webrtcCaps.height,
+-                                webrtcCaps.maxFPS, webrtcCaps.videoType,
+-                                webrtcCaps.interlaced);
++                                webrtcCaps.minFPS, webrtcCaps.maxFPS,
++                                webrtcCaps.videoType, webrtcCaps.interlaced);
+   nsCOMPtr<nsIRunnable> runnable =
+       mozilla::NewRunnableMethod<CaptureEngine, int, VideoCaptureCapability,
+                                  NormalizedConstraints,
+@@ -555,6 +584,48 @@ mozilla::ipc::IPCResult CamerasChild::RecvDeliverFrame(
+   return IPC_OK();
+ }
+ 
++mozilla::ipc::IPCResult CamerasChild::RecvDeliverFrameIOSurface(
++    const int& aCaptureId, const uint64_t& aFrameId, nsTArray<int>&& aStreamIds,
++    layers::IOSurfacePort&& aSurface, const gfx::IntRect& aPictureRect,
++    const gfx::YUVColorSpace& aYUVColorSpace,
++    const gfx::ColorSpace2& aColorPrimaries,
++    const gfx::TransferFunction& aTransferFunction,
++    const VideoFrameProperties& aProps) {
++  auto surfaceRef = aSurface.GetSurface();
++  if (!surfaceRef) {
++    SendReleaseFrameIOSurface(aCaptureId, aFrameId);
++    return IPC_OK();
++  }
++
++  RefPtr<MacIOSurface> surface =
++      new MacIOSurface(std::move(surfaceRef), aYUVColorSpace, aTransferFunction,
++                       MacIOSurface::AllowAlpha::No);
++  surface->mColorPrimaries = aColorPrimaries;
++  auto release = [child = RefPtr(this), target = GetCurrentSerialEventTarget(),
++                  captureId = aCaptureId, frameId = aFrameId] {
++    (void)target->Dispatch(NS_NewRunnableFunction(
++        "camera::ReleaseFrameIOSurface",
++        [child = std::move(child), captureId, frameId] {
++          if (child->mIPCIsAlive) {
++            child->SendReleaseFrameIOSurface(captureId, frameId);
++          }
++        }));
++  };
++  RefPtr<layers::Image> image =
++      new CameraMacIOSurfaceImage(surface, aPictureRect, std::move(release));
++
++  MutexAutoLock lock(mCallbackMutex);
++  for (const int& streamId : aStreamIds) {
++    if (auto* cb = Callback(streamId)) {
++      cb->DeliverFrame(image, aProps);
++    } else {
++      LOG("DeliverFrameIOSurface called with dead callback");
++    }
++  }
++
++  return IPC_OK();
++}
++
+ mozilla::ipc::IPCResult CamerasChild::RecvDeviceChange() {
+   mDeviceListChangeEvent.Notify();
+   return IPC_OK();

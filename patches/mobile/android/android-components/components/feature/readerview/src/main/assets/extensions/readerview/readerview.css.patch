@@ -1,0 +1,18 @@
+diff --git a/mobile/android/android-components/components/feature/readerview/src/main/assets/extensions/readerview/readerview.css b/mobile/android/android-components/components/feature/readerview/src/main/assets/extensions/readerview/readerview.css
+index d058e1206108..322af6e1ecd5 100644
+--- a/mobile/android/android-components/components/feature/readerview/src/main/assets/extensions/readerview/readerview.css
++++ b/mobile/android/android-components/components/feature/readerview/src/main/assets/extensions/readerview/readerview.css
+@@ -39,11 +39,11 @@
+ }
+ 
+ .mozac-readerview-body.sans-serif * {
+-  font-family: sans-serif !important;
++  font-family: -apple-system, sans-serif !important;
+ }
+ 
+ .mozac-readerview-body.serif * {
+-  font-family: serif !important;
++  font-family: -apple-system-ui-serif, serif !important;
+ }
+ 
+ /* Override some controls and content styles based on color scheme */

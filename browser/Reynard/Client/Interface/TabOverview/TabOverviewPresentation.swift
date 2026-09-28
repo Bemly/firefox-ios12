@@ -356,18 +356,7 @@ final class TabOverviewPresentation {
             self.tabOverview.bottomToolbar.alpha = 1
             selectedCollection.transform = standardCollectionTransform
         } completion: { _ in
-            guard self.activePresentationTransition === activePresentationTransition else {
-                return
-            }
-            
-            self.finishPresentationTransition(activePresentationTransition)
-            self.activePresentationTransition = nil
-            
-            self.context.containerView.bringSubviewToFront(self.tabOverview)
-            self.context.contentView.setTransitionHidden(false)
-            self.context.browserChrome.setBottomToolbarHidden(false)
-            self.context.updateLayout(animated: false, duration: 0)
-            self.state = .presented
+            self.completePresentationTransition(activePresentationTransition)
         }
     }
     
@@ -609,18 +598,7 @@ final class TabOverviewPresentation {
             self.context.browserChrome.setChromeTransition(topAlpha: 0, bottomAlpha: 1, bottomTranslationY: 0)
             self.context.tabBar.setPresentationAlpha(0)
         } completion: { _ in
-            guard self.activePresentationTransition === activePresentationTransition else {
-                return
-            }
-            
-            self.finishPresentationTransition(activePresentationTransition)
-            self.activePresentationTransition = nil
-            
-            self.context.containerView.bringSubviewToFront(self.tabOverview)
-            self.context.contentView.setTransitionHidden(false)
-            self.context.browserChrome.setBottomToolbarHidden(false)
-            self.context.updateLayout(animated: false, duration: 0)
-            self.state = .presented
+            self.completePresentationTransition(activePresentationTransition)
         }
     }
     
@@ -848,6 +826,28 @@ final class TabOverviewPresentation {
         tabOverview.setActiveToolbarAlpha(1)
         context.updateLayout(animated: false, duration: 0)
         context.tabBar.updateLayout()
+        state = .presented
+    }
+    
+    func finishPresentationForScrolling(in collectionView: UICollectionView) {
+        guard let transition = activePresentationTransition,
+              transition.selectedCollectionView === collectionView else {
+            return
+        }
+        completePresentationTransition(transition)
+    }
+    
+    private func completePresentationTransition(_ transition: ActivePresentationTransition) {
+        guard activePresentationTransition === transition else {
+            return
+        }
+        finishPresentationTransition(transition)
+        activePresentationTransition = nil
+        
+        context.containerView.bringSubviewToFront(tabOverview)
+        context.contentView.setTransitionHidden(false)
+        context.browserChrome.setBottomToolbarHidden(false)
+        context.updateLayout(animated: false, duration: 0)
         state = .presented
     }
     

@@ -194,3 +194,61 @@
 
 
 
+
+
+## 上游合并实录（分支 `claude/magical-brahmagupta-2h1sms`，上游 0019395→a3315eb 共 49 提交：0.15.0）
+
+
+- 起因：09-28 定时 run 36394580309 在 `git merge` 即挂（14 文件冲突），sync job 失败，
+  build/release/nojemalloc 全部没跑。改为人工分支合并 + Action 编译验证后再进 main。
+- 内容：0.15.0 版本号、越南语翻译、**Cryptex DDI 迁移**（JIT enablement，idevice
+  0.1.68）、引擎 156.0→**156.0.1**（submodule 19a9005）、网页/PDF 打印（引擎
+  PrintTarget/nsDeviceContext/PrintSettingsService UIKit 新 patch + `--enable-printing`
+  改走 `mobile/ios/moz.configure.patch` 的 imply_option，`--enable-webrtc` 同样移过去）、
+  相机采集内存修（objc_video_capture 系列 patch）、正在播放标签菜单+静音、
+  reader 自动启用、快捷键 打印/Reader/设置、addon popup iOS 26 sheet、
+  删除 `Cargo.lock.patch` + webrender_bindings 两个 patch。
+- 冲突解法（iOS 12 优先）：README 取我方；`build-gecko.sh` 保 `--enable-ios-target=12.0`
+  （删掉我方 `--enable-webrtc` 行，已由 moz.configure 隐含）；`create-ipa.sh` 取上游
+  （concurrency bitcode strip 被上游挪进 `build-app.sh`，**在那边补回 `-f` 守卫**，
+  我们根本不链 libswift_Concurrency，不守卫 xcrun 直接失败）；AddonCoordinator
+  `#unavailable(iOS 26)` + `isModalInPresentation` iOS 13 门合体；AddonPopup 吸收
+  gesture 三件套、`onLoadRequest` 保 completion 签名；AddressBarButton 上游新增的
+  `menuProvider` 同样类型擦除成 `Any?`、`setMenuProvider` 加 iOS 13 门、
+  `makeDeferredMenu` 内部 cast 回闭包；AddressBarMenu `UX`/Audio 类型不门禁、
+  `makeAudioMenu` 加 iOS 13 门；ClearBrowsingData 收 `clearRecentlyClosedTabs`、
+  去 Task；UpdateReleaseNotesCell 收 delegate 保 `.appLabel`；SiteSettings 收
+  reader 开关、保 completion 版加载；ReaderSettings（上游 `ReaderMode/`→`Reader/`
+  改名，rename 自动跟随）`attributedTitle` 加上游的 `responds(to:)` 守卫、保 iOS 14 门。
+- 两个 patch 冲突（CoreTextFontList / nsWindow.mm）照 0920 流程：base(0019395)/ours/theirs
+  三份 patch 各自普通 `git apply` 到 **156.0.1 pristine**，`git merge-file` 三方 0 冲突，
+  双向 diff 核对（merged vs ours = 恰好上游改动 4/10 行，merged vs theirs = 恰好我方
+  iOS 12 改动 9/11 行：`CTFontManagerRegisterFontURLs` iOS 13 门、textInteraction nil 守卫），
+  临时仓 `git diff --abbrev=12` 重生成。
+- **pristine 取法新姿势（Linux/云端可用）**：不拉整个 firefox，
+  `git fetch --depth 1 --filter=blob:none origin <sha>` + `sparse-checkout --no-cone`
+  只 checkout 所有 patch 的目标文件（377 个路径，全程 ~10 秒），足够做 `--check`、
+  三方合并与全量顺序 apply。本次全量 374 patch 顺序 apply 0 失败；new-file 行数核对
+  只有 `GeckoViewRuntimeSupport.h` 差 1，是文件末尾无换行导致的误报。
+- **iOS 12 兼容新坑（auto-merge 带进来的，不报冲突）**：
+  ① 打印整套是 async/await + `@MainActor`（PrintDelegate、`GeckoSession.printToPDF`、
+  Printing/ 四个文件、Cmd-P 快捷键），全改 completion；Task 取消改 `isCancelled` 标志，
+  `UIActivityIndicatorView(style: .medium)` 加 iOS 13 门回退 `.gray`；
+  BookmarkActivity/FindInPageActivity 的 `@MainActor` 删掉（光一个属性就会链进
+  Concurrency 运行时）。② AddressBar 音频按钮 `applyingSymbolConfiguration` 是
+  iOS 13+，12 上直接用 PNG。③ SettingsTableViewCell `UIMenuController.showMenu(from:rect:)`
+  iOS 13+，12 回退 `setTargetRect`+`setMenuVisible`。④ **引擎侧必崩点**：
+  `IOSPlatformFontList.mm.patch` 构造函数无条件 `fontDescriptorWithDesign:`（iOS 13+），
+  12 上建字体列表即 unrecognized selector，加 `__builtin_available(iOS 13.0, *)` 门
+  （12 无 New York 族，查找落回 CoreTextFontList）。
+- 新图标 printer / speaker.wave.2.fill / speaker.slash.fill 是 symbolset，Linux 上用
+  cairosvg 替代 svg2png.swift 跑 `generate-ios12-icons.py` 的同一套提取/尺寸逻辑
+ （monkeypatch `render`），产物尺寸与既有 imageset 一致（34×33/68×65/102×98, RGBA）。
+- JIT 核对：上游只改 RPPairing（iOS 17.4+ 非越狱路径：cryptexd 安装 DDI），我方
+  JITController 静默降级、JITFailure 兼容、`ProcessExecutableMemory`/`JitContext`/
+  StaticPrefList 等 JIT patch **逐字未动**；`build-idevice.sh` 保 12.0。网络授权
+ （NetworkAuthorization/、entitlements、main.swift 调用）零改动。
+- iOS 12 功能缺口（接受）：正在播放标签按钮在 12 上无菜单（UIMenu 13+），只显示图标。
+- workflow：两份都改成 `checkout ref: github.ref_name`，非 main 分支 dispatch 跳过
+  merge/push 和 release/attach，只出 artifact——本次合并分支就用它验证 jemalloc +
+  nojemalloc 两个包能编出来。

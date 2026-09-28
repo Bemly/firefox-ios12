@@ -1,0 +1,55 @@
+diff --git a/dom/media/systemservices/objc_video_capture/native_video_frame.h b/dom/media/systemservices/objc_video_capture/native_video_frame.h
+new file mode 100644
+index 000000000000..1054f81acc77
+--- /dev/null
++++ b/dom/media/systemservices/objc_video_capture/native_video_frame.h
+@@ -0,0 +1,49 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#ifndef DOM_MEDIA_SYSTEMSERVICES_OBJC_VIDEO_CAPTURE_NATIVE_VIDEO_FRAME_H_
++#define DOM_MEDIA_SYSTEMSERVICES_OBJC_VIDEO_CAPTURE_NATIVE_VIDEO_FRAME_H_
++
++#include "api/video/video_frame.h"
++#include "mozilla/Maybe.h"
++#include "mozilla/Span.h"
++#include "mozilla/gfx/Rect.h"
++#include "mozilla/gfx/Types.h"
++#include "mozilla/layers/IOSurfacePort.h"
++
++namespace webrtc::videocapturemodule {
++
++struct NativeIOSurfaceFrame {
++  mozilla::layers::IOSurfacePort mSurface;
++  mozilla::gfx::IntRect mPictureRect;
++  mozilla::gfx::YUVColorSpace mYUVColorSpace;
++  mozilla::gfx::ColorSpace2 mColorPrimaries;
++  mozilla::gfx::TransferFunction mTransferFunction;
++};
++
++struct NativeI420FrameInfo {
++  uint32_t mBufferSize;
++  int mYAllocatedSize;
++  int mUAllocatedSize;
++  int mVAllocatedSize;
++  int mWidth;
++  int mHeight;
++  int mYStride;
++  int mUStride;
++  int mVStride;
++};
++
++mozilla::Maybe<NativeIOSurfaceFrame> GetNativeIOSurfaceFrame(
++    const webrtc::VideoFrame& aFrame);
++mozilla::Maybe<NativeI420FrameInfo> GetNativeI420FrameInfo(
++    const webrtc::VideoFrame& aFrame);
++bool CopyNativeVideoFrameToI420(const webrtc::VideoFrame& aFrame,
++                                mozilla::Span<uint8_t> aDestination);
++
++}  // namespace webrtc::videocapturemodule
++
++#endif

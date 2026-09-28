@@ -1,0 +1,189 @@
+diff --git a/dom/media/systemservices/objc_video_capture/native_video_frame.mm b/dom/media/systemservices/objc_video_capture/native_video_frame.mm
+new file mode 100644
+index 000000000000..2e7a1e74f4e2
+--- /dev/null
++++ b/dom/media/systemservices/objc_video_capture/native_video_frame.mm
+@@ -0,0 +1,183 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#include "native_video_frame.h"
++
++#import <CoreVideo/CVPixelBufferIOSurface.h>
++
++#include "CFTypeRefPtr.h"
++#include "common_video/libyuv/include/webrtc_libyuv.h"
++#import "components/video_frame_buffer/RTCCVPixelBuffer.h"
++#include "sdk/objc/native/src/objc_frame_buffer.h"
++
++namespace webrtc::videocapturemodule {
++
++static RTC_OBJC_TYPE(RTCCVPixelBuffer) *
++    GetNativePixelBuffer(const webrtc::VideoFrame& aFrame) {
++  if (aFrame.video_frame_buffer()->type() !=
++      webrtc::VideoFrameBuffer::Type::kNative) {
++    return nullptr;
++  }
++  auto* nativeBuffer =
++      static_cast<webrtc::ObjCFrameBuffer*>(aFrame.video_frame_buffer().get());
++  return (RTC_OBJC_TYPE(RTCCVPixelBuffer)*)nativeBuffer->wrapped_frame_buffer();
++}
++
++static bool IsNV12(CVPixelBufferRef aPixelBuffer) {
++  const OSType pixelFormat = CVPixelBufferGetPixelFormatType(aPixelBuffer);
++  return pixelFormat == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange ||
++         pixelFormat == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
++}
++
++static bool HasAttachment(CVPixelBufferRef aPixelBuffer, CFStringRef aKey,
++                          CFStringRef aValue) {
++  CFTypeRef value = CVBufferGetAttachment(aPixelBuffer, aKey, nullptr);
++  return value && CFEqual(value, aValue);
++}
++
++static mozilla::gfx::YUVColorSpace GetYUVColorSpace(
++    CVPixelBufferRef aPixelBuffer) {
++  if (HasAttachment(aPixelBuffer, kCVImageBufferYCbCrMatrixKey,
++                    kCVImageBufferYCbCrMatrix_ITU_R_2020)) {
++    return mozilla::gfx::YUVColorSpace::BT2020;
++  }
++  if (HasAttachment(aPixelBuffer, kCVImageBufferYCbCrMatrixKey,
++                    kCVImageBufferYCbCrMatrix_ITU_R_601_4)) {
++    return mozilla::gfx::YUVColorSpace::BT601;
++  }
++  return mozilla::gfx::YUVColorSpace::BT709;
++}
++
++static mozilla::gfx::ColorSpace2 GetColorPrimaries(
++    CVPixelBufferRef aPixelBuffer) {
++  if (HasAttachment(aPixelBuffer, kCVImageBufferColorPrimariesKey,
++                    kCVImageBufferColorPrimaries_ITU_R_2020)) {
++    return mozilla::gfx::ColorSpace2::BT2020;
++  }
++  if (HasAttachment(aPixelBuffer, kCVImageBufferColorPrimariesKey,
++                    kCVImageBufferColorPrimaries_P3_D65)) {
++    return mozilla::gfx::ColorSpace2::DISPLAY_P3;
++  }
++  if (HasAttachment(aPixelBuffer, kCVImageBufferColorPrimariesKey,
++                    kCVImageBufferColorPrimaries_SMPTE_C)) {
++    return mozilla::gfx::ColorSpace2::BT601_525;
++  }
++  if (HasAttachment(aPixelBuffer, kCVImageBufferColorPrimariesKey,
++                    kCVImageBufferColorPrimaries_P22)) {
++    return mozilla::gfx::ColorSpace2::SRGB;
++  }
++  return mozilla::gfx::ColorSpace2::BT709;
++}
++
++static mozilla::gfx::TransferFunction GetTransferFunction(
++    CVPixelBufferRef aPixelBuffer) {
++  if (HasAttachment(aPixelBuffer, kCVImageBufferTransferFunctionKey,
++                    kCVImageBufferTransferFunction_sRGB)) {
++    return mozilla::gfx::TransferFunction::SRGB;
++  }
++  if (HasAttachment(aPixelBuffer, kCVImageBufferTransferFunctionKey,
++                    kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ)) {
++    return mozilla::gfx::TransferFunction::PQ;
++  }
++  if (HasAttachment(aPixelBuffer, kCVImageBufferTransferFunctionKey,
++                    kCVImageBufferTransferFunction_ITU_R_2100_HLG)) {
++    return mozilla::gfx::TransferFunction::HLG;
++  }
++  if (HasAttachment(aPixelBuffer, kCVImageBufferTransferFunctionKey,
++                    kCVImageBufferTransferFunction_Linear)) {
++    return mozilla::gfx::TransferFunction::LINEAR;
++  }
++  return mozilla::gfx::TransferFunction::BT709;
++}
++
++mozilla::Maybe<NativeIOSurfaceFrame> GetNativeIOSurfaceFrame(
++    const webrtc::VideoFrame& aFrame) {
++  RTC_OBJC_TYPE(RTCCVPixelBuffer)* buffer = GetNativePixelBuffer(aFrame);
++
++  if (!buffer) {
++    return mozilla::Nothing();
++  }
++  CVPixelBufferRef pixelBuffer = buffer.pixelBuffer;
++  auto surface = CFTypeRefPtr<IOSurfaceRef>::WrapUnderGetRule(
++      CVPixelBufferGetIOSurface(pixelBuffer));
++  if (!surface) {
++    return mozilla::Nothing();
++  }
++
++  // Send a port for the existing IOSurface. Allocating new pixel storage here
++  // would reintroduce the full-frame copy this native path is meant to remove.
++  // https://github.com/WebKit/WebKit/blob/d4034783047be1ef0c81de04566059564dd430d9/Source/WebKit/WebProcess/GPU/webrtc/SharedVideoFrame.cpp#L132-L140
++  auto port = mozilla::layers::IOSurfacePort::FromSurface(surface);
++  if (!port.mPort) {
++    return mozilla::Nothing();
++  }
++  return mozilla::Some(NativeIOSurfaceFrame{
++      std::move(port),
++      mozilla::gfx::IntRect(buffer.cropX, buffer.cropY, buffer.cropWidth,
++                            buffer.cropHeight),
++      GetYUVColorSpace(pixelBuffer), GetColorPrimaries(pixelBuffer),
++      GetTransferFunction(pixelBuffer)});
++}
++
++mozilla::Maybe<NativeI420FrameInfo> GetNativeI420FrameInfo(
++    const webrtc::VideoFrame& aFrame) {
++  RTC_OBJC_TYPE(RTCCVPixelBuffer)* buffer = GetNativePixelBuffer(aFrame);
++
++  if (!buffer || !IsNV12(buffer.pixelBuffer)) {
++    return mozilla::Nothing();
++  }
++
++  const int width = buffer.width;
++  const int height = buffer.height;
++  const int chromaWidth = (width + 1) / 2;
++  const int chromaHeight = (height + 1) / 2;
++  const int ySize = width * height;
++  const int chromaSize = chromaWidth * chromaHeight;
++
++  return mozilla::Some(NativeI420FrameInfo{
++      static_cast<uint32_t>(ySize + 2 * chromaSize), ySize, chromaSize,
++      chromaSize, width, height, width, chromaWidth, chromaWidth});
++}
++
++bool CopyNativeVideoFrameToI420(const webrtc::VideoFrame& aFrame,
++                                mozilla::Span<uint8_t> aDestination) {
++  RTC_OBJC_TYPE(RTCCVPixelBuffer)* buffer = GetNativePixelBuffer(aFrame);
++  auto info = GetNativeI420FrameInfo(aFrame);
++
++  if (!buffer || !info || aDestination.Length() < info->mBufferSize) {
++    return false;
++  }
++
++  CVPixelBufferRef pixelBuffer = buffer.pixelBuffer;
++  if (CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly) !=
++      kCVReturnSuccess) {
++    return false;
++  }
++
++  const int srcYStride = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0);
++  const int srcUVStride = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 1);
++  const uint8_t* srcY = static_cast<const uint8_t*>(
++      CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0));
++  const uint8_t* srcUV = static_cast<const uint8_t*>(
++      CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 1));
++  srcY += srcYStride * buffer.cropY + buffer.cropX;
++  srcUV += srcUVStride * (buffer.cropY / 2) + buffer.cropX;
++
++  uint8_t* dstY = aDestination.Elements();
++  uint8_t* dstU = dstY + info->mYAllocatedSize;
++  uint8_t* dstV = dstU + info->mUAllocatedSize;
++
++  webrtc::NV12ToI420Scaler scaler;
++  scaler.NV12ToI420Scale(srcY, srcYStride, srcUV, srcUVStride, buffer.cropWidth,
++                         buffer.cropHeight, dstY, info->mYStride, dstU,
++                         info->mUStride, dstV, info->mVStride, info->mWidth,
++                         info->mHeight);
++  CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
++  return true;
++}
++
++}  // namespace webrtc::videocapturemodule

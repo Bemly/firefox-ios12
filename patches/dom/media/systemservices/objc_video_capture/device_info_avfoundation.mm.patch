@@ -1,0 +1,21 @@
+diff --git a/dom/media/systemservices/objc_video_capture/device_info_avfoundation.mm b/dom/media/systemservices/objc_video_capture/device_info_avfoundation.mm
+index 3fe6152c1d03..8b0e40e71bba 100644
+--- a/dom/media/systemservices/objc_video_capture/device_info_avfoundation.mm
++++ b/dom/media/systemservices/objc_video_capture/device_info_avfoundation.mm
+@@ -202,12 +202,16 @@
+       FourCharCode fourcc =
+           CMFormatDescriptionGetMediaSubType(format.formatDescription);
+       cap.videoType = ConvertFourCCToVideoType(fourcc);
++
+       CMVideoDimensions dimensions =
+           CMVideoFormatDescriptionGetDimensions(format.formatDescription);
+       cap.width = dimensions.width;
+       cap.height = dimensions.height;
+ 
+       for (AVFrameRateRange* range in format.videoSupportedFrameRateRanges) {
++        // Keep both min & max like how WebKit would choose the one that
++        // satisfied the request
++        cap.minFPS = ConvertAVFrameRateToCapabilityFPS(range.minFrameRate);
+         cap.maxFPS = ConvertAVFrameRateToCapabilityFPS(range.maxFrameRate);
+         capabilities.push_back(cap);
+       }

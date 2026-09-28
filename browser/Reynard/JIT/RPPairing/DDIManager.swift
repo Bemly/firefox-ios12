@@ -278,12 +278,18 @@ final class DDIManager: NSObject {
     
     private func makeDownloadPlan() throws -> DownloadPlan {
         let rootDirectoryURL = try ddiRootDirectoryURL()
-        let baseURLString = "https://github.com/doronz88/DeveloperDiskImage/raw/refs/heads/main/PersonalizedImages/Xcode_iOS_DDI_Personalized"
+        let baseURLString = "https://github.com/doronz88/DeveloperDiskImage/raw/refs/heads/main/PersonalizedImages/Xcode_iOS_DDI_Cryptex"
         guard let baseURL = URL(string: baseURLString) else {
             throw DDIError.invalidRemoteURL
         }
         
-        let fileNames = ["BuildManifest.plist", "Image.dmg", "Image.dmg.trustcache"]
+        let fileNames = [
+            "BuildManifest.plist",
+            "Image.dmg",
+            "Image.dmg.trustcache",
+            "Image.dmg.cryptex_info",
+            "Image.dmg.root_hash"
+        ]
         let items = fileNames.map { fileName in
             DownloadItem(
                 remoteURL: baseURL.appendingPathComponent(fileName),

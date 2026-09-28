@@ -1,0 +1,54 @@
+diff --git a/dom/media/systemservices/VideoFrameUtils.cpp b/dom/media/systemservices/VideoFrameUtils.cpp
+index 7ce3a4cbe3eb..d85efbaeef9b 100644
+--- a/dom/media/systemservices/VideoFrameUtils.cpp
++++ b/dom/media/systemservices/VideoFrameUtils.cpp
+@@ -6,11 +6,17 @@
+ 
+ #include "api/video/video_frame.h"
+ #include "mozilla/ShmemPool.h"
++#include "objc_video_capture/native_video_frame.h"
+ 
+ namespace mozilla {
+ 
+ uint32_t VideoFrameUtils::TotalRequiredBufferSize(
+     const webrtc::VideoFrame& aVideoFrame) {
++  if (auto info =
++          webrtc::videocapturemodule::GetNativeI420FrameInfo(aVideoFrame)) {
++    return info->mBufferSize;
++  }
++
+   auto i420 = aVideoFrame.video_frame_buffer()->ToI420();
+   auto height = i420->height();
+   size_t size = height * i420->StrideY() +
+@@ -34,6 +40,19 @@ void VideoFrameUtils::InitFrameBufferProperties(
+   aDestProps.renderTimeMs() = aVideoFrame.render_time_ms();
+   aDestProps.rotation() = aVideoFrame.rotation();
+ 
++  if (auto info =
++          webrtc::videocapturemodule::GetNativeI420FrameInfo(aVideoFrame)) {
++    aDestProps.yAllocatedSize() = info->mYAllocatedSize;
++    aDestProps.uAllocatedSize() = info->mUAllocatedSize;
++    aDestProps.vAllocatedSize() = info->mVAllocatedSize;
++    aDestProps.width() = info->mWidth;
++    aDestProps.height() = info->mHeight;
++    aDestProps.yStride() = info->mYStride;
++    aDestProps.uStride() = info->mUStride;
++    aDestProps.vStride() = info->mVStride;
++    return;
++  }
++
+   auto i420 = aVideoFrame.video_frame_buffer()->ToI420();
+   auto height = i420->height();
+   aDestProps.yAllocatedSize() = height * i420->StrideY();
+@@ -51,6 +70,11 @@ void VideoFrameUtils::InitFrameBufferProperties(
+ void VideoFrameUtils::CopyVideoFrameBuffers(uint8_t* aDestBuffer,
+                                             const size_t aDestBufferSize,
+                                             const webrtc::VideoFrame& aFrame) {
++  if (webrtc::videocapturemodule::CopyNativeVideoFrameToI420(
++          aFrame, Span<uint8_t>(aDestBuffer, aDestBufferSize))) {
++    return;
++  }
++
+   size_t aggregateSize = TotalRequiredBufferSize(aFrame);
+ 
+   MOZ_ASSERT(aDestBufferSize >= aggregateSize);

@@ -6,6 +6,7 @@
 # - 产物名 `Reynard-Jailbroken-nojemalloc.ipa`（无 jemalloc，走系统 malloc，
 #   规避 A12/unc0ver 12.2 上的 substitute 对 jemalloc zone 的 hook 崩溃）。
 # - 不删 release，只 `gh release upload --clobber` 追加/覆盖同名资产。
+# - 在非 main 分支上手动 dispatch = 仅编译验证：只产出 artifact，不碰 release。
 
 name: Build no-jemalloc IPA
 
@@ -69,10 +70,10 @@ jobs:
     env:
       SCCACHE_GHA_ENABLED: "true"
     steps:
-      - name: Check out main
+      - name: Check out branch
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
           submodules: false
 
@@ -165,6 +166,7 @@ jobs:
   attach:
     name: Attach to version release
     needs: build
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

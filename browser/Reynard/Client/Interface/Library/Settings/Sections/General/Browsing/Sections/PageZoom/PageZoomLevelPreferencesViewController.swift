@@ -74,7 +74,7 @@ final class PageZoomLevelPreferencesViewController: SettingsTableViewController 
         case .defaultZoom:
             Prefs.BrowsingSettings.defaultPageZoomLevel = level
         case .site(let host, _):
-            _ = SiteSettingsStore.shared.setPageZoom(level, forHost: host)
+            _ = SiteSettingsStore.shared.setPageZoom(level, for: host)
             mode = .site(host: host, pageZoom: level)
         }
         tableView.reloadData()

@@ -42,9 +42,46 @@ extension BrowserViewController: AddressBarDelegate, AddressBarGestureDelegate {
             usesDesktopWebsite: usesDesktopWebsite,
             readerMode: selectedTab?.state.readerMode ?? ReaderModeState()
         )
+        
+        refreshAddressBarAudioButton()
+    }
+    
+    func refreshAddressBarAudioButton() {
+        let selectedTab = tabManager.selectedTab
+        let playingTabs = tabsPlayingAudio
+        browserChrome.updateAddressBarAudioButton(
+            isVisible: !playingTabs.isEmpty,
+            isMuted: selectedTab?.isMuted == true ||
+            (!playingTabs.isEmpty && playingTabs.allSatisfy(\.isMuted))
+        )
+    }
+    
+    private var tabsPlayingAudio: [Tab] {
+        return tabManager.activeTabs.filter { $0.state.isPlayingAudio }
     }
     
     // MARK: - AddressBarDelegate
+    
+    func addressBarAudioMenuState(_ addressBar: AddressBar) -> AddressBarMenu.AudioState? {
+        let playingTabs = tabsPlayingAudio
+        guard !playingTabs.isEmpty else {
+            return nil
+        }
+        let selectedTab = tabManager.selectedTab
+        return AddressBarMenu.AudioState(
+            playingTabs: playingTabs.map { tab in
+                let title = tab.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                return AddressBarMenu.AudioTabItem(
+                    id: tab.id,
+                    title: title.isEmpty ? tab.url ?? NSLocalizedString("Untitled", comment: "") : title,
+                    favicon: tab.favicon,
+                    isMuted: tab.isMuted
+                )
+            },
+            selectedTabID: selectedTab?.id,
+            isSelectedTabMuted: selectedTab?.isMuted ?? false
+        )
+    }
     
     func addressBarDidRequestReloadOrStop(_ addressBar: AddressBar) {
         if tabManager.selectedTab?.session.isOpen() == false {
@@ -62,6 +99,20 @@ extension BrowserViewController: AddressBarDelegate, AddressBarGestureDelegate {
         }
         
         tabManager.hardReloadSelectedTab()
+    }
+    
+    func addressBar(_ addressBar: AddressBar, didSelectAudioAction action: AddressBarMenu.AudioAction) {
+        switch action {
+        case let .selectTab(tabID):
+            guard let index = tabManager.activeTabs.firstIndex(where: { $0.id == tabID }) else {
+                return
+            }
+            tabManager.selectTab(at: index, mode: tabManager.selectedTabMode)
+        case let .setMuted(tabID, muted):
+            tabManager.setMuted(muted, for: tabID)
+        case let .muteOtherTabs(excluding: tabID):
+            tabManager.muteOtherPlayingTabs(excluding: tabID)
+        }
     }
     
     func addressBarAddonItems(_ addressBar: AddressBar) -> [AddressBarMenu.AddonItem] {

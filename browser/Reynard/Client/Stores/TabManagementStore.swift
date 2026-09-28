@@ -32,8 +32,10 @@ final class TabManagementStore {
         let title: String
         let url: String?
         let createdAt: Date?
+        let openerTabID: UUID?
         let tabSessionState: String?
         let thumbnail: UIImage?
+        let isMuted: Bool
         let isPrivate: Bool
     }
     
@@ -55,7 +57,9 @@ final class TabManagementStore {
         let title: String
         let url: String?
         let createdAt: Date?
+        let openerTabID: UUID?
         let tabSessionState: String?
+        let isMuted: Bool
     }
     
     private struct PersistedState {
@@ -71,7 +75,7 @@ final class TabManagementStore {
     private var database: OpaquePointer?
     private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     
-    private let recentlyClosedTabLimit = 10
+    private let recentlyClosedTabLimit = 20
     
     // MARK: - Lifecycle
     
@@ -163,7 +167,9 @@ final class TabManagementStore {
                 title: $0.title,
                 url: $0.url,
                 createdAt: $0.createdAt,
-                tabSessionState: $0.state.tabSessionState?.serializedString()
+                openerTabID: $0.state.openerTabID,
+                tabSessionState: $0.state.tabSessionState?.serializedString(),
+                isMuted: $0.isMuted
             )
         }
         let persistedPrivateTabs = privateTabs.map {
@@ -172,7 +178,9 @@ final class TabManagementStore {
                 title: $0.title,
                 url: $0.url,
                 createdAt: $0.createdAt,
-                tabSessionState: nil
+                openerTabID: nil,
+                tabSessionState: nil,
+                isMuted: $0.isMuted
             )
         }
         
@@ -417,7 +425,9 @@ final class TabManagementStore {
             title TEXT NOT NULL,
             url TEXT,
             created_at REAL,
+            opened_from TEXT,
             tab_session_state TEXT,
+            is_muted INTEGER NOT NULL DEFAULT 0,
             is_private INTEGER NOT NULL,
             position INTEGER NOT NULL
         );
@@ -434,7 +444,9 @@ final class TabManagementStore {
         
         _ = executeLocked(sql)
         ensureColumnLocked(name: "created_at", table: "tabs", definition: "REAL")
+        ensureColumnLocked(name: "opened_from", table: "tabs", definition: "TEXT")
         ensureColumnLocked(name: "tab_session_state", table: "tabs", definition: "TEXT")
+        ensureColumnLocked(name: "is_muted", table: "tabs", definition: "INTEGER NOT NULL DEFAULT 0")
         ensureColumnLocked(name: "tab_session_state", table: "recently_closed_tabs", definition: "TEXT")
     }
     
@@ -544,7 +556,7 @@ final class TabManagementStore {
     private func fetchTabsLocked(isPrivate: Bool) -> [TabSnapshot] {
         guard let statement = prepareStatementLocked(
             """
-            SELECT id, title, url, created_at, tab_session_state
+            SELECT id, title, url, created_at, tab_session_state, is_muted, opened_from
             FROM tabs
             WHERE is_private = ?
             ORDER BY position ASC;
@@ -571,8 +583,10 @@ final class TabManagementStore {
                     title: string(from: statement, at: 1),
                     url: optionalString(from: statement, at: 2),
                     createdAt: optionalDate(from: statement, at: 3),
+                    openerTabID: optionalString(from: statement, at: 6).flatMap { UUID(uuidString: $0) },
                     tabSessionState: optionalString(from: statement, at: 4),
                     thumbnail: loadThumbnailLocked(for: id),
+                    isMuted: sqlite3_column_int64(statement, 5) != 0,
                     isPrivate: isPrivate
                 )
             )
@@ -743,8 +757,8 @@ final class TabManagementStore {
     private func insertTabsLocked(_ tabs: [PersistedTab], isPrivate: Bool) -> Bool {
         guard let statement = prepareStatementLocked(
             """
-            INSERT INTO tabs (id, title, url, created_at, tab_session_state, is_private, position)
-            VALUES (?, ?, ?, ?, ?, ?, ?);
+            INSERT INTO tabs (id, title, url, created_at, tab_session_state, is_muted, is_private, position, opened_from)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
             """
         ) else {
             return false
@@ -762,8 +776,10 @@ final class TabManagementStore {
             bindOptional(tab.url, to: statement, at: 3)
             bindOptional(tab.createdAt, to: statement, at: 4)
             bindOptional(tab.tabSessionState, to: statement, at: 5)
-            sqlite3_bind_int64(statement, 6, isPrivate ? 1 : 0)
-            sqlite3_bind_int64(statement, 7, Int64(index))
+            sqlite3_bind_int64(statement, 6, tab.isMuted ? 1 : 0)
+            sqlite3_bind_int64(statement, 7, isPrivate ? 1 : 0)
+            sqlite3_bind_int64(statement, 8, Int64(index))
+            bindOptional(tab.openerTabID?.uuidString, to: statement, at: 9)
             
             guard sqlite3_step(statement) == SQLITE_DONE else {
                 return false

@@ -194,7 +194,9 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
         guard !isUpdatingTabs else {
             return
         }
+        updateScrollability()
         refreshVisibleTabs()
+        revealSelectedTab()
     }
     
     // MARK: - Configuration
@@ -286,6 +288,7 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
         updateScrollability()
         collectionViewLayout.invalidateLayout()
         layoutIfNeeded()
+        revealSelectedTab()
     }
     
     private func finishTabUpdate() {
@@ -353,6 +356,21 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
             }
             configure(tabBarCell, at: indexPath)
         }
+    }
+    
+    private func revealSelectedTab() {
+        guard isScrollEnabled,
+              let tabBar,
+              let tabs = tabBar.dataSource?.tabs,
+              let selectedIndex = tabs.indices.first(where: tabBar.isTabSelected(at:)),
+              selectedIndex < numberOfItems(inSection: 0),
+              let attributes = layoutAttributesForItem(
+                at: IndexPath(item: selectedIndex, section: 0)
+              ) else {
+            return
+        }
+        
+        scrollRectToVisible(attributes.frame, animated: false)
     }
     
     private func configure(_ tabBarCell: TabBarCell, at indexPath: IndexPath) {
@@ -548,6 +566,7 @@ final class TabBarCollection: UICollectionView, UIGestureRecognizerDelegate {
         }
         collectionViewLayout.invalidateLayout()
         layoutIfNeeded()
+        revealSelectedTab()
         endDragSnapshot { [weak self] in
             self?.resetReordering()
         }

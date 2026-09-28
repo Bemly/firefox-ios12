@@ -314,23 +314,34 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         if #available(iOS 26.0, *), animated,
            actionBar.item == .pageZoom || actionBar.item == .findInPage {
             guard modernActionBarDismissalID == nil else { return }
+            
             let dismissalID = UUID()
             modernActionBarDismissalID = dismissalID
             let wasShowingFindInPage = actionBar.isShowingFindInPage
+            let shouldRestoreToolbarAtStart = wasShowingFindInPage && !actionBar.isKeyboardDocked
             let shouldSlide = (actionBar.item == .pageZoom || actionBarDockOffset == 0)
             && !UIAccessibility.isReduceMotionEnabled
+            
+            if shouldRestoreToolbarAtStart {
+                onFindInPageVisibilityChanged?(false)
+            }
+            
             let screenBottom = window.map { convert($0.bounds, from: $0).maxY } ?? bounds.maxY
             let translationY = shouldSlide
             ? max(0, screenBottom - actionBar.frame.minY)
             : 0
+            let animationOptions: UIView.AnimationOptions = shouldRestoreToolbarAtStart
+            ? [.beginFromCurrentState, .curveEaseOut]
+            : [.beginFromCurrentState, .curveEaseIn]
+            
             UIView.animate(
                 withDuration: shouldSlide ? UX.actionBarFlyOutDuration : UX.actionBarFadeDuration,
                 delay: 0,
-                options: [.beginFromCurrentState, .curveEaseIn]
+                options: animationOptions
             ) {
                 self.actionBar.dismissModernContent(
                     translationY: translationY,
-                    fadeDuration: UX.actionBarFadeDuration
+                    fadeDuration: shouldSlide ? nil : UX.actionBarFadeDuration
                 )
             } completion: { _ in
                 guard self.modernActionBarDismissalID == dismissalID else { return }
@@ -338,7 +349,8 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
                 self.actionBar.alpha = 0
                 self.actionBar.setItem(nil)
                 self.dockActionBar(offset: 0)
-                if wasShowingFindInPage {
+                
+                if wasShowingFindInPage && !shouldRestoreToolbarAtStart {
                     self.onFindInPageVisibilityChanged?(false)
                 }
             }
@@ -504,6 +516,10 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         addressBar.updateMenu(url: url, usesDesktopWebsite: usesDesktopWebsite, readerMode: readerMode)
     }
     
+    func updateAddressBarAudioButton(isVisible: Bool, isMuted: Bool) {
+        addressBar.updateAudioButton(isVisible: isVisible, isMuted: isMuted)
+    }
+    
     func setAddressBarLoadingProgress(_ progress: Float, isLoading: Bool) {
         addressBar.setLoadingProgress(progress, isLoading: isLoading)
     }
@@ -547,8 +563,8 @@ final class BrowserChrome: UIView, UIGestureRecognizerDelegate {
         addressBar.performAfterMenuDismissal(action)
     }
     
-    func animateAutomaticNewTabTransition(to tab: Tab, completion: @escaping () -> Void) {
-        addressBar.animateAutomaticNewTabTransition(to: tab, completion: completion)
+    func animateAutomaticTabTransition(to tab: Tab, returning: Bool = false, completion: @escaping () -> Void) {
+        addressBar.animateAutomaticTabTransition(to: tab, returning: returning, completion: completion)
     }
     
     var isAddressBarEditing: Bool { return addressBar.isEditingText }

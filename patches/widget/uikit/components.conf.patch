@@ -1,5 +1,5 @@
 diff --git a/widget/uikit/components.conf b/widget/uikit/components.conf
-index 385ba2f7868b..542755abe552 100644
+index 385ba2f7868b..18489405c514 100644
 --- a/widget/uikit/components.conf
 +++ b/widget/uikit/components.conf
 @@ -31,6 +31,15 @@ Classes = [
@@ -18,3 +18,23 @@ index 385ba2f7868b..542755abe552 100644
      {
          'cid': '{2d96b3df-c051-11d1-a827-0040959a28c9}',
          'contract_ids': ['@mozilla.org/widget/appshell/uikit;1'],
+@@ -44,6 +53,19 @@ Classes = [
+         'type': 'nsTransferable',
+         'headers': ['/widget/nsTransferable.h'],
+     },
++    {
++        'cid': '{841387c8-72e6-484b-9296-bf6eea80d58a}',
++        'contract_ids': ['@mozilla.org/gfx/printsettings-service;1'],
++        'type': 'nsPrintSettingsServiceUIKit',
++        'headers': ['/widget/uikit/nsPrintSettingsServiceUIKit.h'],
++        'init_method': 'Init',
++    },
++    {
++        'cid': '{d3f69889-e13a-4321-980c-a39332e21f34}',
++        'contract_ids': ['@mozilla.org/gfx/devicecontextspec;1'],
++        'type': 'nsDeviceContextSpecUIKit',
++        'headers': ['/widget/uikit/nsDeviceContextUIKit.h'],
++    },
+     {
+         'cid': '{948a0023-e3a7-11d2-96cf-0060b0fb9956}',
+         'contract_ids': ['@mozilla.org/widget/htmlformatconverter;1'],

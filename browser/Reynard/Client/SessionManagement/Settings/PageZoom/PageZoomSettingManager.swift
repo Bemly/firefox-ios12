@@ -16,8 +16,8 @@ final class PageZoomSettingManager {
     }
     
     func setting(for url: String) -> PageZoomSetting {
-        guard let url = URL(string: url),
-              let level = siteSettingsStore.settings(for: url)?.pageZoom else {
+        guard let host = URL(string: url)?.host,
+              let level = siteSettingsStore.settings(for: host)?.pageZoom else {
             return PageZoomSetting(level: Prefs.BrowsingSettings.defaultPageZoomLevel)
         }
         
@@ -26,10 +26,10 @@ final class PageZoomSettingManager {
     
     @discardableResult
     func save(_ level: Int, for url: String) -> Bool {
-        guard let url = URL(string: url) else {
+        guard let host = URL(string: url)?.host else {
             return false
         }
         
-        return siteSettingsStore.setPageZoom(level, for: url)
+        return siteSettingsStore.setPageZoom(level, for: host)
     }
 }

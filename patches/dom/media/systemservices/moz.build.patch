@@ -1,8 +1,8 @@
 diff --git a/dom/media/systemservices/moz.build b/dom/media/systemservices/moz.build
-index f0d6241a8e83..a790efea11b5 100644
+index f0d6241a8e83..ad1fd5bdcf67 100644
 --- a/dom/media/systemservices/moz.build
 +++ b/dom/media/systemservices/moz.build
-@@ -36,6 +36,7 @@ if CONFIG["MOZ_WEBRTC"]:
+@@ -36,13 +36,18 @@ if CONFIG["MOZ_WEBRTC"]:
          ]
      elif CONFIG["OS_TARGET"] == "Darwin":
          UNIFIED_SOURCES += [
@@ -10,7 +10,18 @@ index f0d6241a8e83..a790efea11b5 100644
              "objc_video_capture/device_info.mm",
              "objc_video_capture/device_info_avfoundation.mm",
              "objc_video_capture/device_info_objc.mm",
-@@ -51,9 +52,10 @@ if CONFIG["MOZ_WEBRTC"]:
++            "objc_video_capture/native_video_frame.mm",
+             "objc_video_capture/rtc_video_capture_objc.mm",
+             "objc_video_capture/video_capture.mm",
+             "objc_video_capture/video_capture_avfoundation.mm",
+         ]
++        SOURCES += [
++            "/third_party/libwebrtc/sdk/objc/native/src/objc_frame_buffer.mm",
++        ]
+         LOCAL_INCLUDES += [
+             "/third_party/libwebrtc/sdk/objc",
+             "/third_party/libwebrtc/sdk/objc/base",
+@@ -51,9 +56,10 @@ if CONFIG["MOZ_WEBRTC"]:
              "-fobjc-arc",
          ]
  

@@ -222,6 +222,10 @@ final class ClearBrowsingDataViewController: SettingsTableViewController {
             clearOpenedTabs()
         }
         
+        if selectedCategories.contains(.browsingHistory) {
+            TabManagementStore.shared.clearRecentlyClosedTabs()
+        }
+        
         clearSelectedEngineData(for: selectedCategories)
     }
     

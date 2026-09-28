@@ -340,6 +340,7 @@ final class TabOverview: UIView {
     
     private func handleTabModeChange(_ mode: Mode) {
         setMode(mode, animated: true)
+        collection.scrollToBottom(for: mode)
         TabManagementStore.shared.persistLastOverview(mode == .privateTabs ? .private : .regular)
     }
     

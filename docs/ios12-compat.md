@@ -104,3 +104,8 @@
 - 改完引擎源码必须 regen 对应 `patches/`（`git diff` 生成）+ reverse-check；
   新文件走 glob 自动发现，无需注册。验证用 touch 定点重编 + grep 日志，不要全量等。
 
+- （2026-09-28，0.15.0 合并）上游新代码的高发雷区：`@MainActor` 单独一个属性也要删
+ （链 Concurrency 运行时，12 dyld 拒载）；`applyingSymbolConfiguration`、
+  `UIMenuController.showMenu(from:rect:)`、`UIActivityIndicatorView .medium`、
+  ObjC 侧 `fontDescriptorWithDesign:` 都是 13+。auto-merge 不报冲突，合并后必须对
+  上游新增行 grep 一遍（清单见 `docs/upstream-merge.md` 0.15.0 节）。

@@ -33,6 +33,7 @@ final class BrowsingPreferencesViewController: SettingsTableViewController {
     private enum ContentRow: CaseIterable {
         case allWebsites
         case pageZoom
+        case reader
     }
     
     private enum LinksRow: CaseIterable {
@@ -127,6 +128,8 @@ final class BrowsingPreferencesViewController: SettingsTableViewController {
                 cell.textLabel?.text = NSLocalizedString("Request Desktop Website", comment: "")
             case .pageZoom:
                 cell.textLabel?.text = NSLocalizedString("Page Zoom", comment: "")
+            case .reader:
+                cell.textLabel?.text = NSLocalizedString("Reader", comment: "")
             }
             cell.accessoryType = .disclosureIndicator
             return cell
@@ -170,6 +173,8 @@ final class BrowsingPreferencesViewController: SettingsTableViewController {
                 navigationController?.pushViewController(RequestDesktopWebsitePreferencesViewController(), animated: true)
             case .pageZoom:
                 navigationController?.pushViewController(PageZoomPreferencesViewController(), animated: true)
+            case .reader:
+                navigationController?.pushViewController(ReaderPreferencesViewController(), animated: true)
             }
         case .links:
             guard LinksRow.allCases.indices.contains(indexPath.row) else {

@@ -7,7 +7,7 @@
 
 import UIKit
 
-final class UpdateReleaseNotesCell: UITableViewCell {
+final class UpdateReleaseNotesCell: UITableViewCell, UITextViewDelegate {
     private enum UX {
         static let iconSize: CGFloat = 56
         static let iconCornerRadius: CGFloat = 13
@@ -122,14 +122,29 @@ final class UpdateReleaseNotesCell: UITableViewCell {
         releaseNotesView.isEditable = false
         releaseNotesView.isScrollEnabled = true
         releaseNotesView.showsVerticalScrollIndicator = false
-        releaseNotesView.isSelectable = false
+        releaseNotesView.isSelectable = true
         releaseNotesView.backgroundColor = .clear
         releaseNotesView.attributedText = BrowserUpdates.shared.cachedReleaseNotes
+        releaseNotesView.delegate = self
         releaseNotesView.textColor = .appLabel
         releaseNotesView.textContainerInset = UIEdgeInsets(top: UX.textViewTopSpacing, left: 0, bottom: 0, right: 0)
         releaseNotesView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: UX.releaseNotesBottomInset, right: 0)
         releaseNotesView.textContainer.lineFragmentPadding = 0
         return releaseNotesView
+    }
+    
+    func textView(
+        _ textView: UITextView,
+        shouldInteractWith url: URL,
+        in characterRange: NSRange,
+        interaction: UITextItemInteraction
+    ) -> Bool {
+        guard let viewController = UIApplication.shared.topViewController() else {
+            return false
+        }
+        
+        LibrarySharedUtils.openLinkInBrowser(url.absoluteString, from: viewController)
+        return false
     }
     
     // MARK: - Data

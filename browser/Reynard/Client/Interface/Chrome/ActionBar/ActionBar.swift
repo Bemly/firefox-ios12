@@ -221,22 +221,25 @@ final class ActionBar: UIView {
     }
     
     @available(iOS 26.0, *)
-    func dismissModernContent(translationY: CGFloat, fadeDuration: TimeInterval) {
+    func dismissModernContent(translationY: CGFloat, fadeDuration: TimeInterval?) {
         hasDismissedModernContent = true
-        UIView.animate(
-            withDuration: fadeDuration,
-            delay: 0,
-            options: [.overrideInheritedDuration, .beginFromCurrentState]
-        ) {
-            switch self.item {
-            case .pageZoom:
-                self.pageZoomActionBar.setModernContentHidden(true)
-            case .findInPage:
-                self.findInPageActionBar.setModernContentHidden(true)
-            default:
-                break
+        if let fadeDuration {
+            UIView.animate(
+                withDuration: fadeDuration,
+                delay: 0,
+                options: [.overrideInheritedDuration, .beginFromCurrentState]
+            ) {
+                switch self.item {
+                case .pageZoom:
+                    self.pageZoomActionBar.setModernContentHidden(true)
+                case .findInPage:
+                    self.findInPageActionBar.setModernContentHidden(true)
+                default:
+                    break
+                }
             }
         }
+        
         let transform = CGAffineTransform(translationX: 0, y: translationY)
         switch item {
         case .pageZoom:

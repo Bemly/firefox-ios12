@@ -50,15 +50,6 @@ rm -rf "$WORK_DIR" "$ROOT_DIR/dist/$OUTPUT_NAME"
 mkdir -p "$WORK_DIR/Payload"
 cp -R "$APP_PATH" "$WORK_DIR/Payload/"
 
-# Strip bitcode, because we bypass the signing stage & https://developer.apple.com/documentation/Xcode-Release-Notes/xcode-13_3_1-release-notes?changes=_1
-# NOTE (iOS 12 port): the Concurrency runtime may be absent — @MainActor was
-# removed tree-wide, so nothing links libswift_Concurrency. Guard for that.
-SWIFT_CONCURRENCY_PATH="$WORK_DIR/Payload/Reynard.app/Frameworks/libswift_Concurrency.dylib"
-if [ -f "$SWIFT_CONCURRENCY_PATH" ]; then
-	xcrun bitcode_strip "$SWIFT_CONCURRENCY_PATH" -r -o "$SWIFT_CONCURRENCY_PATH"
-	/usr/bin/codesign --force --sign - --verbose "$SWIFT_CONCURRENCY_PATH"
-fi
-
 cd "$WORK_DIR"
 
 if [ "$BUILD_TYPE" != "normal" ]; then

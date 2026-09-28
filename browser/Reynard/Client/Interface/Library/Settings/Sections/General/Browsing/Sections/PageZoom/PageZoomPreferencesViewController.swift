@@ -143,7 +143,7 @@ final class PageZoomPreferencesViewController: SettingsTableViewController {
         }
         
         let deleteAction = UIContextualAction(style: .destructive, title: NSLocalizedString("Delete", comment: "")) { [weak self] _, _, completion in
-            _ = SiteSettingsStore.shared.clearPageZoom(forHost: setting.host)
+            _ = SiteSettingsStore.shared.clearPageZoom(for: setting.host)
             self?.reloadPageZoomSettings()
             self?.tableView.reloadData()
             completion(true)
@@ -191,7 +191,7 @@ final class PageZoomPreferencesViewController: SettingsTableViewController {
         case .defaultZoom:
             Prefs.BrowsingSettings.defaultPageZoomLevel = level
         case .site(let host, _):
-            _ = SiteSettingsStore.shared.setPageZoom(level, forHost: host)
+            _ = SiteSettingsStore.shared.setPageZoom(level, for: host)
         }
         reloadPageZoomSettings()
         tableView.reloadData()

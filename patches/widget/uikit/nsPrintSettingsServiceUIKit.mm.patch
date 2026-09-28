@@ -1,0 +1,39 @@
+diff --git a/widget/uikit/nsPrintSettingsServiceUIKit.mm b/widget/uikit/nsPrintSettingsServiceUIKit.mm
+new file mode 100644
+index 000000000000..97cff53376ee
+--- /dev/null
++++ b/widget/uikit/nsPrintSettingsServiceUIKit.mm
+@@ -0,0 +1,33 @@
++/* This Source Code Form is subject to the terms of the Mozilla Public
++ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
++ * You can obtain one at http://mozilla.org/MPL/2.0/. */
++
++/* This source code is introduced during the work of an iOS 13+ browser
++ * https://github.com/minh-ton/reynard-browser in Feb 2026. */
++
++#include "nsPrintSettingsServiceUIKit.h"
++
++#include "nsPrintSettingsImpl.h"
++
++class nsPrintSettingsUIKit final : public nsPrintSettings {
++ public:
++  nsPrintSettingsUIKit() {
++    SetOutputFormat(nsIPrintSettings::kOutputFormatPDF);
++    SetPrinterName(u"PDF printer"_ns);
++  }
++};
++
++nsresult nsPrintSettingsServiceUIKit::_CreatePrintSettings(
++    nsIPrintSettings** aResult) {
++  RefPtr<nsPrintSettingsUIKit> settings = new nsPrintSettingsUIKit();
++  settings.forget(aResult);
++  return InitPrintSettingsFromPrefs(*aResult, false,
++                                    nsIPrintSettings::kInitSaveAll);
++}
++
++already_AddRefed<nsIPrintSettings> CreatePlatformPrintSettings(
++    const mozilla::PrintSettingsInitializer& aSettings) {
++  auto settings = mozilla::MakeRefPtr<nsPrintSettingsUIKit>();
++  settings->InitWithInitializer(aSettings);
++  return settings.forget();
++}

@@ -1,14 +1,32 @@
 diff --git a/gfx/thebes/IOSPlatformFontList.mm b/gfx/thebes/IOSPlatformFontList.mm
-index b44b28d1d070..ce6859cac607 100644
+index b44b28d1d070..130072a52085 100644
 --- a/gfx/thebes/IOSPlatformFontList.mm
 +++ b/gfx/thebes/IOSPlatformFontList.mm
-@@ -4,15 +4,68 @@
+@@ -4,15 +4,100 @@
  
  #include "IOSPlatformFontList.h"
  #import <UIKit/UIKit.h>
 +#include "mozilla/FontPropertyTypes.h"
  
- IOSPlatformFontList::IOSPlatformFontList() : CoreTextFontList() {}
+-IOSPlatformFontList::IOSPlatformFontList() : CoreTextFontList() {}
++static const char kNewYorkFontFamilyName[] = "-apple-system-ui-serif";
++
++IOSPlatformFontList::IOSPlatformFontList() : CoreTextFontList() {
++  // -fontDescriptorWithDesign: / UIFontDescriptorSystemDesignSerif are
++  // iOS 13+; on iOS 12 the selector is missing (startup crash). No New York
++  // family there, so lookups fall through to CoreTextFontList.
++  if (__builtin_available(iOS 13.0, *)) {
++    UIFontDescriptor* descriptor =
++        [[UIFont systemFontOfSize:17.0].fontDescriptor
++            fontDescriptorWithDesign:UIFontDescriptorSystemDesignSerif];
++    if (descriptor) {
++      UIFont* font = [UIFont fontWithDescriptor:descriptor size:17.0];
++      mNewYorkFontFamily = new CTFontFamily(
++          nsDependentCString(kNewYorkFontFamilyName), (__bridge CTFontRef)font,
++          mozilla::gfx::UnscaledFont::DescriptorProvenance::SystemUISerif);
++    }
++  }
++}
  
  IOSPlatformFontList::~IOSPlatformFontList() {}
  
@@ -69,6 +87,21 @@ index b44b28d1d070..ce6859cac607 100644
 +
 +  aSystemFontName.AssignASCII("-apple-system");
 +  FillStyleFromUIFont(font, aFontStyle);
++}
++
++bool IOSPlatformFontList::FindAndAddFamiliesLocked(
++    FontVisibilityProvider* aFontVisibilityProvider,
++    mozilla::StyleGenericFontFamily aGeneric, const nsACString& aFamily,
++    nsTArray<FamilyAndGeneric>* aOutput, FindFamiliesFlags aFlags,
++    gfxFontStyle* aStyle, nsAtom* aLanguage, gfxFloat aDevToCssSize) {
++  if (aFamily.EqualsLiteral(kNewYorkFontFamilyName) && mNewYorkFontFamily) {
++    aOutput->AppendElement(mNewYorkFontFamily);
++    return true;
++  }
++
++  return CoreTextFontList::FindAndAddFamiliesLocked(
++      aFontVisibilityProvider, aGeneric, aFamily, aOutput, aFlags, aStyle,
++      aLanguage, aDevToCssSize);
  }
  
  nsTArray<std::pair<const char**, uint32_t>>

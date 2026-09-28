@@ -42,18 +42,20 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
     
     func closeTab(at index: Int, mode: TabMode) {
         toolbarController.reset()
-        if (tabOverview.isPresented || tabOverview.isTransitionRunning),
+        let isTabOverviewActive = tabOverview.isPresented || tabOverview.isTransitionRunning
+        if isTabOverviewActive,
            tabOverview.mode == .regularTabs,
            mode == .regular,
            tabManager.regularTabs.count == 1 {
             tabOverview.prepareNextTabChangesWithoutAnimation()
-            tabManager.removeTab(at: index, mode: mode)
+            tabManager.removeTab(at: index, mode: mode, behavior: .none)
             tabOverview.prepareNextTabChangesWithoutAnimation()
             createTabFromOverview(mode: .regular)
             return
         }
         
-        tabManager.removeTab(at: index, mode: mode)
+        let behavior: TabRemovalBehavior = isTabOverviewActive ? .none : .recent
+        tabManager.removeTab(at: index, mode: mode, behavior: behavior)
     }
     
     func moveTab(from sourceIndex: Int, to destinationIndex: Int, mode: TabMode) {
@@ -166,6 +168,7 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
                }) {
                 tabManager.selectTab(at: tabIndex, mode: mode)
             }
+            scrollTabOverviewToTab(at: tabManager.selectedTabIndex)
             tabOverview.prepareDismissSelectionForCurrentTab()
         }
         setTabOverviewVisible(false, animated: true)
@@ -227,7 +230,7 @@ extension BrowserViewController: TabBarDataSource, TabOverviewDataSource, TabOve
         }
         
         oldTabIndices.reversed().forEach { index in
-            tabManager.removeTab(at: index, mode: mode)
+            tabManager.removeTab(at: index, mode: mode, behavior: .none)
         }
     }
     

@@ -14,6 +14,12 @@ enum TabMode: String, Codable {
     case `private`
 }
 
+enum TabRemovalBehavior {
+    case recent     // activate the most recently used tab
+    case adjacent   // activate the tab adjacent to the one being removed
+    case none
+}
+
 protocol TabManager: AnyObject {
     var regularTabs: [Tab] { get }
     var privateTabs: [Tab] { get }
@@ -23,14 +29,14 @@ protocol TabManager: AnyObject {
     
     func applicationWillResignActive()
     func applicationDidBecomeActive()
-    func createInitialTab(openingScreen: HomepageOpeningScreen)
+    func createInitialTab()
     @discardableResult
     func addTab(selecting: Bool, windowId: String?, at index: Int?, isPrivate: Bool) -> Int
     @discardableResult
     func addTransferredSession(_ session: GeckoSession, url: String, title: String?, selecting: Bool, at index: Int?, isPrivate: Bool) -> Int
     func selectTab(at index: Int, mode: TabMode?)
     func moveTab(from sourceIndex: Int, to destinationIndex: Int, mode: TabMode?)
-    func removeTab(at index: Int, mode: TabMode?)
+    func removeTab(at index: Int, mode: TabMode?, behavior: TabRemovalBehavior)
     func removeAllTabs(mode: TabMode?)
     @discardableResult
     func restoreRecentlyClosedTab(id: UUID) -> Bool
@@ -48,6 +54,8 @@ protocol TabManager: AnyObject {
     func navigationHistory(for tab: Tab) -> NavigationHistoryStore.Snapshot
     func navigationPreviewImages(for tab: Tab) -> NavigationPreviewImages
     func invalidateNavigationThumbnails()
+    func setMuted(_ muted: Bool, for tabID: UUID)
+    func muteOtherPlayingTabs(excluding tabID: UUID)
     @discardableResult
     func changeWebsiteModeForSelectedTab() -> Bool
 }
@@ -61,6 +69,7 @@ enum TabManagerUpdateReason {
     case thumbnail
     case pageBackgroundColor
     case readerMode
+    case audio
 }
 
 protocol TabManagerDelegate: AnyObject {
@@ -73,6 +82,7 @@ protocol TabManagerDelegate: AnyObject {
     func tabManager(_ tabManager: TabManager, captureHistoryThumbnailForTabAt index: Int, mode: TabMode, url: String)
     func tabManager(_ tabManager: TabManager, didChangeFullscreen fullScreen: Bool, mediaIsPlaying: Bool, for session: GeckoSession)
     func tabManager(_ tabManager: TabManager, didChangeMediaPlayback isPlaying: Bool, for session: GeckoSession)
+    func tabManager(_ tabManager: TabManager, animateReturnTo tab: Tab, completion: @escaping () -> Void)
     func tabManager(_ tabManager: TabManager, animateNewTabSelectionAt index: Int, completion: @escaping () -> Void)
     func tabManager(_ tabManager: TabManager, didRequestDownload download: DownloadStore.PendingDownload)
     func tabManager(_ tabManager: TabManager, shouldStartExternalResponse response: ExternalResponseInfo, for session: GeckoSession, completion: @escaping (Bool) -> Void)

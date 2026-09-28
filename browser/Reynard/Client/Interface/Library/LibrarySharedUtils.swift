@@ -125,8 +125,9 @@ enum LibrarySharedUtils {
             browserViewController.refreshAddressBar()
         }
         
-        if viewController.navigationController?.presentingViewController is BrowserViewController {
-            viewController.navigationController?.dismiss(animated: true, completion: openTab)
+        let dismissingViewController = viewController.navigationController ?? viewController
+        if dismissingViewController.presentingViewController is BrowserViewController {
+            dismissingViewController.dismiss(animated: true, completion: openTab)
         } else {
             openTab()
         }

@@ -1,8 +1,17 @@
 diff --git a/dom/media/webrtc/MediaEngineRemoteVideoSource.cpp b/dom/media/webrtc/MediaEngineRemoteVideoSource.cpp
-index bc8a6317e8f5..11a416e9c166 100644
+index bc8a6317e8f5..57f05c31b388 100644
 --- a/dom/media/webrtc/MediaEngineRemoteVideoSource.cpp
 +++ b/dom/media/webrtc/MediaEngineRemoteVideoSource.cpp
-@@ -192,12 +192,13 @@ MediaEngineRemoteVideoSource::MediaEngineRemoteVideoSource(
+@@ -105,7 +105,7 @@ static gfx::IntSize CalculateDesiredSize(DesiredSizeInput aInput) {
+     // This frame is rotated, so what was negotiated as width is now height,
+     // and vice versa.
+     std::swap(aInput.mConstraints.mWidth, aInput.mConstraints.mHeight);
+-    std::swap(aInput.mCapabilityWidth, aInput.mCapabilityWidth);
++    std::swap(aInput.mCapabilityWidth, aInput.mCapabilityHeight);
+   }
+ 
+   // Account for a shared camera giving us higher resolution than we asked for.
+@@ -192,9 +192,10 @@ MediaEngineRemoteVideoSource::MediaEngineRemoteVideoSource(
        mDeviceUUID(NS_ConvertUTF16toUTF8(aMediaDevice->mRawID)) {
    LOG("{}", __PRETTY_FUNCTION__);
    if (mCapEngine == camera::CameraEngine) {
@@ -14,10 +23,216 @@ index bc8a6317e8f5..11a416e9c166 100644
 +      facingMode = GetFacingMode(mMediaDevice->mRawName);
 +    }
      if (facingMode.isSome()) {
--      mFacingMode.emplace(
--          NS_ConvertASCIItoUTF16(dom::GetEnumString(*facingMode)));
-+      mFacingMode.emplace(NS_ConvertASCIItoUTF16(
-+          dom::GetEnumString(*facingMode)));
-     }
+       mFacingMode.emplace(
+           NS_ConvertASCIItoUTF16(dom::GetEnumString(*facingMode)));
+@@ -647,32 +648,7 @@ int MediaEngineRemoteVideoSource::DeliverFrame(
+     uint8_t* aBuffer, const camera::VideoFrameProperties& aProps) {
+   // Cameras IPC thread - take great care with accessing members!
+ 
+-  DesiredSizeInput input{};
+-  {
+-    MutexAutoLock lock(mMutex);
+-    MOZ_ASSERT(mState == kStarted);
+-    mIncomingImageSize = {aProps.width(), aProps.height()};
+-    const int32_t& cw = mCapability.width;
+-    const int32_t& ch = mCapability.height;
+-
+-    input = {
+-        .mConstraints = *mConstraints,
+-        .mCanCropAndScale = mPrefs->mResizeModeEnabled
+-                                ? Some(mCalculation == kFeasibility)
+-                                : Nothing(),
+-        .mCapabilityWidth = cw ? Some(cw) : Nothing(),
+-        .mCapabilityHeight = ch ? Some(ch) : Nothing(),
+-        .mCapEngine = mCapEngine,
+-        .mInputWidth = aProps.width(),
+-        .mInputHeight = aProps.height(),
+-        .mRotation = aProps.rotation(),
+-    };
+-    if (!mFrameDeliveringTrackingId) {
+-      mFrameDeliveringTrackingId = Some(mTrackingId);
+-    }
+-  }
+-
+-  gfx::IntSize dstSize = CalculateDesiredSize(input);
++  gfx::IntSize dstSize = PrepareFrame(aProps);
+ 
+   std::function<void()> callback_unused = []() {};
+   webrtc::scoped_refptr<webrtc::I420BufferInterface> buffer =
+@@ -727,23 +703,67 @@ int MediaEngineRemoteVideoSource::DeliverFrame(
+     rec.Record();
    }
+ 
++  return DeliverImage(image.forget(), aProps, dstSize);
++}
++
++int MediaEngineRemoteVideoSource::DeliverFrame(
++    layers::Image* aImage, const camera::VideoFrameProperties& aProps) {
++  return DeliverImage(do_AddRef(aImage), aProps, PrepareFrame(aProps));
++}
++
++gfx::IntSize MediaEngineRemoteVideoSource::PrepareFrame(
++    const camera::VideoFrameProperties& aProps) {
++  DesiredSizeInput input{};
++  {
++    MutexAutoLock lock(mMutex);
++    MOZ_ASSERT(mState == kStarted);
++    mIncomingImageSize = {aProps.width(), aProps.height()};
++    const int32_t& cw = mCapability.width;
++    const int32_t& ch = mCapability.height;
++
++    input = {
++        .mConstraints = *mConstraints,
++        .mCanCropAndScale = mPrefs->mResizeModeEnabled
++                                ? Some(mCalculation == kFeasibility)
++                                : Nothing(),
++        .mCapabilityWidth = cw ? Some(cw) : Nothing(),
++        .mCapabilityHeight = ch ? Some(ch) : Nothing(),
++        .mCapEngine = mCapEngine,
++        .mInputWidth = aProps.width(),
++        .mInputHeight = aProps.height(),
++        .mRotation = aProps.rotation(),
++    };
++
++    if (!mFrameDeliveringTrackingId) {
++      mFrameDeliveringTrackingId = Some(mTrackingId);
++    }
++  }
++
++  return CalculateDesiredSize(input);
++}
++
++int MediaEngineRemoteVideoSource::DeliverImage(
++    already_AddRefed<layers::Image> aImage,
++    const camera::VideoFrameProperties& aProps, const gfx::IntSize& aSize) {
++  RefPtr<layers::Image> image = aImage;
++
+ #ifdef DEBUG
+   static uint32_t frame_num = 0;
+   LOG_FRAME(
+       "frame {} ({}x{})->({}x{}); rotation {}, rtpTimeStamp {}, ntpTimeMs "
+       "{}, renderTimeMs {}",
+-      frame_num++, aProps.width(), aProps.height(), dstSize.width,
+-      dstSize.height, aProps.rotation(), aProps.rtpTimeStamp(),
+-      aProps.ntpTimeMs(), aProps.renderTimeMs());
++      frame_num++, aProps.width(), aProps.height(), aSize.width, aSize.height,
++      aProps.rotation(), aProps.rtpTimeStamp(), aProps.ntpTimeMs(),
++      aProps.renderTimeMs());
+ #endif
+ 
+-  if (mScaledImageSize != dstSize) {
++  if (mScaledImageSize != aSize) {
+     NS_DispatchToMainThread(NS_NewRunnableFunction(
+         "MediaEngineRemoteVideoSource::FrameSizeChange",
+         [settings = mSettings, updated = mSettingsUpdatedByFrame,
+-         holder = std::move(mFirstFramePromiseHolder), dstSize]() mutable {
+-          settings->mWidth.Value() = dstSize.width;
+-          settings->mHeight.Value() = dstSize.height;
++         holder = std::move(mFirstFramePromiseHolder), size = aSize]() mutable {
++          settings->mWidth.Value() = size.width;
++          settings->mHeight.Value() = size.height;
+           updated->mValue = true;
+           // Since mImageSize was initialized to (0,0), we end up here on the
+           // arrival of the first frame. We resolve the promise representing
+@@ -757,7 +777,7 @@ int MediaEngineRemoteVideoSource::DeliverFrame(
+     MutexAutoLock lock(mMutex);
+     MOZ_ASSERT(mState == kStarted);
+     VideoSegment segment;
+-    mScaledImageSize = image->GetSize();
++    mScaledImageSize = aSize;
+     segment.AppendWebrtcLocalFrame(image.forget(), mScaledImageSize, mPrincipal,
+                                    /* aForceBlack */ false, TimeStamp::Now(),
+                                    aProps.captureTime());
+@@ -777,6 +797,54 @@ uint32_t MediaEngineRemoteVideoSource::GetDistance(
+   return GetFitnessDistance(aCandidate, aConstraints);
+ }
+ 
++static uint32_t FrameRateFitnessDistance(
++    const webrtc::CaptureCapability& aCandidate,
++    const NormalizedConstraintSet::DoubleRange& aConstraint) {
++  using H = MediaConstraintsHelper;
++
++  if (!aCandidate.maxFPS) {
++    return 0;
++  }
++
++  if (aCandidate.minFPS <= 0) {
++    return H::FitnessDistance(double(aCandidate.maxFPS), aConstraint);
++  }
++
++  const double min = std::max(double(aCandidate.minFPS), aConstraint.mMin);
++  const double max = std::min(double(aCandidate.maxFPS), aConstraint.mMax);
++
++  if (min > max) {
++    return UINT32_MAX;
++  }
++
++  return H::FitnessDistance(
++      std::clamp(aConstraint.mIdeal.valueOr(max), min, max), aConstraint);
++}
++
++static uint32_t FrameRateFeasibilityDistance(
++    const webrtc::CaptureCapability& aCandidate,
++    const NormalizedConstraintSet::DoubleRange& aConstraint) {
++  using H = MediaConstraintsHelper;
++
++  if (!aCandidate.maxFPS) {
++    return 0;
++  }
++
++  if (aCandidate.minFPS <= 0) {
++    return H::FeasibilityDistance(double(aCandidate.maxFPS), aConstraint);
++  }
++
++  const double min = std::max(double(aCandidate.minFPS), aConstraint.mMin);
++  const double max = double(aCandidate.maxFPS);
++
++  if (min > max) {
++    return UINT32_MAX;
++  }
++
++  return H::FeasibilityDistance(
++      std::clamp(aConstraint.mIdeal.valueOr(max), min, max), aConstraint);
++}
++
+ uint32_t MediaEngineRemoteVideoSource::GetFitnessDistance(
+     const webrtc::CaptureCapability& aCandidate,
+     const NormalizedConstraintSet& aConstraints) const {
+@@ -795,9 +863,7 @@ uint32_t MediaEngineRemoteVideoSource::GetFitnessDistance(
+                    ? H::FitnessDistance(int32_t(aCandidate.height),
+                                         aConstraints.mHeight)
+                    : 0) +
+-      uint64_t(aCandidate.maxFPS ? H::FitnessDistance(double(aCandidate.maxFPS),
+-                                                      aConstraints.mFrameRate)
+-                                 : 0);
++      uint64_t(FrameRateFitnessDistance(aCandidate, aConstraints.mFrameRate));
+   return uint32_t(std::min(distance, uint64_t(UINT32_MAX)));
+ }
+ 
+@@ -820,10 +886,8 @@ uint32_t MediaEngineRemoteVideoSource::GetFeasibilityDistance(
+                    ? H::FeasibilityDistance(int32_t(aCandidate.height),
+                                             aConstraints.mHeight)
+                    : 0) +
+-      uint64_t(aCandidate.maxFPS
+-                   ? H::FeasibilityDistance(double(aCandidate.maxFPS),
+-                                            aConstraints.mFrameRate)
+-                   : 0);
++      uint64_t(
++          FrameRateFeasibilityDistance(aCandidate, aConstraints.mFrameRate));
+   return uint32_t(std::min(distance, uint64_t(UINT32_MAX)));
+ }
+ 
+@@ -1142,6 +1206,13 @@ bool MediaEngineRemoteVideoSource::ChooseCapability(
+ 
+   aCapability = candidateSet[0].mCapability;
+ 
++  if (aCapability.minFPS > 0) {
++    const int32_t requestedFPS =
++        SaturatingCast<int32_t>(std::lround(c.mFrameRate.Get(aPrefs.mFPS)));
++    aCapability.maxFPS =
++        std::clamp(requestedFPS, aCapability.minFPS, aCapability.maxFPS);
++  }
++
+   LogCapability("Chosen capability", aCapability, sameDistance);
+   return true;
  }

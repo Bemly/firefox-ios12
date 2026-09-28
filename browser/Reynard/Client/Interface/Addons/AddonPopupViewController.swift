@@ -8,7 +8,7 @@
 import GeckoView
 import UIKit
 
-final class AddonPopupViewController: UIViewController, ContentDelegate, NavigationDelegate, UIPopoverPresentationControllerDelegate {
+final class AddonPopupViewController: UIViewController, ContentDelegate, NavigationDelegate, UIPopoverPresentationControllerDelegate, UIGestureRecognizerDelegate {
     enum Presentation {
         case sheet
         case popover
@@ -18,6 +18,8 @@ final class AddonPopupViewController: UIViewController, ContentDelegate, Navigat
         static let mediumHeightMultiplier: CGFloat = 0.7
         static let popoverMaximumWidth: CGFloat = 380
         static let sheetCornerRadius: CGFloat = 16
+        static let modernSheetCornerRadius: CGFloat = 40
+        static let modernSheetInset: CGFloat = 8
         static let closeButtonTopInset: CGFloat = 8
         static let closeButtonTrailingInset: CGFloat = 12
         static let closeButtonSize: CGFloat = 30
@@ -43,6 +45,7 @@ final class AddonPopupViewController: UIViewController, ContentDelegate, Navigat
     }()
     private let session: GeckoSession
     private let promptCoordinator = PromptCoordinator(presenter: PromptPresenter())
+    private var outsideTapGestureRecognizer: UITapGestureRecognizer?
     private var hasClosedSession = false
     private var hasNotifiedDismissal = false
     
@@ -73,6 +76,9 @@ final class AddonPopupViewController: UIViewController, ContentDelegate, Navigat
         super.init(nibName: nil, bundle: nil)
         if case .popover = presentation {
             modalPresentationStyle = .popover
+        } else if #available(iOS 26.0, *) {
+            modalPresentationStyle = .pageSheet
+            configureModernSheetPresentation()
         }
         configureSession()
     }
@@ -99,10 +105,33 @@ final class AddonPopupViewController: UIViewController, ContentDelegate, Navigat
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         session.focusForHardwareKeyboard()
+        if #available(iOS 26.0, *), case .sheet = presentation {
+            // remove the sheet interaction's pan gesture and scroll handoff
+            if let interaction = sheetPresentationController?.value(forKey: "_sheetInteraction") as? UIInteraction {
+                interaction.view?.removeInteraction(interaction)
+            }
+            installOutsideTapDismissal()
+        }
+    }
+    
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        guard size != view.bounds.size,
+              !isBeingPresented,
+              !isBeingDismissed,
+              presentingViewController != nil else {
+            return
+        }
+        
+        dismiss(animated: false)
     }
     
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        if let outsideTapGestureRecognizer {
+            outsideTapGestureRecognizer.view?.removeGestureRecognizer(outsideTapGestureRecognizer)
+            self.outsideTapGestureRecognizer = nil
+        }
         guard isBeingDismissed || isMovingFromParent || navigationController?.isBeingDismissed == true else {
             return
         }
@@ -126,11 +155,20 @@ final class AddonPopupViewController: UIViewController, ContentDelegate, Navigat
     
     private func configureView() {
         view.backgroundColor = .clear
-        if case .popover = presentation {
-            configurePopoverView()
-            return
-        }
         
+        switch presentation {
+        case .popover:
+            configurePopoverView()
+        case .sheet:
+            if #available(iOS 26.0, *) {
+                configureModernSheetView()
+            } else {
+                configureLegacySheetView()
+            }
+        }
+    }
+    
+    private func configureLegacySheetView() {
         let containerView = makeContainerView()
         let sheetView = makeSheetView()
         let closeButton = makeCloseButton()
@@ -150,6 +188,64 @@ final class AddonPopupViewController: UIViewController, ContentDelegate, Navigat
         if #unavailable(iOS 26.0) {
             constrainModalTopBorder(in: sheetView)
         }
+    }
+    
+    @available(iOS 26.0, *)
+    private func configureModernSheetPresentation() {
+        guard let sheet = sheetPresentationController else {
+            return
+        }
+        
+        sheet.prefersGrabberVisible = false
+        sheet.preferredCornerRadius = UX.modernSheetCornerRadius
+        sheet.setValue(UIVisualEffect(), forKey: "backgroundEffect")
+        // avoid scaling the rendered web content to create the sheet's outer insets
+        // which causes blurry text. the inset is being created manually btw
+        sheet.setValue(true, forKey: "disableSolariumInsets")
+        sheet.prefersEdgeAttachedInCompactHeight = true
+        sheet.widthFollowsPreferredContentSizeWhenEdgeAttached = true
+        sheet.detents = [.custom(identifier: .init("addon-popup")) { [weak self] context in
+            guard let self else {
+                return nil
+            }
+            
+            let presentingHeight = self.presentingViewController?.view.bounds.height ?? context.maximumDetentValue
+            let isCompactHeight = self.traitCollection.horizontalSizeClass == .compact
+            && self.traitCollection.verticalSizeClass == .compact
+            let height = isCompactHeight ? presentingHeight : presentingHeight * UX.mediumHeightMultiplier
+            
+            return min(height, context.maximumDetentValue)
+        }]
+    }
+    
+    @available(iOS 26.0, *)
+    private func configureModernSheetView() {
+        geckoView.translatesAutoresizingMaskIntoConstraints = false
+        geckoView.backgroundColor = .systemBackground
+        geckoView.layer.cornerCurve = .continuous
+        geckoView.layer.cornerRadius = UX.modernSheetCornerRadius
+        geckoView.clipsToBounds = true
+        view.addSubview(geckoView)
+        
+        NSLayoutConstraint.activate([
+            geckoView.topAnchor.constraint(equalTo: view.topAnchor),
+            geckoView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: UX.modernSheetInset),
+            geckoView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -UX.modernSheetInset),
+            geckoView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -UX.modernSheetInset)
+        ])
+    }
+    
+    @available(iOS 26.0, *)
+    private func installOutsideTapDismissal() {
+        guard let containerView = presentationController?.containerView else {
+            return
+        }
+        
+        let gestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(outsideTapRecognized))
+        gestureRecognizer.delegate = self
+        gestureRecognizer.cancelsTouchesInView = false
+        containerView.addGestureRecognizer(gestureRecognizer)
+        outsideTapGestureRecognizer = gestureRecognizer
     }
     
     private func configurePopoverView() {
@@ -310,7 +406,23 @@ final class AddonPopupViewController: UIViewController, ContentDelegate, Navigat
     func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
         notifyDismissalIfNeeded()
     }
-
+    
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard gestureRecognizer === outsideTapGestureRecognizer else {
+            return false
+        }
+        
+        return !geckoView.bounds.contains(touch.location(in: geckoView))
+    }
+    
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        return gestureRecognizer === outsideTapGestureRecognizer
+    }
+    
+    @objc private func outsideTapRecognized() {
+        dismiss(animated: true)
+    }
+    
     func onLoadRequest(session: GeckoSession, request: LoadRequest, completion: @escaping (AllowOrDeny) -> Void) {
         guard request.target != .current else {
             completion(.allow)

@@ -1,0 +1,26 @@
+diff --git a/third_party/angle/src/compiler/translator/glsl/OutputGLSLBase.cpp b/third_party/angle/src/compiler/translator/glsl/OutputGLSLBase.cpp
+index 51c53c068fc7..10255e2f39e7 100644
+--- a/third_party/angle/src/compiler/translator/glsl/OutputGLSLBase.cpp
++++ b/third_party/angle/src/compiler/translator/glsl/OutputGLSLBase.cpp
+@@ -361,6 +361,21 @@ void TOutputGLSLBase::writeQualifier(TQualifier qualifier, const TType &type, co
+ 
+ const char *TOutputGLSLBase::mapQualifierToString(TQualifier qualifier)
+ {
++#if defined(ANGLE_PLATFORM_IOS)
++    if (mOutput == SH_ESSL_OUTPUT)
++    {
++        switch (qualifier)
++        {
++            case EvqSmoothIn:
++                return "in";
++            case EvqSmoothOut:
++                return "out";
++            default:
++                break;
++        }
++    }
++#endif
++
+     if (sh::IsGLSL410OrOlder(mOutput) && mShaderVersion >= 300 &&
+         mCompileOptions.removeInvariantAndCentroidForESSL3)
+     {

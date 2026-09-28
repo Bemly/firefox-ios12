@@ -209,7 +209,7 @@ final class AddressBarGestures: NSObject {
         }
     }
     
-    func animateAutomaticNewTabTransition(to tab: Tab, completion: @escaping () -> Void) {
+    func animateAutomaticTabTransition(to tab: Tab, returning: Bool = false, completion: @escaping () -> Void) {
         guard let delegate,
               delegate.chromeMode == .phone,
               !delegate.isTabOverviewPresented,
@@ -227,13 +227,14 @@ final class AddressBarGestures: NSObject {
         searchPanMode = .blocked
         resetHorizontalTransition()
         delegate.addressBarTransitionWillBegin(prepareForGesture: false)
-        horizontalDirection = 1
-        prepareHorizontalTarget(for: tab, direction: 1, pageWidth: width, delegate: delegate)
+        let direction = returning ? -1 : 1
+        horizontalDirection = direction
+        prepareHorizontalTarget(for: tab, direction: direction, pageWidth: width, delegate: delegate)
         
         let transitionGeneration = horizontalTransitionGeneration
         UIView.animate(withDuration: UX.addressBarTabSwitchTransitionDuration, delay: 0, options: [.curveEaseOut]) {
-            let contentTransform = CGAffineTransform(translationX: -width, y: 0)
-            let barTransform = CGAffineTransform(translationX: -self.horizontalBarTravelWidth(), y: 0)
+            let contentTransform = CGAffineTransform(translationX: -CGFloat(direction) * width, y: 0)
+            let barTransform = CGAffineTransform(translationX: -CGFloat(direction) * self.horizontalBarTravelWidth(), y: 0)
             self.applySourceContentTransform(contentTransform, delegate: delegate)
             self.applySourceAddressBarTransform(barTransform)
             self.horizontalTargetContentView?.transform = contentTransform
@@ -945,7 +946,7 @@ extension AddressBarGestures: UIGestureRecognizerDelegate {
             }
             view = currentView.superview
         }
-
+        
         guard gestureRecognizer.view !== addressBar,
               let delegate else {
             return true

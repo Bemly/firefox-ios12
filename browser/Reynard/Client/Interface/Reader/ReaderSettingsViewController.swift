@@ -12,7 +12,8 @@ final class ReaderSettingsViewController: UIViewController, UIPopoverPresentatio
         static let width: CGFloat = 360
         static let padding: CGFloat = 16
         static let spacing: CGFloat = 16
-        static let cornerRadius: CGFloat = 24
+        static let readerCornerRadius: CGFloat = 24
+        static let themeCheckmarkSize: CGFloat = 24
         static let glassCornerRadius: CGFloat = 40
         static let glassReaderCornerRadius: CGFloat = glassCornerRadius - padding
         static let hideReaderSpacing: CGFloat = 20
@@ -111,14 +112,15 @@ final class ReaderSettingsViewController: UIViewController, UIPopoverPresentatio
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         brightnessAdjustmentEnded()
+        
+        if isBeingDismissed || presentingViewController == nil {
+            onVisibilityChanged?(false)
+        }
     }
     
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         fontSizeDotsDismissal?.cancel()
-        if isBeingDismissed || presentingViewController == nil {
-            onVisibilityChanged?(false)
-        }
     }
     
     // MARK: - Presentation
@@ -133,7 +135,7 @@ final class ReaderSettingsViewController: UIViewController, UIPopoverPresentatio
             modalPresentationStyle = .pageSheet
             if let sheet = sheetPresentationController {
                 sheet.prefersGrabberVisible = true
-                sheet.preferredCornerRadius = UX.cornerRadius
+                sheet.preferredCornerRadius = 0
                 if #available(iOS 26.0, *) {
                     sheet.prefersGrabberVisible = false
                     sheet.preferredCornerRadius = UX.glassCornerRadius
@@ -160,6 +162,8 @@ final class ReaderSettingsViewController: UIViewController, UIPopoverPresentatio
         } else {
             modalPresentationStyle = .popover
             if #available(iOS 26.0, *) {
+                view.backgroundColor = .clear
+                backgroundView.effect = nil
                 configureOpaqueMaterialContainers()
             }
         }
@@ -239,7 +243,7 @@ final class ReaderSettingsViewController: UIViewController, UIPopoverPresentatio
         reader.addArrangedSubview(makeThemePicker())
         let material = makeMaterialContainer(
             containing: reader,
-            cornerRadius: usesGlassSheet ? UX.glassReaderCornerRadius : UX.cornerRadius,
+            cornerRadius: usesGlassSheet ? UX.glassReaderCornerRadius : UX.readerCornerRadius,
             verticalInset: UX.padding
         )
         material.contentView.backgroundColor = .appTertiarySystemFill
@@ -343,7 +347,7 @@ final class ReaderSettingsViewController: UIViewController, UIPopoverPresentatio
                 button.heightAnchor.constraint(equalTo: button.widthAnchor),
                 contents.centerXAnchor.constraint(equalTo: button.centerXAnchor),
                 contents.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-                check.heightAnchor.constraint(equalToConstant: UX.cornerRadius),
+                check.heightAnchor.constraint(equalToConstant: UX.themeCheckmarkSize),
                 check.widthAnchor.constraint(equalTo: check.heightAnchor)
             ])
             themeButtons.append(button)
@@ -422,7 +426,7 @@ final class ReaderSettingsViewController: UIViewController, UIPopoverPresentatio
         materialContainers.append(material)
         return material
     }
-
+    
     private func configureOpaqueMaterialContainers() {
         materialContainers.forEach {
             $0.effect = nil
@@ -505,7 +509,9 @@ final class ReaderSettingsViewController: UIViewController, UIPopoverPresentatio
                     self.readerMode.setFontType(fontType, for: self.tabManager.selectedTab?.session)
                     self.refreshAppearance()
                 }
-                action.attributedTitle = NSAttributedString(string: title, attributes: [.font: font(for: fontType)])
+                if action.responds(to: Selector(("setAttributedTitle:"))) {
+                    action.attributedTitle = NSAttributedString(string: title, attributes: [.font: font(for: fontType)])
+                }
                 return action
             }
             fontButton.menu = UIMenu(children: actions)
@@ -624,7 +630,8 @@ final class ReaderSettingsViewController: UIViewController, UIPopoverPresentatio
     
     @objc private func findInPage() {
         guard isCurrentReader else { return }
-        dismiss(animated: true, completion: onFindInPage)
+        onFindInPage?()
+        dismiss(animated: true)
     }
     
     @objc private func hideReader() {

@@ -471,10 +471,6 @@ void freeDeviceProvider(DeviceProvider *provider) {
 
 // MARK: Developer Disk Image Mounting
 
-// There's actually a pretty helpful example from the 'idevice' submodule for this
-// at ./support/idevice/cpp/examples/mounter.cpp, so I just ended up copying most
-// of the logic from there with only a few modifications here.
-
 static NSURL *ddiDirectoryURL(NSError **error) {
     NSURL *applicationSupportDirectory = [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
     if (!applicationSupportDirectory) {
@@ -485,33 +481,30 @@ static NSURL *ddiDirectoryURL(NSError **error) {
     return [applicationSupportDirectory URLByAppendingPathComponent:@"DDI" isDirectory:YES];
 }
 
-static NSData *ddiFileData(NSURL *ddiDirectory, NSString *fileName, NSError **error) {
-    NSURL *fileURL = [ddiDirectory URLByAppendingPathComponent:fileName isDirectory:NO];
-    NSError *readError = nil;
-    NSData *data = [NSData dataWithContentsOfURL:fileURL options:NSDataReadingMappedIfSafe error:&readError];
-    if (!data || data.length == 0) {
-        if (error) *error = MakeError(DDIFileReadFailed);
-        return nil;
-    }
-    return data;
-}
-
-static BOOL isDDIMounted(ImageMounterHandle *mounterClient, BOOL *mountedOut, NSError **error) {
+static BOOL isLegacyDDIMounted(DeviceProvider *provider, BOOL *mountedOut) {
+    ImageMounterHandle *mounterClient = NULL;
     plist_t *devices = NULL;
     size_t deviceCount = 0;
-    IdeviceFfiError *ffiError = image_mounter_copy_devices(mounterClient, &devices, &deviceCount);
+    IdeviceFfiError *ffiError = image_mounter_connect_rsd(provider->adapter, provider->handshake, &mounterClient);
     if (ffiError) {
-        if (error) *error = MakeError(DDIMountStateQueryFailed);
         idevice_error_free(ffiError);
         return NO;
     }
     
+    ffiError = image_mounter_copy_devices(mounterClient, &devices, &deviceCount);
+    if (ffiError) {
+        idevice_error_free(ffiError);
+        image_mounter_free(mounterClient);
+        return NO;
+    }
+
     if (devices) {
         for (size_t index = 0; index < deviceCount; index++) {
             if (devices[index]) plist_free(devices[index]);
         }
         idevice_data_free((uint8_t *)devices, deviceCount * sizeof(plist_t));
     }
+    image_mounter_free(mounterClient);
     
     if (mountedOut) *mountedOut = deviceCount > 0;
     return YES;
@@ -523,67 +516,45 @@ BOOL ensureDDIMounted(DeviceProvider *provider, NSError **error) {
         return NO;
     }
     
-    LockdowndClientHandle *lockdownClient = NULL;
-    ImageMounterHandle *mounterClient = NULL;
-    IdeviceFfiError *ffiError = NULL;
-    plist_t chipIDNode = NULL;
-    BOOL mounted = NO;
+    InstalledCryptexC *installedCryptex = NULL;
+    Cryptex1AssetsHandle *assets = NULL;
+    IdeviceFfiError *queryError = NULL;
     NSURL *ddiDirectory = nil;
-    NSData *imageData = nil;
-    NSData *trustCacheData = nil;
-    NSData *buildManifestData = nil;
-    uint64_t uniqueChipID = 0;
+    BOOL legacyMounted = NO;
     BOOL success = NO;
     
-    ffiError = image_mounter_connect_rsd(provider->adapter, provider->handshake, &mounterClient);
-    if (ffiError) {
-        if (error) *error = MakeError(ImageMounterConnectFailed);
-        idevice_error_free(ffiError);
-        goto cleanup;
-    }
-    
-    if (!isDDIMounted(mounterClient, &mounted, error)) {
-        goto cleanup;
-    }
-    
-    if (mounted) {
+    queryError = cryptexd_installed_ddi(provider->adapter, provider->handshake, &installedCryptex);
+    if (installedCryptex) {
         success = YES;
+        goto cleanup;
+    }
+    
+    if (isLegacyDDIMounted(provider, &legacyMounted) && legacyMounted) {
+        success = YES;
+        goto cleanup;
+    }
+    
+    if (queryError) {
+        if (error) *error = MakeError(DDIMountStateQueryFailed);
         goto cleanup;
     }
     
     ddiDirectory = ddiDirectoryURL(error);
     if (!ddiDirectory) goto cleanup;
     
-    imageData = ddiFileData(ddiDirectory, @"Image.dmg", error);
-    if (!imageData) goto cleanup;
-    
-    trustCacheData = ddiFileData(ddiDirectory, @"Image.dmg.trustcache", error);
-    if (!trustCacheData) goto cleanup;
-    
-    buildManifestData = ddiFileData(ddiDirectory, @"BuildManifest.plist", error);
-    if (!buildManifestData) goto cleanup;
-    
-    ffiError = lockdownd_connect_rsd(provider->adapter, provider->handshake, &lockdownClient);
+    IdeviceFfiError *ffiError = cryptex1_assets_load(ddiDirectory.fileSystemRepresentation, &assets);
     if (ffiError) {
-        if (error) *error = MakeError(LockdowndConnectFailed);
+        if (error) *error = MakeError(DDIFileReadFailed);
         idevice_error_free(ffiError);
         goto cleanup;
     }
     
-    ffiError = lockdownd_get_value(lockdownClient, "UniqueChipID", NULL, &chipIDNode);
-    if (ffiError) {
-        if (error) *error = MakeError(UniqueChipIDReadFailed);
-        idevice_error_free(ffiError);
+    if (!assets) {
+        if (error) *error = MakeError(DDIFileReadFailed);
         goto cleanup;
     }
     
-    plist_get_uint_val(chipIDNode, &uniqueChipID);
-    if (uniqueChipID == 0) {
-        if (error) *error = MakeError(UniqueChipIDInvalid);
-        goto cleanup;
-    }
-    
-    ffiError = image_mounter_mount_personalized_rsd(mounterClient, provider->adapter, provider->handshake, imageData.bytes, imageData.length, trustCacheData.bytes, trustCacheData.length, buildManifestData.bytes, buildManifestData.length, NULL, uniqueChipID);
+    ffiError = cryptexd_install_ddi(provider->adapter, provider->handshake, assets, NULL);
     if (ffiError) {
         if (error) *error = MakeError(ModernDDIMountFailed);
         idevice_error_free(ffiError);
@@ -593,9 +564,9 @@ BOOL ensureDDIMounted(DeviceProvider *provider, NSError **error) {
     success = YES;
     
 cleanup:
-    if (chipIDNode) plist_free(chipIDNode);
-    if (mounterClient) image_mounter_free(mounterClient);
-    if (lockdownClient) lockdownd_client_free(lockdownClient);
+    if (queryError) idevice_error_free(queryError);
+    if (installedCryptex) cryptexd_free_installed_cryptex(installedCryptex);
+    if (assets) cryptex1_assets_free(assets);
     return success;
 }
 

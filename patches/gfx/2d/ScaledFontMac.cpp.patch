@@ -1,7 +1,16 @@
 diff --git a/gfx/2d/ScaledFontMac.cpp b/gfx/2d/ScaledFontMac.cpp
-index 1e440d7352fe..a85ffb67fd56 100644
+index 1e440d7352fe..88a95ec6ed4a 100644
 --- a/gfx/2d/ScaledFontMac.cpp
 +++ b/gfx/2d/ScaledFontMac.cpp
+@@ -372,7 +372,7 @@ bool UnscaledFontMac::GetFontFileData(FontFileDataOutput aDataCallback,
+ 
+ bool UnscaledFontMac::GetFontDescriptor(FontDescriptorOutput aCb,
+                                         void* aBaton) {
+-  if (mIsDataFont) {
++  if (mIsDataFont || mProvenance == DescriptorProvenance::SystemUISerif) {
+     return false;
+   }
+ 
 @@ -783,9 +783,58 @@ cairo_font_face_t* ScaledFontMac::CreateCairoFontFace(
    return cairo_quartz_font_face_create_for_cgfont(mFont);
  }

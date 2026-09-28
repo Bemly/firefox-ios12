@@ -59,6 +59,15 @@ if [ "$NO_SIGNING" = true ]; then
 		CODE_SIGNING_REQUIRED=NO \
 		CODE_SIGN_IDENTITY="" \
 		PROVISIONING_PROFILE_SPECIFIER=""
+
+	# Strip bitcode because the archive bypasses signing: https://developer.apple.com/documentation/Xcode-Release-Notes/xcode-13_3_1-release-notes?changes=_1
+	# NOTE (iOS 12 port): the Concurrency runtime may be absent — @MainActor was
+	# removed tree-wide, so nothing links libswift_Concurrency. Guard for that.
+	SWIFT_CONCURRENCY_PATH="$DIST_DIR/Reynard.xcarchive/Products/Applications/Reynard.app/Frameworks/libswift_Concurrency.dylib"
+	if [ -f "$SWIFT_CONCURRENCY_PATH" ]; then
+		xcrun bitcode_strip "$SWIFT_CONCURRENCY_PATH" -r -o "$SWIFT_CONCURRENCY_PATH"
+		/usr/bin/codesign --force --sign - --verbose "$SWIFT_CONCURRENCY_PATH"
+	fi
 else
 	run_xcodebuild
 fi

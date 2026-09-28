@@ -45,7 +45,7 @@ WebGL probe page (rotating triangle, `renderer=WebGL 1.0`):
 
 ## Installation
 
-Grab the prebuilt `Reynard-Jailbroken.ipa` from the [releases page](https://github.com/Bemly/firefox-ios12/releases) (tags look like `0.14.0-ios12`; a scheduled CI job rebuilds it whenever upstream moves), then:
+Grab the prebuilt `Reynard-Jailbroken.ipa` from the [releases page](https://github.com/Bemly/firefox-ios12/releases) (tags look like `0.15.0-ios12`; a scheduled CI job rebuilds it whenever upstream moves), then:
 
 1. Copy the `.ipa` to the device (AirDrop won't work on iOS 12; use SSH/Filza/iTunes File Sharing).
 2. Open it with [Filza](https://www.tigisoftware.com/default/?page_id=78) and install. AppSync Unified handles the signing.
