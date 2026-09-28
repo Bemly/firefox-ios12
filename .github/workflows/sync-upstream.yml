@@ -7,6 +7,10 @@
 # - 本仓唯一允许删/建 release 的入口（nojemalloc workflow 只负责往同 tag 追加资产）。
 # - 在非 main 分支上手动 dispatch = 仅编译验证：不合并上游、不推送、不碰 release，
 #   只产出 artifact（用于合并分支在进 main 前先过一遍 CI 构建）。
+# - 合并后、推送前先跑 iOS 12 编译检查（tools/development/check-ios12.sh：用 Xcode 26.6
+#   自带的 swiftc/clang + iPhoneOS SDK 全量编 App 侧 4 个 target，与正式构建同编译器同 SDK，
+#   几分钟）。不过就不推送 main、也不启动 4～5 小时的 Gecko 构建。
+# - 手动 dispatch 勾 check_only = 只跑合并预演 + 编译检查，不推送、不构建、不发版。
 
 name: Sync upstream & build release
 
@@ -14,14 +18,20 @@ on:
   schedule:
     - cron: '0 2 * * 1'
   workflow_dispatch:
+    inputs:
+      check_only:
+        description: "Only run upstream-merge dry run + iOS 12 compile check (no push, no build, no release)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
   sync:
-    name: Merge upstream/main
-    runs-on: ubuntu-latest
+    name: Merge upstream/main + iOS 12 compile check
+    # macOS: the check uses the same Xcode compiler + SDK as the real build
+    runs-on: macos-26
     outputs:
       changed: ${{ steps.merge.outputs.changed }}
       version: ${{ steps.merge.outputs.version }}
@@ -32,13 +42,20 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
 
-      - name: Merge upstream if there are new commits
+      - name: Set up Xcode 26.6
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.6'
+
+      - name: Merge upstream if there are new commits (local, pushed after the check)
         id: merge
         run: |
           set -eu
+          BASE=""
           if [ "${{ github.ref }}" != "refs/heads/main" ]; then
             echo "non-main ref (${{ github.ref_name }}): build-only verification, skip upstream merge"
             echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "base=" >> "$GITHUB_OUTPUT"
             VERSION="$(sed -n 's/^CURRENT_VERSION = //p' browser/Configuration/Reynard.xcconfig | tr -d ' ')"
             echo "version=$VERSION" >> "$GITHUB_OUTPUT"
             exit 0
@@ -53,6 +70,7 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             SHORT="$(git rev-parse --short upstream/main)"
+            BASE="$(git rev-parse HEAD)"
             git merge --no-ff --no-edit -m "chore: merge upstream/main $SHORT" upstream/main
             KEEP_DIR="$(mktemp -d)"
             for f in .github/workflows/sync-upstream.yml .github/workflows/build-nojemalloc.yml; do
@@ -64,22 +82,34 @@ jobs:
             rm -rf .github/workflows
             if [ -d "$KEEP_DIR/.github/workflows" ]; then
               mkdir -p .github/workflows
-              cp -R "$KEEP_DIR/.github/workflows/" .github/workflows/
+              # "/." copies the contents on both BSD and GNU cp (GNU would nest a "workflows/" dir)
+              cp -R "$KEEP_DIR/.github/workflows/." .github/workflows/
             fi
             git add -A
             if ! git diff --cached --quiet; then
               git commit -m "chore: drop upstream workflows (local ldid builds only)"
             fi
-            git push origin HEAD:main
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
           VERSION="$(sed -n 's/^CURRENT_VERSION = //p' browser/Configuration/Reynard.xcconfig | tr -d ' ')"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # Swift/ObjC availability errors used to surface only after the 4-5h Gecko
+      # build (0.15.0: one .insetGrouped). Catch them here in minutes, before
+      # anything is pushed. With a fresh upstream merge, also list post-iOS-12
+      # SDK APIs in the new engine patch lines (informational, review by hand).
+      - name: iOS 12 compile check (Xcode swiftc + iPhoneOS SDK, no Gecko build)
+        run: ./tools/development/check-ios12.sh ${{ steps.merge.outputs.base }}
+
+      - name: Push merge to main
+        if: ${{ steps.merge.outputs.changed == 'true' && github.event.inputs.check_only != 'true' }}
+        run: git push origin HEAD:main
 
   build:
     name: Build jailbroken IPA (jemalloc)
     needs: sync
-    if: ${{ needs.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.event.inputs.check_only != 'true' && (needs.sync.outputs.changed == 'true' || github.event_name == 'workflow_dispatch') }}
     runs-on: macos-26
     timeout-minutes: 360
     env:

@@ -1,25 +1,28 @@
 # Build no-jemalloc variant and attach to the same version release.
 #
 # - 单独 workflow 避免与主构建抢超时（macOS runner 单 job 360min 上限，jemalloc +
-#   no-jemalloc 串起来超长）。平时由主 workflow 的 release 建好 `<version>-ios12` 后
-#   手动 dispatch 本 workflow 追加资产；也支持定时或直接 dispatch 全量编。
+#   no-jemalloc 串起来超长）。主 workflow 的 release job 成功重建 `<version>-ios12` 后
+#   经 workflow_run 自动连锁编译并追加资产；也可直接 dispatch 全量编。
 # - 产物名 `Reynard-Jailbroken-nojemalloc.ipa`（无 jemalloc，走系统 malloc，
 #   规避 A12/unc0ver 12.2 上的 substitute 对 jemalloc zone 的 hook 崩溃）。
 # - 不删 release，只 `gh release upload --clobber` 追加/覆盖同名资产。
 # - 在非 main 分支上手动 dispatch = 仅编译验证：只产出 artifact，不碰 release。
+# - build job 装好 Xcode 后第一步先跑 iOS 12 编译检查（check-ios12.sh，Xcode 自带编译器
+#   + SDK，几分钟），不过就不进入 4～5 小时的 Gecko 构建。
 
 name: Build no-jemalloc IPA
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 3 * * 1'
+  # 不设定时：周一 02:00 的 sync 发版成功后由 workflow_run 连锁触发即可。原先 03:00 的
+  # cron 会在 sync 还在编时并行再编一份，且可能先于 release 删除重建而追加、资产随之丢失。
   workflow_run:
     workflows: ["Sync upstream & build release"]
     types: [completed]
 
 permissions:
   contents: write
+  actions: read   # workflow_run: read the triggering run's jobs
 
 jobs:
   check:
@@ -37,29 +40,30 @@ jobs:
 
       - name: Decide
         id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          # 手动触发一律编；定时/连锁触发只有上游刚合并过才编（避免每周空跑超时）
+          # 手动触发一律编；连锁触发只在 sync 真的重建了 release 时编
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            # 连锁触发：上游合并成功才会到这里（sync 的 conclusion 已在 job 级过滤）
-            # 再确认 25 小时内确有一次 merge 上游的提交，避免 sync 空跑也跟编
-            if git log --since="25 hours ago" --oneline | grep -qi "merge upstream/main"; then
+            # 连锁触发：只有触发它的那次 sync run 真的重建了 release 才编——release 是删掉重建的，
+            # 重建后 nojemalloc 资产就没了，必须补；分支验证 run / check_only run / 空跑（无 release）
+            # 一律不编，免得编 main 再往 release 乱追加。
+            RELEASE="$(gh run view "${{ github.event.workflow_run.id }}" -R "$GITHUB_REPOSITORY" --json jobs \
+              -q '.jobs[] | select(.name=="Create or replace version release") | .conclusion')"
+            echo "triggering run ${{ github.event.workflow_run.id }} release job: ${RELEASE:-none}"
+            if [ "$RELEASE" = "success" ]; then
               echo "should_build=true" >> "$GITHUB_OUTPUT"
             else
               echo "should_build=false" >> "$GITHUB_OUTPUT"
             fi
             exit 0
           fi
-          # schedule 定时：同理，只在 25 小时内有过上游合并才编
-          if git log --since="25 hours ago" --oneline | grep -qi "merge upstream/main"; then
-            echo "should_build=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_build=false (no upstream merge in 25h, skip)" >> "$GITHUB_OUTPUT"
-          fi
+          echo "should_build=false" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build jailbroken IPA (no-jemalloc)
@@ -81,6 +85,9 @@ jobs:
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: '26.6'
+
+      - name: iOS 12 compile check (Xcode swiftc + iPhoneOS SDK, no Gecko build)
+        run: ./tools/development/check-ios12.sh
 
       - name: Install build dependencies
         run: |
