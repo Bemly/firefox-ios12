@@ -287,3 +287,14 @@
   并行重复编，且可能先于 release 重建而追加、随后被删。
 - 注意：workflow_run 连锁永远用**默认分支**上的 workflow 文件。改 nojemalloc 逻辑的 PR
   合进 main 之前，别在分支上 dispatch sync 做验证——main 上旧逻辑会被连锁触发。
+- **0.15.0 发版实录（2026-09-28～29，CI 新流程首跑）**：main `3b7867f` 手动 dispatch sync
+  （run 36494648968）：sync job（macos-26）Xcode 编译检查 71s 通过、无上游新提交故 push 跳过 →
+  jemalloc build：patch 22:59 打完，Gecko 22:59→02:14（3h15m，比上一轮 5h 快近 2h）→ release
+  `0.15.0-ios12` 02:21 建成 → nojemalloc 按新条件（触发 run 的 release job success）自动连锁
+ （run 36512202005），build job 内编译检查 52s 通过，Gecko 02:31→05:41（3h11m），05:47 追加资产。
+  两条新逻辑（sync“合并→检查→推送”、nojemalloc release-job 连锁）均首跑成功。
+- 产物核验（下载两个 ipa 解包）：主二进制/XUL 均 `minos 12.0`、`sdk 26.5`，包名
+  `moe.bemly.reynard`、版本 0.15.0、CFBundleVersion 戳 `3b7867f`，Frameworks 无
+  `libswift_Concurrency`。jemalloc 包 `libmozglue.dylib` 含 `<jemalloc>`/`MALLOC_OPTIONS`/
+  `jemalloc_stats_*`，nojemalloc 包这些全无（只剩转发系统 malloc 的 `moz_arena_*`），两包
+  确实不同（IPA 132729412 vs 132673324 字节）。真机装机待测。
